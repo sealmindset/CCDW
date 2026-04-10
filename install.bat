@@ -13,16 +13,16 @@ echo ========================================
 echo.
 
 REM ---------------------------------------------------------------------------
-REM Check for Docker
+REM Check for Docker (via Rancher Desktop or Docker Desktop)
 REM ---------------------------------------------------------------------------
 where docker >nul 2>nul
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Docker is not installed.
     echo.
-    echo Please install one of the following:
-    echo   - Docker Desktop:   https://www.docker.com/products/docker-desktop/
-    echo   - Rancher Desktop:  https://rancherdesktop.io/
+    echo Please install Rancher Desktop:
+    echo   https://rancherdesktop.io/
     echo.
+    echo During installation, select "dockerd (moby)" as the container engine.
     echo After installing, restart your computer and double-click this file again.
     echo.
     pause
@@ -33,8 +33,10 @@ docker info >nul 2>nul
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Docker is installed but not running.
     echo.
-    echo Please start Docker Desktop or Rancher Desktop, wait for it to finish
-    echo loading, then double-click this file again.
+    echo Please start Rancher Desktop (or Docker Desktop), wait for it to
+    echo finish loading, then double-click this file again.
+    echo.
+    echo Look for the Rancher Desktop icon in your system tray (bottom-right).
     echo.
     pause
     exit /b 1
@@ -43,9 +45,10 @@ if %ERRORLEVEL% neq 0 (
 echo [OK] Docker is running.
 
 REM ---------------------------------------------------------------------------
-REM Create projects folder
+REM Create required folders
 REM ---------------------------------------------------------------------------
 set "PROJECTS_DIR=%USERPROFILE%\Documents\GitHub"
+set "AZURE_DIR=%USERPROFILE%\.azure"
 
 if not exist "%PROJECTS_DIR%" (
     echo [...]  Creating projects folder: %PROJECTS_DIR%
@@ -57,6 +60,11 @@ if not exist "%PROJECTS_DIR%" (
     )
 )
 echo [OK] Projects folder: %PROJECTS_DIR%
+
+if not exist "%AZURE_DIR%" (
+    echo [...]  Creating Azure config folder: %AZURE_DIR%
+    mkdir "%AZURE_DIR%"
+)
 
 REM ---------------------------------------------------------------------------
 REM Auto-update: always pull latest image
@@ -86,6 +94,14 @@ docker run -d ^
     -p 8080:8080 ^
     -v //var/run/docker.sock:/var/run/docker.sock ^
     -v "%PROJECTS_DIR%:/home/coder/Documents/GitHub" ^
+    -v "%AZURE_DIR%:/home/coder/.azure" ^
+    -v claude-code-data:/home/coder/.claude ^
+    -v claude-code-gh:/home/coder/.config/gh ^
+    -v claude-code-git-config:/home/coder/.gitconfig.d ^
+    -e ANTHROPIC_FOUNDRY_BASE_URL=https://snapistg-scus.azure.sleepnumber.com/anthropic ^
+    -e ANTHROPIC_DEFAULT_SONNET_MODEL=cogdep-aifoundry-dev-eus2-claude-sonnet-4-5 ^
+    -e ANTHROPIC_DEFAULT_HAIKU_MODEL=cogdep-aifoundry-dev-eus2-claude-haiku-4-5 ^
+    -e ANTHROPIC_DEFAULT_OPUS_MODEL=cogdep-aifoundry-dev-eus2-claude-opus-4-6 ^
     ghcr.io/sealmindset/claude-code-docker:latest
 
 if %ERRORLEVEL% neq 0 (
@@ -93,7 +109,7 @@ if %ERRORLEVEL% neq 0 (
     echo.
     echo Common fixes:
     echo   - Make sure ports 3000, 7681 and 8080 are not in use
-    echo   - Restart Docker Desktop and try again
+    echo   - Restart Rancher Desktop and try again
     echo.
     pause
     exit /b 1
@@ -153,12 +169,19 @@ if exist "%SHORTCUT%" (
 )
 
 echo.
+echo ========================================
+echo   Claude Code Docker is ready!
+echo ========================================
+echo.
 echo   Dashboard:     http://localhost:3000
 echo   Web Terminal:  http://localhost:7681
 echo   VS Code:       http://localhost:8080
 echo.
-echo   To stop: docker rm -f claude-code
-echo   To restart: double-click this file or the desktop shortcut
+echo   FIRST TIME? Click "Web Terminal" in the dashboard
+echo   and follow the setup steps (Azure login, GitHub login).
+echo.
+echo   To stop:    docker rm -f claude-code
+echo   To restart: double-click "Claude Code" on your desktop
 echo.
 pause
 exit /b 0

@@ -23,9 +23,10 @@ services:
       # Projects folder: defaults to ~/Documents/GitHub on the host
       # Power users can override via PROJECTS_PATH in .env
       - ${PROJECTS_PATH:-~/Documents/GitHub}:/home/coder/Documents/GitHub
-      # Persistent data: Claude Code settings, skills, git config
+      # Persistent data: Claude Code settings, skills, git config, gh auth
       - claude-code-data:/home/coder/.claude
       - git-config:/home/coder/.gitconfig.d
+      - gh-config:/home/coder/.config/gh
       # Mount host Azure CLI credentials (for token-based auth)
       - ${HOME}/.azure:/home/coder/.azure
       # Mount host Claude settings (apiKeyHelper, model names)
@@ -45,3 +46,5 @@ volumes:
     name: claude-code-data
   git-config:
     name: claude-code-git-config
+  gh-config:
+    name: claude-code-gh-config

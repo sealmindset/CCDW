@@ -115,15 +115,45 @@ FIRST_RUN_MARKER="/home/coder/.claude/.first-run-done"
 if [ ! -f "$FIRST_RUN_MARKER" ]; then
     echo ""
     echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}  Welcome! Here's how to get started:${NC}"
+    echo -e "${BLUE}  Welcome! Let's get you set up.${NC}"
     echo -e "${BLUE}========================================${NC}"
     echo ""
-    echo -e "  ${BOLD}Step 1:${NC} Type ${GREEN}claude${NC} and press Enter"
-    echo -e "         This starts your AI assistant."
-    echo ""
-    echo -e "  ${BOLD}Step 2:${NC} Type ${GREEN}/make-it${NC} and press Enter"
-    echo -e "         This launches the app builder. Just describe"
-    echo -e "         what you want in plain English."
+
+    # Check if Azure login is needed
+    NEED_AZ=0
+    NEED_GH=0
+    if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+        if ! az account show &>/dev/null 2>&1; then
+            NEED_AZ=1
+        fi
+    fi
+    if ! gh auth status &>/dev/null 2>&1; then
+        NEED_GH=1
+    fi
+
+    STEP=1
+
+    if [ "$NEED_AZ" = "1" ]; then
+        echo -e "  ${BOLD}Step ${STEP}: Log in to Azure${NC}"
+        echo -e "  This connects you to the AI service."
+        echo -e "  Type: ${GREEN}az login --use-device-code${NC}"
+        echo -e "  Then open the URL in your browser and enter the code."
+        echo ""
+        STEP=$((STEP + 1))
+    fi
+
+    if [ "$NEED_GH" = "1" ]; then
+        echo -e "  ${BOLD}Step ${STEP}: Log in to GitHub${NC}"
+        echo -e "  This lets Claude save and share your work."
+        echo -e "  Type: ${GREEN}gh auth login${NC}"
+        echo -e "  Select GitHub.com > HTTPS > Login with a web browser."
+        echo ""
+        STEP=$((STEP + 1))
+    fi
+
+    echo -e "  ${BOLD}Step ${STEP}: Start building!${NC}"
+    echo -e "  Type ${GREEN}claude${NC} to start Claude Code."
+    echo -e "  Then type ${GREEN}/make-it${NC} to build your first app."
     echo ""
     echo -e "  ${BOLD}Helpful commands:${NC}"
     echo -e "    ${GREEN}doctor${NC}   -- Check if everything is working"

@@ -164,7 +164,27 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
-# 4. Docker
+# 4. GitHub
+# ---------------------------------------------------------------------------
+echo -e "${BOLD}GitHub${NC}"
+
+if command -v gh &> /dev/null; then
+    pass "GitHub CLI is installed"
+    if gh auth status &>/dev/null 2>&1; then
+        GH_USER=$(gh api user -q .login 2>/dev/null || echo "authenticated")
+        pass "GitHub CLI is authenticated ($GH_USER)"
+    else
+        warn "GitHub CLI is not authenticated"
+        hint "Run: gh auth login"
+    fi
+else
+    fail "GitHub CLI is not installed"
+fi
+
+echo ""
+
+# ---------------------------------------------------------------------------
+# 5. Docker
 # ---------------------------------------------------------------------------
 echo -e "${BOLD}Docker${NC}"
 
