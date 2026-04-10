@@ -49,7 +49,11 @@ echo ""
 
 # Check AI provider status
 if [ -n "$ANTHROPIC_API_KEY" ]; then
-    echo -e "  AI Provider:   ${GREEN}Configured${NC}"
+    echo -e "  AI Provider:   ${GREEN}Anthropic API${NC}"
+elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+    echo -e "  AI Provider:   ${GREEN}Azure AI Foundry${NC}"
+    # Check Azure token health
+    /opt/claude-code-docker/scripts/check-azure-token.sh
 elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
     echo -e "  AI Provider:   ${GREEN}AWS Bedrock${NC}"
 else
@@ -72,7 +76,13 @@ else
     echo -e "  Skills:        ${YELLOW}Not installed${NC}"
 fi
 
+# ---------------------------------------------------------------------------
+# Alias: cc = claude with friendly error wrapper
+# ---------------------------------------------------------------------------
+alias cc='/opt/claude-code-docker/scripts/claude-wrapper.sh'
+
 echo ""
 echo -e "  Type ${GREEN}claude${NC} to start Claude Code"
+echo -e "  Type ${GREEN}cc${NC} for Claude Code with friendly error messages"
 echo -e "  Type ${GREEN}/make-it${NC} inside Claude Code to build an app"
 echo ""

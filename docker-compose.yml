@@ -19,12 +19,17 @@ services:
     volumes:
       # Mount host Docker socket for sibling container execution
       - /var/run/docker.sock:/var/run/docker.sock
-      # Workspace: your project files (host folder)
-      - ${WORKSPACE_PATH:-./workspace}:/home/coder/workspace
+      # Projects folder: defaults to ~/Documents/GitHub on the host
+      # Power users can override via PROJECTS_PATH in .env
+      - ${PROJECTS_PATH:-~/Documents/GitHub}:/home/coder/Documents/GitHub
       # Persistent data: Claude Code settings, skills, git config
       - claude-code-data:/home/coder/.claude
-      - coder-config:/home/coder/.config
       - git-config:/home/coder/.gitconfig.d
+      # Mount host Azure CLI credentials (for token-based auth)
+      - ${HOME}/.azure:/home/coder/.azure
+      # Mount host Claude settings (apiKeyHelper, model names)
+      - ${HOME}/.claude/settings.json:/home/coder/.claude/settings.json:ro
+      - ${HOME}/.claude/get-claude-token.sh:/home/coder/.claude/get-claude-token.sh:ro
     env_file:
       - .env
     environment:
@@ -37,7 +42,5 @@ services:
 volumes:
   claude-code-data:
     name: claude-code-data
-  coder-config:
-    name: claude-code-coder-config
   git-config:
     name: claude-code-git-config

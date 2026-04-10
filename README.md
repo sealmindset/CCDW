@@ -10,7 +10,10 @@ A ready-to-run container that packages Claude Code CLI, a web-based terminal, VS
 - **VS Code in Browser** -- Full IDE experience via code-server (port 8080)
 - **Direct CLI** -- `docker exec` for power users
 - **AI Provider Flexibility** -- Anthropic API key, Azure AI Foundry, or AWS Bedrock
+- **One-Click Install** -- Double-click installer for Windows (.bat) and macOS (.command)
 - **Setup Wizard** -- Interactive first-run configuration (no .env editing required)
+- **Friendly Errors** -- Plain-English error messages instead of stack traces
+- **Azure Token Health** -- Automatic token expiry detection with fix instructions
 - **Build Apps Inside** -- Docker socket mounting lets you build and run apps from within the container
 - **Auto-Updating Skills** -- /make-it skills update automatically on each container start
 - **Persistent Data** -- Your workspace, settings, and git config survive container restarts
@@ -27,14 +30,23 @@ A ready-to-run container that packages Claude Code CLI, a web-based terminal, VS
 
 ## Quick Start
 
-### Option 1: Pull from Registry (Recommended)
+### Option 1: One-Click Install (Recommended)
+
+The fastest way to get started -- no terminal needed:
+
+- **Windows:** Double-click `install.bat`
+- **macOS:** Double-click `install.command`
+
+The installer will check for Docker, download the image, start the container, and open your browser automatically.
+
+### Option 2: Pull from Registry
 
 ```bash
 # Pull the latest image
 docker pull ghcr.io/sealmindset/claude-code-docker:latest
 
-# Create a workspace folder
-mkdir workspace
+# Create your projects folder (if it doesn't exist)
+mkdir -p ~/Documents/GitHub
 
 # Run the container
 docker run -d \
@@ -42,13 +54,13 @@ docker run -d \
   -p 7681:7681 \
   -p 8080:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v ./workspace:/home/coder/workspace \
+  -v ~/Documents/GitHub:/home/coder/Documents/GitHub \
   ghcr.io/sealmindset/claude-code-docker:latest
 ```
 
 Then open **http://localhost:7681** in your browser. The setup wizard will walk you through connecting to your AI provider.
 
-### Option 2: Docker Compose (Power Users)
+### Option 3: Docker Compose (Power Users)
 
 1. Clone this repo:
    ```bash
@@ -56,13 +68,14 @@ Then open **http://localhost:7681** in your browser. The setup wizard will walk 
    cd claude-code-docker
    ```
 
-2. Copy and edit the environment file:
+2. Run the first-time setup (creates `~/Documents/GitHub` if needed, generates `.env`):
    ```bash
-   cp .env.example .env
-   # Edit .env with your AI provider credentials
+   bash scripts/first-run.sh
    ```
 
-3. Start the container:
+3. Edit `.env` with your AI provider credentials (or skip and use the setup wizard).
+
+4. Start the container:
    ```bash
    docker compose up -d
    ```
@@ -138,6 +151,8 @@ Apps you build are saved in the `workspace/` folder, which is shared with your h
 
 ```
 claude-code-docker/
+  install.bat             # Windows one-click installer
+  install.command          # macOS one-click installer
   Dockerfile              # Container image definition
   docker-compose.yml      # Orchestration with volumes and ports
   .env.example            # Environment variable template
@@ -147,6 +162,8 @@ claude-code-docker/
     setup-wizard.sh       # Interactive AI provider setup
     auto-update.sh        # Skill auto-update on startup
     healthcheck.sh        # Container health verification
+    check-azure-token.sh  # Azure token expiry detection
+    claude-wrapper.sh     # Friendly error wrapper for claude CLI
   .github/workflows/
     publish.yml           # CI/CD: build and push to ghcr.io on tag
 ```

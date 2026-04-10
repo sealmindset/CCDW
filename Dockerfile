@@ -70,12 +70,18 @@ RUN npm install -g @anthropic-ai/claude-code
 RUN apk add --no-cache github-cli
 
 # ---------------------------------------------------------------------------
+# Install Azure CLI (for Azure AD token-based auth)
+# ---------------------------------------------------------------------------
+RUN apk add --no-cache py3-pip \
+    && pip3 install --break-system-packages azure-cli
+
+# ---------------------------------------------------------------------------
 # Create non-root user
 # ---------------------------------------------------------------------------
 RUN deluser node 2>/dev/null; delgroup node 2>/dev/null; \
     addgroup -g 1000 coder 2>/dev/null || true \
     && adduser -u 1000 -G coder -s /bin/bash -D coder 2>/dev/null || true \
-    && mkdir -p /home/coder/.claude /home/coder/workspace \
+    && mkdir -p /home/coder/.claude /home/coder/Documents/GitHub \
     && chown -R coder:coder /home/coder
 
 # ---------------------------------------------------------------------------
@@ -88,7 +94,7 @@ RUN chmod +x /opt/claude-code-docker/scripts/*.sh
 # Switch to non-root user
 # ---------------------------------------------------------------------------
 USER coder
-WORKDIR /home/coder/workspace
+WORKDIR /home/coder/Documents/GitHub
 
 # ---------------------------------------------------------------------------
 # Install /make-it skills for the coder user
