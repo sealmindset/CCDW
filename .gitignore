@@ -1,0 +1,18 @@
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Make-it state
+.make-it/
+
+# Docker
+*.log
+corporate-ca.crt
+certs/
