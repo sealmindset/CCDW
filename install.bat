@@ -59,17 +59,15 @@ if not exist "%PROJECTS_DIR%" (
 echo [OK] Projects folder: %PROJECTS_DIR%
 
 REM ---------------------------------------------------------------------------
-REM Pull the latest image
+REM Auto-update: always pull latest image
 REM ---------------------------------------------------------------------------
 echo.
-echo [...]  Downloading Claude Code Docker (this may take a few minutes)...
+echo [...]  Checking for updates and downloading latest version...
 docker pull ghcr.io/sealmindset/claude-code-docker:latest
 if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Failed to download the image. Check your internet connection.
-    pause
-    exit /b 1
+    echo [WARN] Could not check for updates. Using cached image if available.
 )
-echo [OK] Image downloaded.
+echo [OK] Image is up to date.
 
 REM ---------------------------------------------------------------------------
 REM Stop existing container if running
@@ -83,6 +81,7 @@ echo.
 echo [...]  Starting Claude Code Docker...
 docker run -d ^
     --name claude-code ^
+    -p 3000:3000 ^
     -p 7681:7681 ^
     -p 8080:8080 ^
     -v //var/run/docker.sock:/var/run/docker.sock ^
@@ -93,7 +92,7 @@ if %ERRORLEVEL% neq 0 (
     echo [ERROR] Failed to start the container.
     echo.
     echo Common fixes:
-    echo   - Make sure ports 7681 and 8080 are not in use
+    echo   - Make sure ports 3000, 7681 and 8080 are not in use
     echo   - Restart Docker Desktop and try again
     echo.
     pause
@@ -103,46 +102,63 @@ if %ERRORLEVEL% neq 0 (
 echo [OK] Claude Code Docker is running!
 
 REM ---------------------------------------------------------------------------
-REM Wait for the web terminal to be ready, then open browser
+REM Wait for the dashboard to be ready, then open browser
 REM ---------------------------------------------------------------------------
 echo.
-echo [...]  Waiting for web terminal to start...
+echo [...]  Waiting for dashboard to start...
 
 set ATTEMPTS=0
 :waitloop
 if %ATTEMPTS% geq 30 goto timeout
 timeout /t 2 /nobreak >nul
-curl -s -o nul http://localhost:7681 2>nul
+curl -s -o nul http://localhost:3000 2>nul
 if %ERRORLEVEL% equ 0 goto ready
 set /a ATTEMPTS+=1
 goto waitloop
 
 :ready
-echo [OK] Web terminal is ready!
+echo [OK] Dashboard is ready!
 echo.
 echo ========================================
 echo   Opening Claude Code in your browser...
 echo ========================================
 echo.
-start http://localhost:7681
-echo.
-echo   Web Terminal:  http://localhost:7681
-echo   VS Code:       http://localhost:8080
-echo.
-echo   To stop: docker rm -f claude-code
-echo   To restart: double-click this file again
-echo.
-pause
-exit /b 0
+start http://localhost:3000
+goto shortcuts
 
 :timeout
 echo.
 echo [OK] Container is starting up (it may take another moment).
 echo      Opening browser anyway...
-start http://localhost:7681
+start http://localhost:3000
+
+:shortcuts
+REM ---------------------------------------------------------------------------
+REM Create desktop shortcut
+REM ---------------------------------------------------------------------------
 echo.
+echo [...]  Creating desktop shortcut...
+
+set "SHORTCUT=%USERPROFILE%\Desktop\Claude Code.url"
+(
+    echo [InternetShortcut]
+    echo URL=http://localhost:3000
+    echo IconIndex=0
+) > "%SHORTCUT%"
+
+if exist "%SHORTCUT%" (
+    echo [OK] Desktop shortcut created: "Claude Code" on your desktop
+) else (
+    echo [WARN] Could not create desktop shortcut
+)
+
+echo.
+echo   Dashboard:     http://localhost:3000
 echo   Web Terminal:  http://localhost:7681
 echo   VS Code:       http://localhost:8080
+echo.
+echo   To stop: docker rm -f claude-code
+echo   To restart: double-click this file or the desktop shortcut
 echo.
 pause
 exit /b 0

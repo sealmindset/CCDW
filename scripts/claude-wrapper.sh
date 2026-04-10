@@ -56,21 +56,37 @@ if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
     fi
 fi
 
-# 3. Network / connectivity
-if ! curl -s --connect-timeout 5 -o /dev/null https://api.anthropic.com 2>/dev/null && \
-   ! curl -s --connect-timeout 5 -o /dev/null "${ANTHROPIC_FOUNDRY_BASE_URL:-https://api.anthropic.com}" 2>/dev/null; then
-    echo -e "  ${BOLD}Problem:${NC} Can't reach the AI service."
-    echo ""
-    echo -e "  ${BOLD}Possible causes:${NC}"
-    echo -e "    - Your internet connection is down"
-    echo -e "    - VPN is not connected (if required)"
-    echo -e "    - The AI service is temporarily unavailable"
-    echo ""
-    echo -e "  ${BOLD}Try:${NC}"
-    echo -e "    - Check your internet connection"
-    echo -e "    - Connect to VPN if you're using Azure AI Foundry"
-    echo -e "    - Wait a minute and try again"
-    echo ""
+# 3. Network / connectivity with VPN detection
+AI_ENDPOINT="${ANTHROPIC_FOUNDRY_BASE_URL:-https://api.anthropic.com}"
+if ! curl -s --connect-timeout 5 -o /dev/null "$AI_ENDPOINT" 2>/dev/null; then
+    # Check if general internet works (VPN detection)
+    if curl -s --connect-timeout 5 -o /dev/null https://www.google.com 2>/dev/null; then
+        # Internet works but AI endpoint doesn't -- likely a VPN issue
+        echo -e "  ${BOLD}Problem:${NC} Can't reach the AI service, but your internet is working."
+        echo ""
+        echo -e "  ${BOLD}This usually means you need to connect to VPN.${NC}"
+        echo ""
+        echo -e "  The AI endpoint (${YELLOW}${AI_ENDPOINT}${NC})"
+        echo -e "  is on a private network that requires VPN access."
+        echo ""
+        echo -e "  ${BOLD}How to fix:${NC}"
+        echo -e "    1. Connect to your corporate VPN on your host machine"
+        echo -e "    2. Try again here"
+        echo ""
+    else
+        echo -e "  ${BOLD}Problem:${NC} Can't reach the internet."
+        echo ""
+        echo -e "  ${BOLD}Possible causes:${NC}"
+        echo -e "    - Your internet connection is down"
+        echo -e "    - Your Wi-Fi is disconnected"
+        echo -e "    - DNS is not resolving"
+        echo ""
+        echo -e "  ${BOLD}Try:${NC}"
+        echo -e "    - Check your network connection"
+        echo -e "    - Restart your Wi-Fi"
+        echo -e "    - Wait a moment and try again"
+        echo ""
+    fi
     exit $EXIT_CODE
 fi
 

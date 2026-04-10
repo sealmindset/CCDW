@@ -60,16 +60,15 @@ fi
 echo -e "${GREEN}[OK]${NC} Projects folder: $PROJECTS_DIR"
 
 # ---------------------------------------------------------------------------
-# Pull the latest image
+# Auto-update: always pull latest image
 # ---------------------------------------------------------------------------
 echo ""
-echo -e "${YELLOW}[...]${NC} Downloading Claude Code Docker (this may take a few minutes)..."
-if ! docker pull ghcr.io/sealmindset/claude-code-docker:latest; then
-    echo -e "${RED}[ERROR]${NC} Failed to download the image. Check your internet connection."
-    read -p "Press Enter to close..."
-    exit 1
+echo -e "${YELLOW}[...]${NC} Checking for updates and downloading latest version..."
+if docker pull ghcr.io/sealmindset/claude-code-docker:latest; then
+    echo -e "${GREEN}[OK]${NC} Image is up to date."
+else
+    echo -e "${YELLOW}[WARN]${NC} Could not check for updates. Using cached image if available."
 fi
-echo -e "${GREEN}[OK]${NC} Image downloaded."
 
 # ---------------------------------------------------------------------------
 # Stop existing container if running
@@ -83,6 +82,7 @@ echo ""
 echo -e "${YELLOW}[...]${NC} Starting Claude Code Docker..."
 if ! docker run -d \
     --name claude-code \
+    -p 3000:3000 \
     -p 7681:7681 \
     -p 8080:8080 \
     -v /var/run/docker.sock:/var/run/docker.sock \
@@ -91,7 +91,7 @@ if ! docker run -d \
     echo -e "${RED}[ERROR]${NC} Failed to start the container."
     echo ""
     echo "  Common fixes:"
-    echo "    - Make sure ports 7681 and 8080 are not in use"
+    echo "    - Make sure ports 3000, 7681 and 8080 are not in use"
     echo "    - Restart Docker Desktop and try again"
     echo ""
     read -p "Press Enter to close..."
@@ -101,31 +101,51 @@ fi
 echo -e "${GREEN}[OK]${NC} Claude Code Docker is running!"
 
 # ---------------------------------------------------------------------------
-# Wait for the web terminal to be ready, then open browser
+# Wait for the dashboard to be ready, then open browser
 # ---------------------------------------------------------------------------
 echo ""
-echo -e "${YELLOW}[...]${NC} Waiting for web terminal to start..."
+echo -e "${YELLOW}[...]${NC} Waiting for dashboard to start..."
 
 for i in $(seq 1 30); do
-    if curl -s -o /dev/null http://localhost:7681 2>/dev/null; then
+    if curl -s -o /dev/null http://localhost:3000 2>/dev/null; then
         break
     fi
     sleep 2
 done
 
-echo -e "${GREEN}[OK]${NC} Web terminal is ready!"
+echo -e "${GREEN}[OK]${NC} Dashboard is ready!"
 echo ""
 echo -e "${BLUE}========================================${NC}"
 echo -e "  Opening Claude Code in your browser..."
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
-open "http://localhost:7681"
+open "http://localhost:3000"
 
+# ---------------------------------------------------------------------------
+# Create desktop shortcut (macOS .webloc file)
+# ---------------------------------------------------------------------------
+DESKTOP_SHORTCUT="$HOME/Desktop/Claude Code.webloc"
+if [ ! -f "$DESKTOP_SHORTCUT" ]; then
+    cat > "$DESKTOP_SHORTCUT" << 'WEBLOC'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>URL</key>
+    <string>http://localhost:3000</string>
+</dict>
+</plist>
+WEBLOC
+    echo -e "${GREEN}[OK]${NC} Desktop shortcut created: \"Claude Code\" on your desktop"
+fi
+
+echo ""
+echo -e "  Dashboard:     ${GREEN}http://localhost:3000${NC}"
 echo -e "  Web Terminal:  ${GREEN}http://localhost:7681${NC}"
 echo -e "  VS Code:       ${GREEN}http://localhost:8080${NC}"
 echo ""
 echo "  To stop:    docker rm -f claude-code"
-echo "  To restart: double-click this file again"
+echo "  To restart: double-click this file or the desktop shortcut"
 echo ""
 read -p "Press Enter to close this window..."

@@ -30,7 +30,8 @@ RUN apk update && apk upgrade && apk add --no-cache \
     docker-cli \
     docker-cli-compose \
     gcompat \
-    libstdc++
+    libstdc++ \
+    tmux
 
 # ---------------------------------------------------------------------------
 # Corporate/VPN CA certificates (for SSL inspection proxies)
@@ -88,6 +89,7 @@ RUN deluser node 2>/dev/null; delgroup node 2>/dev/null; \
 # Copy scripts
 # ---------------------------------------------------------------------------
 COPY scripts/ /opt/claude-code-docker/scripts/
+COPY welcome/ /opt/claude-code-docker/welcome/
 RUN chmod +x /opt/claude-code-docker/scripts/*.sh
 
 # ---------------------------------------------------------------------------
@@ -104,7 +106,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/sealmindset/make-it/main/instal
 # ---------------------------------------------------------------------------
 # Ports: ttyd (7681), code-server (8080)
 # ---------------------------------------------------------------------------
-EXPOSE 7681 8080
+EXPOSE 3000 7681 8080
 
 # ---------------------------------------------------------------------------
 # Health check

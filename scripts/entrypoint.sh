@@ -101,17 +101,33 @@ code-server \
     /home/coder/Documents/GitHub &
 
 # ---------------------------------------------------------------------------
+# Start welcome page server (landing page with status + links)
+# ---------------------------------------------------------------------------
+echo -e "${GREEN}[OK]${NC} Starting welcome page on port 3000..."
+"$SCRIPTS_DIR/welcome-server.sh" &
+
+# ---------------------------------------------------------------------------
 # Start watchdog (auto-restarts code-server if it crashes)
 # ---------------------------------------------------------------------------
 "$SCRIPTS_DIR/watchdog.sh" &
 echo -e "${GREEN}[OK]${NC} Service watchdog started."
 
 # ---------------------------------------------------------------------------
+# Start Azure token monitor (background expiry warnings)
+# ---------------------------------------------------------------------------
+if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+    "$SCRIPTS_DIR/token-monitor.sh" &
+    echo -e "${GREEN}[OK]${NC} Azure token monitor started."
+fi
+
+# ---------------------------------------------------------------------------
 # Start ttyd (web terminal) -- this is the foreground process
+# Uses tmux so browser reconnects resume the same session.
 # ---------------------------------------------------------------------------
 echo -e "${GREEN}[OK]${NC} Starting web terminal on port 7681..."
 echo ""
 echo -e "${BLUE}========================================${NC}"
+echo -e "  Dashboard:     ${GREEN}http://localhost:${WELCOME_PORT:-3000}${NC}"
 echo -e "  Web Terminal:  ${GREEN}http://localhost:${TTYD_PORT:-7681}${NC}"
 echo -e "  VS Code:       ${GREEN}http://localhost:${CODE_SERVER_PORT:-8080}${NC}"
 if [ "$CS_AUTH" = "password" ]; then
@@ -122,8 +138,9 @@ fi
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
-# ttyd runs bash with the shell-init script for setup wizard support
+# ttyd connects to a tmux session so closing the browser tab and
+# reopening reconnects to the same terminal (session persistence).
 exec ttyd \
     --port 7681 \
     --writable \
-    bash --init-file "$SCRIPTS_DIR/shell-init.sh"
+    tmux new-session -A -s main "bash --init-file $SCRIPTS_DIR/shell-init.sh"

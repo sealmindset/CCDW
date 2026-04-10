@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code Docker</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .header {
+            text-align: center;
+            padding: 3rem 1rem 2rem;
+        }
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+        .header p {
+            color: #94a3b8;
+            font-size: 1.1rem;
+        }
+        .cards {
+            display: flex;
+            gap: 1.5rem;
+            padding: 1rem;
+            max-width: 900px;
+            width: 100%;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 2rem;
+            flex: 1;
+            min-width: 280px;
+            max-width: 400px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.2s;
+            cursor: pointer;
+            display: block;
+        }
+        .card:hover {
+            border-color: #818cf8;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(129, 140, 248, 0.15);
+        }
+        .card-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .card h2 {
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+            color: #f1f5f9;
+        }
+        .card p {
+            color: #94a3b8;
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+        .card .port {
+            display: inline-block;
+            background: #334155;
+            color: #818cf8;
+            padding: 0.2rem 0.6rem;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            margin-top: 0.75rem;
+        }
+        .status-section {
+            max-width: 900px;
+            width: 100%;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        .status-section h3 {
+            color: #94a3b8;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.75rem;
+            padding-left: 0.5rem;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.75rem;
+        }
+        .status-item {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .status-dot.green { background: #4ade80; box-shadow: 0 0 8px rgba(74, 222, 128, 0.4); }
+        .status-dot.yellow { background: #facc15; box-shadow: 0 0 8px rgba(250, 204, 21, 0.4); }
+        .status-dot.red { background: #f87171; box-shadow: 0 0 8px rgba(248, 113, 113, 0.4); }
+        .status-dot.checking { background: #94a3b8; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .status-label { color: #cbd5e1; font-size: 0.9rem; }
+        .status-detail { color: #64748b; font-size: 0.8rem; }
+
+        .getting-started {
+            max-width: 900px;
+            width: 100%;
+            padding: 1rem;
+            margin-top: 1rem;
+            margin-bottom: 3rem;
+        }
+        .getting-started h3 {
+            color: #94a3b8;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.75rem;
+            padding-left: 0.5rem;
+        }
+        .steps {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+        }
+        .step {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 0.75rem 0;
+        }
+        .step:not(:last-child) { border-bottom: 1px solid #334155; }
+        .step-num {
+            background: #334155;
+            color: #818cf8;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+        .step-text { color: #cbd5e1; line-height: 1.6; padding-top: 2px; }
+        .step-text code {
+            background: #334155;
+            color: #a78bfa;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Claude Code Docker</h1>
+        <p>Your AI-powered development environment is ready</p>
+    </div>
+
+    <div class="cards">
+        <a class="card" href="/terminal/" id="terminal-link">
+            <div class="card-icon">&#9000;</div>
+            <h2>Web Terminal</h2>
+            <p>Open Claude Code in a browser-based terminal. Start building with <code>/make-it</code>.</p>
+            <span class="port">localhost:7681</span>
+        </a>
+        <a class="card" href="/code/" id="vscode-link">
+            <div class="card-icon">&#128187;</div>
+            <h2>VS Code</h2>
+            <p>Full IDE with file explorer, extensions, and integrated terminal. No password needed.</p>
+            <span class="port">localhost:8080</span>
+        </a>
+    </div>
+
+    <div class="status-section">
+        <h3>System Status</h3>
+        <div class="status-grid">
+            <div class="status-item">
+                <div class="status-dot checking" id="dot-terminal"></div>
+                <div>
+                    <div class="status-label">Web Terminal</div>
+                    <div class="status-detail" id="status-terminal">Checking...</div>
+                </div>
+            </div>
+            <div class="status-item">
+                <div class="status-dot checking" id="dot-vscode"></div>
+                <div>
+                    <div class="status-label">VS Code</div>
+                    <div class="status-detail" id="status-vscode">Checking...</div>
+                </div>
+            </div>
+            <div class="status-item">
+                <div class="status-dot checking" id="dot-docker"></div>
+                <div>
+                    <div class="status-label">Docker</div>
+                    <div class="status-detail" id="status-docker">Checking...</div>
+                </div>
+            </div>
+            <div class="status-item">
+                <div class="status-dot checking" id="dot-ai"></div>
+                <div>
+                    <div class="status-label">AI Provider</div>
+                    <div class="status-detail" id="status-ai">Checking...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="getting-started">
+        <h3>Getting Started</h3>
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-text">Click <strong>Web Terminal</strong> above to open the terminal</div>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-text">Type <code>claude</code> and press Enter to start Claude Code</div>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-text">Type <code>/make-it</code> to build your first app from scratch</div>
+            </div>
+            <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-text">Describe your app idea in plain English -- Claude does the rest</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Set correct links based on current hostname
+        const host = window.location.hostname;
+        document.getElementById('terminal-link').href = 'http://' + host + ':7681';
+        document.getElementById('vscode-link').href = 'http://' + host + ':8080';
+
+        // Health check function
+        async function checkService(url, dotId, statusId, label) {
+            const dot = document.getElementById(dotId);
+            const status = document.getElementById(statusId);
+            try {
+                const controller = new AbortController();
+                setTimeout(() => controller.abort(), 5000);
+                const resp = await fetch(url, { mode: 'no-cors', signal: controller.signal });
+                dot.className = 'status-dot green';
+                status.textContent = 'Running';
+            } catch (e) {
+                dot.className = 'status-dot red';
+                status.textContent = 'Not responding';
+            }
+        }
+
+        // Check status on load and every 30s
+        async function checkAll() {
+            const h = window.location.hostname;
+            checkService('http://' + h + ':7681', 'dot-terminal', 'status-terminal', 'Terminal');
+            checkService('http://' + h + ':8080', 'dot-vscode', 'status-vscode', 'VS Code');
+
+            // Docker and AI provider are checked via the status API
+            try {
+                const resp = await fetch('/api/status');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const dockerDot = document.getElementById('dot-docker');
+                    const dockerStatus = document.getElementById('status-docker');
+                    const aiDot = document.getElementById('dot-ai');
+                    const aiStatus = document.getElementById('status-ai');
+
+                    dockerDot.className = 'status-dot ' + (data.docker === 'ok' ? 'green' : 'yellow');
+                    dockerStatus.textContent = data.docker === 'ok' ? 'Connected' : 'Not available';
+
+                    if (data.ai_provider === 'none') {
+                        aiDot.className = 'status-dot yellow';
+                        aiStatus.textContent = 'Not configured';
+                    } else if (data.ai_status === 'ok') {
+                        aiDot.className = 'status-dot green';
+                        aiStatus.textContent = data.ai_provider;
+                    } else {
+                        aiDot.className = 'status-dot red';
+                        aiStatus.textContent = data.ai_provider + ' - ' + data.ai_status;
+                    }
+                }
+            } catch (e) {
+                // Status API not available -- show as unknown
+                document.getElementById('dot-docker').className = 'status-dot yellow';
+                document.getElementById('status-docker').textContent = 'Unknown';
+                document.getElementById('dot-ai').className = 'status-dot yellow';
+                document.getElementById('status-ai').textContent = 'Unknown';
+            }
+        }
+
+        checkAll();
+        setInterval(checkAll, 30000);
+    </script>
+</body>
+</html>
