@@ -101,6 +101,12 @@ code-server \
     /home/coder/Documents/GitHub &
 
 # ---------------------------------------------------------------------------
+# Start watchdog (auto-restarts code-server if it crashes)
+# ---------------------------------------------------------------------------
+"$SCRIPTS_DIR/watchdog.sh" &
+echo -e "${GREEN}[OK]${NC} Service watchdog started."
+
+# ---------------------------------------------------------------------------
 # Start ttyd (web terminal) -- this is the foreground process
 # ---------------------------------------------------------------------------
 echo -e "${GREEN}[OK]${NC} Starting web terminal on port 7681..."

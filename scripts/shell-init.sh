@@ -77,12 +77,14 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Alias: cc = claude with friendly error wrapper
+# Aliases for convenience
 # ---------------------------------------------------------------------------
 alias cc='/opt/claude-code-docker/scripts/claude-wrapper.sh'
+alias doctor='/opt/claude-code-docker/scripts/doctor.sh'
 
 echo ""
 echo -e "  Type ${GREEN}claude${NC} to start Claude Code"
 echo -e "  Type ${GREEN}cc${NC} for Claude Code with friendly error messages"
+echo -e "  Type ${GREEN}doctor${NC} to troubleshoot connection issues"
 echo -e "  Type ${GREEN}/make-it${NC} inside Claude Code to build an app"
 echo ""

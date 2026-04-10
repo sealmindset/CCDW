@@ -15,6 +15,7 @@ A ready-to-run container that packages Claude Code CLI, a web-based terminal, VS
 - **Friendly Errors** -- Plain-English error messages instead of stack traces
 - **Azure Token Health** -- Automatic token expiry detection with fix instructions
 - **Build Apps Inside** -- Docker socket mounting lets you build and run apps from within the container
+- **Service Watchdog** -- Auto-restarts crashed services (code-server) without container restart
 - **Auto-Updating Skills** -- /make-it skills update automatically on each container start
 - **Persistent Data** -- Your workspace, settings, and git config survive container restarts
 
@@ -164,6 +165,8 @@ claude-code-docker/
     healthcheck.sh        # Container health verification
     check-azure-token.sh  # Azure token expiry detection
     claude-wrapper.sh     # Friendly error wrapper for claude CLI
+    watchdog.sh           # Auto-restarts crashed services
+    doctor.sh             # Connection troubleshooter
   .github/workflows/
     publish.yml           # CI/CD: build and push to ghcr.io on tag
 ```
@@ -212,6 +215,15 @@ If ports 7681 or 8080 are already in use, change them in `.env`:
 TTYD_PORT=7682
 CODE_SERVER_PORT=8081
 ```
+
+### Something not working?
+
+Run the built-in troubleshooter from inside the container:
+```bash
+doctor
+```
+
+This checks all services, AI provider, network, Docker, disk space, and skills, then tells you exactly what's wrong and how to fix it.
 
 ### Credentials not working
 
