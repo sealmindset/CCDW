@@ -61,6 +61,78 @@ function getStatus() {
     return status;
 }
 
+function getUsageStats() {
+    const PRICING = {
+        'claude-opus-4-6':   { input: 15, output: 75, cache_write: 18.75, cache_read: 1.50 },
+        'claude-sonnet-4-6': { input: 3,  output: 15, cache_write: 3.75,  cache_read: 0.30 },
+        'claude-haiku-4-5':  { input: 0.80, output: 4, cache_write: 1.00, cache_read: 0.08 }
+    };
+    try {
+        const projectsDir = '/home/coder/.claude/projects';
+        if (!fs.existsSync(projectsDir)) return { has_data: false };
+
+        let inputTokens = 0, outputTokens = 0;
+        let cacheCreateTokens = 0, cacheReadTokens = 0;
+        let minTs = Infinity, maxTs = 0;
+        let model = null;
+        let sessionCount = 0;
+        let cost = 0;
+
+        const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
+        for (const d of dirs) {
+            if (!d.isDirectory()) continue;
+            const dirPath = path.join(projectsDir, d.name);
+            const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.jsonl'));
+            for (const f of files) {
+                const lines = fs.readFileSync(path.join(dirPath, f), 'utf8').split('\\n');
+                let hasAssistant = false;
+                for (const line of lines) {
+                    if (!line.includes('\"assistant\"')) continue;
+                    try {
+                        const rec = JSON.parse(line);
+                        if (rec.type !== 'assistant' || !rec.message || !rec.message.usage) continue;
+                        hasAssistant = true;
+                        const u = rec.message.usage;
+                        const m = rec.message.model || 'claude-opus-4-6';
+                        model = m;
+                        inputTokens += (u.input_tokens || 0);
+                        outputTokens += (u.output_tokens || 0);
+                        cacheCreateTokens += (u.cache_creation_input_tokens || 0);
+                        cacheReadTokens += (u.cache_read_input_tokens || 0);
+                        const p = PRICING[m] || PRICING['claude-opus-4-6'];
+                        cost += (u.input_tokens || 0) * p.input / 1e6;
+                        cost += (u.output_tokens || 0) * p.output / 1e6;
+                        cost += (u.cache_creation_input_tokens || 0) * p.cache_write / 1e6;
+                        cost += (u.cache_read_input_tokens || 0) * p.cache_read / 1e6;
+                        if (rec.timestamp) {
+                            if (rec.timestamp < minTs) minTs = rec.timestamp;
+                            if (rec.timestamp > maxTs) maxTs = rec.timestamp;
+                        }
+                    } catch (e) {}
+                }
+                if (hasAssistant) sessionCount++;
+            }
+        }
+
+        if (sessionCount === 0) return { has_data: false };
+
+        return {
+            has_data: true,
+            total_tokens: inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens,
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            cache_creation_tokens: cacheCreateTokens,
+            cache_read_tokens: cacheReadTokens,
+            model: model,
+            session_count: sessionCount,
+            duration_ms: maxTs > minTs ? maxTs - minTs : 0,
+            estimated_cost: Math.round(cost * 100) / 100
+        };
+    } catch (e) {
+        return { has_data: false };
+    }
+}
+
 const server = http.createServer((req, res) => {
     if (req.url === '/api/status') {
         res.writeHead(200, {
@@ -68,6 +140,15 @@ const server = http.createServer((req, res) => {
             'Access-Control-Allow-Origin': '*'
         });
         res.end(JSON.stringify(getStatus()));
+        return;
+    }
+
+    if (req.url === '/api/usage') {
+        res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        });
+        res.end(JSON.stringify(getUsageStats()));
         return;
     }
 

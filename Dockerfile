@@ -32,7 +32,8 @@ RUN apk update && apk upgrade && apk add --no-cache \
     gcompat \
     libstdc++ \
     tmux \
-    su-exec
+    su-exec \
+    rsync
 
 # ---------------------------------------------------------------------------
 # Corporate/VPN CA certificates (for SSL inspection proxies)

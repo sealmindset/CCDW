@@ -174,6 +174,47 @@
             border-radius: 4px;
             font-size: 0.9rem;
         }
+
+        .usage-section {
+            max-width: 900px;
+            width: 100%;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        .usage-section h3 {
+            color: #94a3b8;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.75rem;
+            padding-left: 0.5rem;
+        }
+        .usage-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.75rem;
+        }
+        .usage-item {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+        .usage-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.25rem;
+        }
+        .usage-label {
+            color: #64748b;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
     </style>
 </head>
 <body>
@@ -231,6 +272,28 @@
         </div>
     </div>
 
+    <div class="usage-section" id="usage-section" style="display: none;">
+        <h3>Usage Stats</h3>
+        <div class="usage-grid">
+            <div class="usage-item">
+                <div class="usage-value" id="usage-tokens">--</div>
+                <div class="usage-label">Total Tokens</div>
+            </div>
+            <div class="usage-item">
+                <div class="usage-value" id="usage-cost">--</div>
+                <div class="usage-label">Est. Cost</div>
+            </div>
+            <div class="usage-item">
+                <div class="usage-value" id="usage-duration">--</div>
+                <div class="usage-label">Session Time</div>
+            </div>
+            <div class="usage-item">
+                <div class="usage-value" id="usage-model">--</div>
+                <div class="usage-label">Model</div>
+            </div>
+        </div>
+    </div>
+
     <div class="getting-started">
         <h3>Getting Started</h3>
         <div class="steps">
@@ -258,6 +321,28 @@
         const host = window.location.hostname;
         document.getElementById('terminal-link').href = 'http://' + host + ':7681';
         document.getElementById('vscode-link').href = 'http://' + host + ':8080';
+
+        // Format helpers for usage stats
+        function formatTokens(n) {
+            if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+            if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+            return n.toString();
+        }
+        function formatDuration(ms) {
+            if (!ms || ms <= 0) return '--';
+            const totalSec = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSec / 3600);
+            const minutes = Math.floor((totalSec % 3600) / 60);
+            if (hours > 0) return hours + 'h ' + minutes + 'm';
+            if (minutes > 0) return minutes + 'm';
+            return '<1m';
+        }
+        function formatModel(model) {
+            if (!model) return '--';
+            const m = model.match(/claude-(\w+)-(\d+)/);
+            if (m) return m[1].charAt(0).toUpperCase() + m[1].slice(1) + ' ' + m[2];
+            return model;
+        }
 
         // Health check function
         async function checkService(url, dotId, statusId, label) {
@@ -314,8 +399,26 @@
             }
         }
 
+        async function checkUsage() {
+            try {
+                const resp = await fetch('/api/usage');
+                if (resp.ok) {
+                    const usage = await resp.json();
+                    if (usage.has_data) {
+                        document.getElementById('usage-section').style.display = '';
+                        document.getElementById('usage-tokens').textContent = formatTokens(usage.total_tokens);
+                        document.getElementById('usage-cost').textContent = '$' + usage.estimated_cost.toFixed(2);
+                        document.getElementById('usage-duration').textContent = formatDuration(usage.duration_ms);
+                        document.getElementById('usage-model').textContent = formatModel(usage.model);
+                    }
+                }
+            } catch (e) {}
+        }
+
         checkAll();
+        checkUsage();
         setInterval(checkAll, 30000);
+        setInterval(checkUsage, 30000);
     </script>
 </body>
 </html>
