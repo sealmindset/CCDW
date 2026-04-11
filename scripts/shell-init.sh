@@ -183,22 +183,14 @@ if [ ! -f "$FIRST_RUN_MARKER" ]; then
 
         echo -e "  You'll get a one-time code and a URL."
         echo -e "  Open the URL on your computer, paste the code, and approve."
+        echo -e "  ${YELLOW}(Ignore any message about opening a browser.)${NC}"
         echo ""
         read -p "  Press Enter to start..." _
         echo ""
 
-        # Auto-answer the 4 interactive prompts so the user only sees
-        # the device code + URL. Pipe feeds: GitHub.com, HTTPS, Yes, Web browser.
-        # The device code flow then polls until the user completes auth in browser.
-        {
-            sleep 0.3; printf '1\n'   # ? Where do you use GitHub? → GitHub.com
-            sleep 0.3; printf '2\n'   # ? Preferred protocol? → HTTPS
-            sleep 0.3; printf 'Y\n'   # ? Authenticate Git? → Yes
-            sleep 0.3; printf '1\n'   # ? How would you like to authenticate? → Login with a web browser
-        } | gh auth login 2>&1 | \
-            grep -v "Failed opening a web browser" | \
-            grep -v "exec:.*executable file not found" | \
-            grep -v "Please try entering the URL"
+        # --web triggers device-code flow: prints URL + code, user opens in host browser.
+        # No pipes — gh needs a TTY to poll for completion.
+        gh auth login --hostname github.com --git-protocol https --web
 
         if gh auth status &>/dev/null 2>&1; then
             echo ""
