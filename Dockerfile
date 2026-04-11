@@ -87,6 +87,21 @@ RUN deluser node 2>/dev/null; delgroup node 2>/dev/null; \
     && chown -R coder:coder /home/coder
 
 # ---------------------------------------------------------------------------
+# UTF-8 locale (needed for Unicode box-drawing and block elements)
+# ---------------------------------------------------------------------------
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+# ---------------------------------------------------------------------------
+# Fake browser opener for headless container
+# gh/az try to launch xdg-open, which doesn't exist in Docker.
+# This wrapper exits cleanly so CLI tools don't print scary errors.
+# The URL is already visible and clickable in the ttyd web terminal.
+# ---------------------------------------------------------------------------
+RUN printf '#!/bin/sh\nexit 0\n' > /usr/local/bin/xdg-open \
+    && chmod +x /usr/local/bin/xdg-open
+
+# ---------------------------------------------------------------------------
 # Copy scripts
 # ---------------------------------------------------------------------------
 COPY scripts/ /opt/claude-code-docker/scripts/
@@ -100,6 +115,13 @@ RUN chmod +x /opt/claude-code-docker/scripts/*.sh
 USER coder
 WORKDIR /home/coder/Documents/GitHub
 RUN curl -fsSL https://raw.githubusercontent.com/sealmindset/make-it/main/install.sh | bash
+
+# ---------------------------------------------------------------------------
+# Claude Code user-level instructions (shown on every conversation start)
+# ---------------------------------------------------------------------------
+RUN printf '%s\n' \
+    "Run /make-it to turn your idea into a working application." \
+    > /home/coder/.claude/CLAUDE.md
 
 # ---------------------------------------------------------------------------
 # Switch back to root for entrypoint (it drops to coder after setup)

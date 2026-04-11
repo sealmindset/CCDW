@@ -147,7 +147,11 @@ echo ""
 
 # ttyd connects to a tmux session so closing the browser tab and
 # reopening reconnects to the same terminal (session persistence).
+# Font stack: system monospace fonts with good Unicode block element coverage
+# (needed for Claude Code's logo and box-drawing UI)
 exec su-exec coder ttyd \
     --port 7681 \
     --writable \
+    --client-option 'fontFamily="Menlo, Cascadia Mono, Consolas, DejaVu Sans Mono, Liberation Mono, monospace"' \
+    --client-option 'fontSize=14' \
     tmux new-session -A -s main "bash --init-file $SCRIPTS_DIR/shell-init.sh"
