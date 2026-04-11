@@ -1,0 +1,45 @@
+# =============================================================================
+# Claude Code Docker - AI Provider Configuration
+# =============================================================================
+# This file defines all available AI providers and their settings.
+# The entrypoint reads this file to generate Claude Code's settings.json
+# and token helper scripts automatically.
+#
+# To change providers, models, or endpoints — edit this file and rebuild.
+# Environment variables (e.g. ANTHROPIC_FOUNDRY_BASE_URL) override these
+# values if set at runtime.
+# =============================================================================
+
+# Which provider to use by default: azure-foundry | bedrock | api-key
+default_provider: azure-foundry
+
+# ---------------------------------------------------------------------------
+# Provider definitions
+# ---------------------------------------------------------------------------
+providers:
+
+  azure-foundry:
+    name: Azure AI Foundry
+    endpoint: https://snapistg-scus.azure.sleepnumber.com/anthropic
+    token_resource: https://cognitiveservices.azure.com
+    # Azure subscription to auto-select after az login
+    subscription_id: a8da1709-ccc3-4356-b3b7-6660af86e979
+    subscription_name: sn-openai-dev-01
+    models:
+      sonnet: cogdep-aifoundry-dev-eus2-claude-sonnet-4-5
+      haiku: cogdep-aifoundry-dev-eus2-claude-haiku-4-5
+      opus: cogdep-aifoundry-dev-eus2-claude-opus-4-6
+    default_model: opus
+
+  bedrock:
+    name: AWS Bedrock
+    region: us-east-1
+
+  api-key:
+    name: Anthropic API (Personal)
+
+# ---------------------------------------------------------------------------
+# Claude Code settings applied to all providers
+# ---------------------------------------------------------------------------
+claude_settings:
+  skipDangerousModePermissionPrompt: true

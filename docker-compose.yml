@@ -29,9 +29,6 @@ services:
       - gh-config:/home/coder/.config/gh
       # Mount host Azure CLI credentials (for token-based auth)
       - ${HOME}/.azure:/home/coder/.azure
-      # Mount host Claude settings (apiKeyHelper, model names)
-      - ${HOME}/.claude/settings.json:/home/coder/.claude/settings.json:ro
-      - ${HOME}/.claude/get-claude-token.sh:/home/coder/.claude/get-claude-token.sh:ro
     env_file:
       - .env
     environment:

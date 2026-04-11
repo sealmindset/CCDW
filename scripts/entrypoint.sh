@@ -38,13 +38,11 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Docker socket permissions
+# Docker socket permissions (entrypoint runs as root, so we can fix this)
 # ---------------------------------------------------------------------------
 if [ -S /var/run/docker.sock ]; then
-    DOCKER_SOCK_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null)
-    if [ -n "$DOCKER_SOCK_GID" ] && [ "$DOCKER_SOCK_GID" != "0" ]; then
-        echo -e "${GREEN}[OK]${NC} Docker socket accessible (GID: $DOCKER_SOCK_GID)"
-    fi
+    chmod 666 /var/run/docker.sock 2>/dev/null || true
+    echo -e "${GREEN}[OK]${NC} Docker socket accessible"
 fi
 
 # ---------------------------------------------------------------------------
@@ -52,38 +50,47 @@ fi
 # ---------------------------------------------------------------------------
 if [ "${SKILLS_AUTO_UPDATE:-1}" = "1" ]; then
     echo -e "${YELLOW}[...]${NC} Checking for skill updates..."
-    "$SCRIPTS_DIR/auto-update.sh" || echo -e "${YELLOW}[WARN]${NC} Skill update check failed (continuing anyway)"
-fi
-
-# ---------------------------------------------------------------------------
-# Setup wizard (first run only)
-# ---------------------------------------------------------------------------
-if [ ! -f "$SETUP_DONE_MARKER" ] && [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$CLAUDE_CODE_USE_BEDROCK" ] && [ -z "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
-    echo ""
-    echo -e "${YELLOW}No AI provider configured.${NC}"
-    echo "The setup wizard will run in your terminal session."
-    echo "Connect to the web terminal and follow the prompts."
-    export RUN_SETUP_WIZARD=1
+    su-exec coder "$SCRIPTS_DIR/auto-update.sh" || echo -e "${YELLOW}[WARN]${NC} Skill update check failed (continuing anyway)"
 fi
 
 # ---------------------------------------------------------------------------
 # Fix volume ownership (mounted volumes may be root-owned)
 # ---------------------------------------------------------------------------
-for dir in /home/coder/.config /home/coder/.claude /home/coder/.azure; do
-    if [ -d "$dir" ] && [ ! -w "$dir" ]; then
-        # Can't chown from non-root, use a fallback location
-        true
+for dir in /home/coder/.config /home/coder/.claude /home/coder/.azure /home/coder/.gitconfig.d; do
+    if [ -d "$dir" ]; then
+        chown -R coder:coder "$dir" 2>/dev/null || true
     fi
 done
+
+# ---------------------------------------------------------------------------
+# Configure AI provider from providers.yml
+# Reads config/providers.yml and generates settings.json + token helper.
+# Skips if settings.json already exists (preserves user edits).
+# ---------------------------------------------------------------------------
+"$SCRIPTS_DIR/configure-provider.sh"
+
+# Source the exported env vars so downstream checks (token monitor) work
+CLAUDE_SETTINGS="/home/coder/.claude/settings.json"
+if [ -f "$CLAUDE_SETTINGS" ]; then
+    # Extract ANTHROPIC_FOUNDRY_BASE_URL from settings if not already set
+    if [ -z "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+        FOUNDRY_URL=$(python3 -c "import json; d=json.load(open('$CLAUDE_SETTINGS')); print(d.get('env',{}).get('ANTHROPIC_FOUNDRY_BASE_URL',''))" 2>/dev/null)
+        [ -n "$FOUNDRY_URL" ] && export ANTHROPIC_FOUNDRY_BASE_URL="$FOUNDRY_URL"
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # Start code-server (VS Code in browser) in background
 # No password required -- this is a local-only container.
 # If you need password auth, set CODE_SERVER_AUTH=password in .env.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# From here on, everything runs as the coder user
+# ---------------------------------------------------------------------------
 echo -e "${GREEN}[OK]${NC} Starting code-server on port 8080..."
 export XDG_CONFIG_HOME=/tmp/.config
 mkdir -p /tmp/.config
+chown -R coder:coder /tmp/.config 2>/dev/null || true
 
 CS_AUTH="${CODE_SERVER_AUTH:-none}"
 if [ "$CS_AUTH" = "password" ]; then
@@ -92,7 +99,7 @@ if [ "$CS_AUTH" = "password" ]; then
     fi
 fi
 
-code-server \
+su-exec coder code-server \
     --bind-addr 0.0.0.0:8080 \
     --auth "$CS_AUTH" \
     --config /tmp/.config/code-server/config.yaml \
@@ -104,19 +111,19 @@ code-server \
 # Start welcome page server (landing page with status + links)
 # ---------------------------------------------------------------------------
 echo -e "${GREEN}[OK]${NC} Starting welcome page on port 3000..."
-"$SCRIPTS_DIR/welcome-server.sh" &
+su-exec coder "$SCRIPTS_DIR/welcome-server.sh" &
 
 # ---------------------------------------------------------------------------
 # Start watchdog (auto-restarts code-server if it crashes)
 # ---------------------------------------------------------------------------
-"$SCRIPTS_DIR/watchdog.sh" &
+su-exec coder "$SCRIPTS_DIR/watchdog.sh" &
 echo -e "${GREEN}[OK]${NC} Service watchdog started."
 
 # ---------------------------------------------------------------------------
 # Start Azure token monitor (background expiry warnings)
 # ---------------------------------------------------------------------------
 if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
-    "$SCRIPTS_DIR/token-monitor.sh" &
+    su-exec coder "$SCRIPTS_DIR/token-monitor.sh" &
     echo -e "${GREEN}[OK]${NC} Azure token monitor started."
 fi
 
@@ -140,7 +147,7 @@ echo ""
 
 # ttyd connects to a tmux session so closing the browser tab and
 # reopening reconnects to the same terminal (session persistence).
-exec ttyd \
+exec su-exec coder ttyd \
     --port 7681 \
     --writable \
     tmux new-session -A -s main "bash --init-file $SCRIPTS_DIR/shell-init.sh"

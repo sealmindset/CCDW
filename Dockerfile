@@ -31,7 +31,8 @@ RUN apk update && apk upgrade && apk add --no-cache \
     docker-cli-compose \
     gcompat \
     libstdc++ \
-    tmux
+    tmux \
+    su-exec
 
 # ---------------------------------------------------------------------------
 # Corporate/VPN CA certificates (for SSL inspection proxies)
@@ -74,7 +75,7 @@ RUN apk add --no-cache github-cli
 # Install Azure CLI (for Azure AD token-based auth)
 # ---------------------------------------------------------------------------
 RUN apk add --no-cache py3-pip \
-    && pip3 install --break-system-packages azure-cli
+    && pip3 install --break-system-packages azure-cli pyyaml
 
 # ---------------------------------------------------------------------------
 # Create non-root user
@@ -90,18 +91,20 @@ RUN deluser node 2>/dev/null; delgroup node 2>/dev/null; \
 # ---------------------------------------------------------------------------
 COPY scripts/ /opt/claude-code-docker/scripts/
 COPY welcome/ /opt/claude-code-docker/welcome/
+COPY config/ /opt/claude-code-docker/config/
 RUN chmod +x /opt/claude-code-docker/scripts/*.sh
 
 # ---------------------------------------------------------------------------
-# Switch to non-root user
+# Install /make-it skills as coder user (needs home directory)
 # ---------------------------------------------------------------------------
 USER coder
 WORKDIR /home/coder/Documents/GitHub
+RUN curl -fsSL https://raw.githubusercontent.com/sealmindset/make-it/main/install.sh | bash
 
 # ---------------------------------------------------------------------------
-# Install /make-it skills for the coder user
+# Switch back to root for entrypoint (it drops to coder after setup)
 # ---------------------------------------------------------------------------
-RUN curl -fsSL https://raw.githubusercontent.com/sealmindset/make-it/main/install.sh | bash
+USER root
 
 # ---------------------------------------------------------------------------
 # Ports: ttyd (7681), code-server (8080)

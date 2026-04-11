@@ -89,6 +89,7 @@ echo.
 echo [...]  Starting Claude Code Docker...
 docker run -d ^
     --name claude-code ^
+    --group-add 0 ^
     -p 3000:3000 ^
     -p 7681:7681 ^
     -p 8080:8080 ^
@@ -98,10 +99,6 @@ docker run -d ^
     -v claude-code-data:/home/coder/.claude ^
     -v claude-code-gh:/home/coder/.config/gh ^
     -v claude-code-git-config:/home/coder/.gitconfig.d ^
-    -e ANTHROPIC_FOUNDRY_BASE_URL=https://snapistg-scus.azure.sleepnumber.com/anthropic ^
-    -e ANTHROPIC_DEFAULT_SONNET_MODEL=cogdep-aifoundry-dev-eus2-claude-sonnet-4-5 ^
-    -e ANTHROPIC_DEFAULT_HAIKU_MODEL=cogdep-aifoundry-dev-eus2-claude-haiku-4-5 ^
-    -e ANTHROPIC_DEFAULT_OPUS_MODEL=cogdep-aifoundry-dev-eus2-claude-opus-4-6 ^
     ghcr.io/sealmindset/claude-code-docker:latest
 
 if %ERRORLEVEL% neq 0 (

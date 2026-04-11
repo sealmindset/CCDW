@@ -52,12 +52,16 @@ echo -e "${GREEN}[OK]${NC} Docker is running."
 # Create projects folder
 # ---------------------------------------------------------------------------
 PROJECTS_DIR="$HOME/Documents/GitHub"
+AZURE_DIR="$HOME/.azure"
 
 if [ ! -d "$PROJECTS_DIR" ]; then
     echo -e "${YELLOW}[...]${NC} Creating projects folder: $PROJECTS_DIR"
     mkdir -p "$PROJECTS_DIR"
 fi
 echo -e "${GREEN}[OK]${NC} Projects folder: $PROJECTS_DIR"
+
+# Create Azure config dir if it doesn't exist (for az login inside the container)
+mkdir -p "$AZURE_DIR"
 
 # ---------------------------------------------------------------------------
 # Auto-update: always pull latest image
@@ -78,21 +82,31 @@ docker rm -f claude-code &>/dev/null || true
 # ---------------------------------------------------------------------------
 # Start the container
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Detect Docker socket GID so the container can use Docker
+# ---------------------------------------------------------------------------
+DOCKER_GID=$(stat -f '%g' /var/run/docker.sock 2>/dev/null || stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "0")
+
 echo ""
 echo -e "${YELLOW}[...]${NC} Starting Claude Code Docker..."
 if ! docker run -d \
     --name claude-code \
+    --group-add "$DOCKER_GID" \
     -p 3000:3000 \
     -p 7681:7681 \
     -p 8080:8080 \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$PROJECTS_DIR:/home/coder/Documents/GitHub" \
+    -v "$AZURE_DIR:/home/coder/.azure" \
+    -v claude-code-data:/home/coder/.claude \
+    -v claude-code-gh:/home/coder/.config/gh \
+    -v claude-code-git-config:/home/coder/.gitconfig.d \
     ghcr.io/sealmindset/claude-code-docker:latest; then
     echo -e "${RED}[ERROR]${NC} Failed to start the container."
     echo ""
     echo "  Common fixes:"
     echo "    - Make sure ports 3000, 7681 and 8080 are not in use"
-    echo "    - Restart Docker Desktop and try again"
+    echo "    - Restart Rancher Desktop and try again"
     echo ""
     read -p "Press Enter to close..."
     exit 1
