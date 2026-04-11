@@ -63,6 +63,19 @@ for dir in /home/coder/.config /home/coder/.claude /home/coder/.azure /home/code
 done
 
 # ---------------------------------------------------------------------------
+# Restore .claude.json if missing (backup lives inside the volume)
+# ---------------------------------------------------------------------------
+CLAUDE_JSON="/home/coder/.claude.json"
+if [ ! -f "$CLAUDE_JSON" ]; then
+    LATEST_BACKUP=$(ls -t /home/coder/.claude/backups/.claude.json.backup.* 2>/dev/null | head -1)
+    if [ -n "$LATEST_BACKUP" ]; then
+        cp "$LATEST_BACKUP" "$CLAUDE_JSON"
+        chown coder:coder "$CLAUDE_JSON"
+        echo -e "${GREEN}[OK]${NC} Restored Claude config from backup"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Configure AI provider from providers.yml
 # Reads config/providers.yml and generates settings.json + token helper.
 # Skips if settings.json already exists (preserves user edits).
