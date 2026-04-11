@@ -94,21 +94,20 @@ ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
 # ---------------------------------------------------------------------------
-# Fake browser opener for headless container
-# gh/az try to launch xdg-open, which doesn't exist in Docker.
-# This wrapper exits cleanly so CLI tools don't print scary errors.
-# The URL is already visible and clickable in the ttyd web terminal.
-# ---------------------------------------------------------------------------
-RUN printf '#!/bin/sh\nexit 0\n' > /usr/local/bin/xdg-open \
-    && chmod +x /usr/local/bin/xdg-open
-
-# ---------------------------------------------------------------------------
 # Copy scripts
 # ---------------------------------------------------------------------------
 COPY scripts/ /opt/claude-code-docker/scripts/
 COPY welcome/ /opt/claude-code-docker/welcome/
 COPY config/ /opt/claude-code-docker/config/
 RUN chmod +x /opt/claude-code-docker/scripts/*.sh
+
+# ---------------------------------------------------------------------------
+# Fake browser opener for headless container
+# gh/az try to launch xdg-open, which doesn't exist in Docker.
+# This wrapper prints the URL so the user knows to open it manually,
+# then exits cleanly so CLI tools don't error out.
+# ---------------------------------------------------------------------------
+RUN mv /opt/claude-code-docker/scripts/xdg-open /usr/local/bin/xdg-open
 
 # ---------------------------------------------------------------------------
 # Install /make-it skills as coder user (needs home directory)
