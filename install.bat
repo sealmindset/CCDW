@@ -90,6 +90,18 @@ if not exist "%AZURE_DIR%" (
 )
 
 REM ---------------------------------------------------------------------------
+REM Create .env from template if it doesn't exist
+REM ---------------------------------------------------------------------------
+set "ENV_FILE=%~dp0.env"
+if not exist "!ENV_FILE!" (
+    if exist "%~dp0.env.example" (
+        echo [...]  Creating .env from template...
+        copy "%~dp0.env.example" "!ENV_FILE!" >nul
+        echo [OK] Created .env -- edit it to add your API key if needed.
+    )
+)
+
+REM ---------------------------------------------------------------------------
 REM Auto-update: always pull latest image
 REM ---------------------------------------------------------------------------
 echo.
@@ -119,20 +131,12 @@ REM Start the container
 REM ---------------------------------------------------------------------------
 echo.
 echo [...]  Starting Claude Code Docker...
-docker run -d ^
-    --name claude-code ^
-    --restart unless-stopped ^
-    --group-add 0 ^
-    -p 3000:3000 ^
-    -p 7681:7681 ^
-    -p 8080:8080 ^
-    -v //var/run/docker.sock:/var/run/docker.sock ^
-    -v "%PROJECTS_DIR%:/home/coder/Documents/GitHub" ^
-    -v "%AZURE_DIR%:/home/coder/.azure" ^
-    -v claude-code-data:/home/coder/.claude ^
-    -v claude-code-gh:/home/coder/.config/gh ^
-    -v claude-code-git-config:/home/coder/.gitconfig.d ^
-    ghcr.io/sealmindset/claude-code-docker:latest
+if exist "!ENV_FILE!" (
+    echo [OK] Loading environment from .env
+    docker run -d --name claude-code --restart unless-stopped --group-add 0 --env-file "!ENV_FILE!" -p 3000:3000 -p 7681:7681 -p 8080:8080 -v //var/run/docker.sock:/var/run/docker.sock -v "%PROJECTS_DIR%:/home/coder/Documents/GitHub" -v "%AZURE_DIR%:/home/coder/.azure" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest
+) else (
+    docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:3000 -p 7681:7681 -p 8080:8080 -v //var/run/docker.sock:/var/run/docker.sock -v "%PROJECTS_DIR%:/home/coder/Documents/GitHub" -v "%AZURE_DIR%:/home/coder/.azure" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest
+)
 
 if !ERRORLEVEL! neq 0 (
     echo [ERROR] Failed to start the container.
