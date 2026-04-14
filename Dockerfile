@@ -99,7 +99,10 @@ ENV LC_ALL=C.UTF-8
 COPY scripts/ /opt/claude-code-docker/scripts/
 COPY welcome/ /opt/claude-code-docker/welcome/
 COPY config/ /opt/claude-code-docker/config/
-RUN chmod +x /opt/claude-code-docker/scripts/*.sh
+# Fix CRLF line endings from Windows git checkouts, then set executable
+RUN sed -i 's/\r$//' /opt/claude-code-docker/scripts/*.sh \
+    /opt/claude-code-docker/config/*.yml 2>/dev/null; \
+    chmod +x /opt/claude-code-docker/scripts/*.sh
 
 # ---------------------------------------------------------------------------
 # Fake browser opener for headless container
