@@ -32,12 +32,16 @@ if %ERRORLEVEL% neq 0 (
 
 docker info >nul 2>nul
 if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Docker is installed but not running.
+    echo [ERROR] Docker is installed but the Docker engine is not running.
     echo.
-    echo Please start Rancher Desktop (or Docker Desktop), wait for it to
-    echo finish loading, then double-click this file again.
+    echo How to fix:
+    echo   1. Open Rancher Desktop from your Start menu
+    echo   2. Wait for it to finish starting (icon stops spinning in system tray)
+    echo   3. Make sure the container engine is set to "dockerd (moby)":
+    echo      Rancher Desktop ^> Preferences ^> Container Engine ^> dockerd (moby)
+    echo   4. Double-click this file again
     echo.
-    echo Look for the Rancher Desktop icon in your system tray (bottom-right).
+    echo If you're using Docker Desktop instead, make sure it's running.
     echo.
     pause
     exit /b 1
@@ -124,8 +128,8 @@ echo [...]  Waiting for dashboard to start...
 set ATTEMPTS=0
 :waitloop
 if !ATTEMPTS! geq 30 goto timedout
-timeout /t 2 /nobreak >nul
-curl -s -o nul http://localhost:3000 2>nul
+ping -n 3 127.0.0.1 >nul
+curl.exe -s -o nul http://localhost:3000 2>nul
 if !ERRORLEVEL! equ 0 goto ready
 set /a ATTEMPTS+=1
 goto waitloop

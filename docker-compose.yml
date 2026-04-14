@@ -28,9 +28,11 @@ services:
       - git-config:/home/coder/.gitconfig.d
       - gh-config:/home/coder/.config/gh
       # Mount host Azure CLI credentials (for token-based auth)
-      - ${HOME}/.azure:/home/coder/.azure
+      # macOS/Linux: HOME is always set. Windows: set HOME=%USERPROFILE% in .env
+      - ${HOME:-.}/.azure:/home/coder/.azure
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       - TERM=xterm-256color
     restart: unless-stopped
