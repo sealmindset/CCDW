@@ -30,9 +30,24 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
+REM Docker engine can take up to 60s to start -- wait and retry
+set DOCKER_READY=0
 docker info >nul 2>nul
-if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Docker is installed but the Docker engine is not running.
+if !ERRORLEVEL! equ 0 (
+    set DOCKER_READY=1
+) else (
+    echo [...]  Docker engine is starting up, waiting...
+    for /L %%i in (1,1,12) do (
+        if !DOCKER_READY! equ 0 (
+            ping -n 6 127.0.0.1 >nul
+            docker info >nul 2>nul
+            if !ERRORLEVEL! equ 0 set DOCKER_READY=1
+        )
+    )
+)
+
+if !DOCKER_READY! equ 0 (
+    echo [ERROR] Docker engine did not start after 60 seconds.
     echo.
     echo How to fix:
     echo   1. Open Rancher Desktop from your Start menu
