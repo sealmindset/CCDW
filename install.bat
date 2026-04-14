@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableDelayedExpansion
 REM =============================================================================
 REM Claude Code Docker - Windows One-Click Installer
 REM Double-click this file to install and start Claude Code Docker.
@@ -53,11 +54,11 @@ set "AZURE_DIR=%USERPROFILE%\.azure"
 if not exist "%PROJECTS_DIR%" (
     echo [...]  Creating projects folder: %PROJECTS_DIR%
     mkdir "%PROJECTS_DIR%"
-    if %ERRORLEVEL% neq 0 (
-        echo [ERROR] Could not create %PROJECTS_DIR%
-        pause
-        exit /b 1
-    )
+)
+if not exist "%PROJECTS_DIR%" (
+    echo [ERROR] Could not create %PROJECTS_DIR%
+    pause
+    exit /b 1
 )
 echo [OK] Projects folder: %PROJECTS_DIR%
 
@@ -122,10 +123,10 @@ echo [...]  Waiting for dashboard to start...
 
 set ATTEMPTS=0
 :waitloop
-if %ATTEMPTS% geq 30 goto timeout
+if !ATTEMPTS! geq 30 goto timedout
 timeout /t 2 /nobreak >nul
 curl -s -o nul http://localhost:3000 2>nul
-if %ERRORLEVEL% equ 0 goto ready
+if !ERRORLEVEL! equ 0 goto ready
 set /a ATTEMPTS+=1
 goto waitloop
 
@@ -139,7 +140,7 @@ echo.
 start http://localhost:3000
 goto shortcuts
 
-:timeout
+:timedout
 echo.
 echo [OK] Container is starting up (it may take another moment).
 echo      Opening browser anyway...
@@ -181,4 +182,5 @@ echo   To stop:    docker rm -f claude-code
 echo   To restart: double-click "Claude Code" on your desktop
 echo.
 pause
+endlocal
 exit /b 0
