@@ -108,9 +108,11 @@ if !ERRORLEVEL! neq 0 (
 echo [OK] Image is ready.
 
 REM ---------------------------------------------------------------------------
-REM Stop existing container if running
+REM Stop existing container if running (handles both docker run and compose)
 REM ---------------------------------------------------------------------------
 docker rm -f claude-code >nul 2>nul
+docker-compose down >nul 2>nul
+docker compose down >nul 2>nul
 
 REM ---------------------------------------------------------------------------
 REM Start the container
@@ -119,6 +121,7 @@ echo.
 echo [...]  Starting Claude Code Docker...
 docker run -d ^
     --name claude-code ^
+    --restart unless-stopped ^
     --group-add 0 ^
     -p 3000:3000 ^
     -p 7681:7681 ^
@@ -131,7 +134,7 @@ docker run -d ^
     -v claude-code-git-config:/home/coder/.gitconfig.d ^
     ghcr.io/sealmindset/claude-code-docker:latest
 
-if %ERRORLEVEL% neq 0 (
+if !ERRORLEVEL! neq 0 (
     echo [ERROR] Failed to start the container.
     echo.
     echo Common fixes:
@@ -142,6 +145,30 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
+REM Give the container a moment to start or crash
+ping -n 4 127.0.0.1 >nul
+
+REM Verify the container is still running (not exited/crashed)
+docker inspect -f "{{.State.Running}}" claude-code >nul 2>nul
+if !ERRORLEVEL! neq 0 goto container_crashed
+for /f %%s in ('docker inspect -f "{{.State.Running}}" claude-code 2^>nul') do set RUNNING=%%s
+if /i "!RUNNING!" neq "true" goto container_crashed
+goto container_ok
+
+:container_crashed
+echo [ERROR] Container started but crashed immediately.
+echo.
+echo --- Container Logs ---
+docker logs --tail 30 claude-code 2>&1
+echo --- End Logs ---
+echo.
+echo This usually means a script inside the container has an error.
+echo Share the logs above with the AI CoE team for help.
+echo.
+pause
+exit /b 1
+
+:container_ok
 echo [OK] Claude Code Docker is running!
 
 REM ---------------------------------------------------------------------------
