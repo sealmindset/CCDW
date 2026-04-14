@@ -8,8 +8,8 @@
 WARNING_FILE="/tmp/.azure-token-warning"
 CHECK_INTERVAL=300   # 5 minutes
 
-# Only run if Azure AI Foundry is configured
-if [ -z "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+# Only run if Azure AI Foundry is configured with token auth (not API key)
+if [ -z "$ANTHROPIC_FOUNDRY_BASE_URL" ] || [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
     exit 0
 fi
 

@@ -147,7 +147,7 @@ echo -e "${GREEN}[OK]${NC} Service watchdog started."
 # ---------------------------------------------------------------------------
 # Start Azure token monitor (background expiry warnings)
 # ---------------------------------------------------------------------------
-if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ] && [ -z "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
     su-exec coder "$SCRIPTS_DIR/token-monitor.sh" &
     echo -e "${GREEN}[OK]${NC} Azure token monitor started."
 fi

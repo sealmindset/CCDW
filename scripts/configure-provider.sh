@@ -20,6 +20,16 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # ---------------------------------------------------------------------------
+# If API key auth is set, remove any stale token-based settings
+# (settings.json with apiKeyHelper would override the API key)
+# ---------------------------------------------------------------------------
+if [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ] && [ -f "$SETTINGS_FILE" ]; then
+    if grep -q "apiKeyHelper" "$SETTINGS_FILE" 2>/dev/null; then
+        rm -f "$SETTINGS_FILE" "$TOKEN_SCRIPT"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Skip if settings.json already exists (preserves user edits)
 # ---------------------------------------------------------------------------
 if [ -f "$SETTINGS_FILE" ]; then
@@ -92,18 +102,39 @@ case "$PROVIDER" in
         export ANTHROPIC_DEFAULT_HAIKU_MODEL="$MODEL_HAIKU"
         export ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL_OPUS"
 
-        # Generate token helper script
-        cat > "$TOKEN_SCRIPT" <<TOKENEOF
+        if [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
+            # --- API key auth: no token helper needed ---
+            python3 -c "
+import json
+settings = {
+    'env': {
+        'CLAUDE_CODE_USE_FOUNDRY': '1',
+        'ANTHROPIC_FOUNDRY_BASE_URL': '${ENDPOINT}',
+        'ANTHROPIC_FOUNDRY_API_KEY': '${ANTHROPIC_FOUNDRY_API_KEY}',
+        'ANTHROPIC_DEFAULT_SONNET_MODEL': '${MODEL_SONNET}',
+        'ANTHROPIC_DEFAULT_HAIKU_MODEL': '${MODEL_HAIKU}',
+        'ANTHROPIC_DEFAULT_OPUS_MODEL': '${MODEL_OPUS}'
+    }
+}
+if '${DEFAULT_MODEL}':
+    settings['model'] = '${DEFAULT_MODEL}'
+if '${SKIP_DANGEROUS}' == 'True':
+    settings['skipDangerousModePermissionPrompt'] = True
+print(json.dumps(settings, indent=2))
+" > "$SETTINGS_FILE"
+
+        else
+            # --- Token-based auth: generate Azure CLI token helper ---
+            cat > "$TOKEN_SCRIPT" <<TOKENEOF
 #!/bin/bash
 if ! az account get-access-token > /dev/null 2>&1; then
     az login --use-device-code > /dev/null 2>&1
 fi
 az account get-access-token --resource "${TOKEN_RESOURCE}" --query accessToken -o tsv
 TOKENEOF
-        chmod +x "$TOKEN_SCRIPT"
+            chmod +x "$TOKEN_SCRIPT"
 
-        # Generate settings.json
-        python3 -c "
+            python3 -c "
 import json
 settings = {
     'apiKeyHelper': '${TOKEN_SCRIPT}',
@@ -121,6 +152,7 @@ if '${SKIP_DANGEROUS}' == 'True':
     settings['skipDangerousModePermissionPrompt'] = True
 print(json.dumps(settings, indent=2))
 " > "$SETTINGS_FILE"
+        fi
         ;;
 
     bedrock)
