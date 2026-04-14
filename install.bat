@@ -31,42 +31,40 @@ if %ERRORLEVEL% neq 0 (
 )
 
 REM Docker engine can take up to 60s to start -- wait and retry
-set DOCKER_READY=0
 docker info >nul 2>nul
-if !ERRORLEVEL! equ 0 (
-    set DOCKER_READY=1
-) else (
-    echo [...]  Docker engine is starting up, waiting...
-    for /L %%i in (1,1,12) do (
-        if !DOCKER_READY! equ 0 (
-            ping -n 6 127.0.0.1 >nul
-            docker info >nul 2>nul
-            if !ERRORLEVEL! equ 0 set DOCKER_READY=1
-        )
-    )
-)
+if !ERRORLEVEL! equ 0 goto docker_ok
 
-if !DOCKER_READY! equ 0 (
-    echo [ERROR] Docker engine did not start after 60 seconds.
-    echo.
-    echo How to fix:
-    echo.
-    echo   Docker Desktop:
-    echo     1. Open Docker Desktop from your Start menu
-    echo     2. Wait for "Docker Desktop is running" in the system tray
-    echo     3. Double-click this file again
-    echo.
-    echo   Rancher Desktop:
-    echo     1. Open Rancher Desktop from your Start menu
-    echo     2. Wait for it to finish starting (icon stops spinning)
-    echo     3. Make sure the container engine is set to "dockerd (moby)":
-    echo        Preferences ^> Container Engine ^> dockerd (moby)
-    echo     4. Double-click this file again
-    echo.
-    pause
-    exit /b 1
-)
+echo [...]  Docker engine is starting up, waiting...
+set DOCKER_WAIT=0
+:docker_retry
+if !DOCKER_WAIT! geq 12 goto docker_fail
+ping -n 6 127.0.0.1 >nul
+docker info >nul 2>nul
+if !ERRORLEVEL! equ 0 goto docker_ok
+set /a DOCKER_WAIT+=1
+goto docker_retry
 
+:docker_fail
+echo [ERROR] Docker engine did not start after 60 seconds.
+echo.
+echo How to fix:
+echo.
+echo   Docker Desktop:
+echo     1. Open Docker Desktop from your Start menu
+echo     2. Wait for it to say running in the system tray
+echo     3. Double-click this file again
+echo.
+echo   Rancher Desktop:
+echo     1. Open Rancher Desktop from your Start menu
+echo     2. Wait for it to finish starting (icon stops spinning)
+echo     3. Make sure the container engine is set to dockerd (moby):
+echo        Preferences, Container Engine, dockerd (moby)
+echo     4. Double-click this file again
+echo.
+pause
+exit /b 1
+
+:docker_ok
 echo [OK] Docker is running.
 
 REM ---------------------------------------------------------------------------
