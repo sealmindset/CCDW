@@ -91,11 +91,18 @@ REM Auto-update: always pull latest image
 REM ---------------------------------------------------------------------------
 echo.
 echo [...]  Checking for updates and downloading latest version...
-docker pull ghcr.io/sealmindset/claude-code-docker:latest
-if %ERRORLEVEL% neq 0 (
-    echo [WARN] Could not check for updates. Using cached image if available.
+docker pull ghcr.io/sealmindset/claude-code-docker:latest >nul 2>nul
+if !ERRORLEVEL! neq 0 (
+    echo [...]  Could not pull image. Building locally (this may take a few minutes^)...
+    docker build -t ghcr.io/sealmindset/claude-code-docker:latest .
+    if !ERRORLEVEL! neq 0 (
+        echo [ERROR] Build failed. Check the output above for details.
+        echo.
+        pause
+        exit /b 1
+    )
 )
-echo [OK] Image is up to date.
+echo [OK] Image is ready.
 
 REM ---------------------------------------------------------------------------
 REM Stop existing container if running

@@ -15,4 +15,6 @@ Thumbs.db
 # Docker
 *.log
 corporate-ca.crt
-certs/
+certs/*.crt
+certs/*.pem
+!certs/.gitkeep
