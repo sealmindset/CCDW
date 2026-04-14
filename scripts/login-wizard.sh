@@ -371,22 +371,12 @@ stage_allset() {
             echo -e "  ${YELLOW}!${NC} AI endpoint        ${YELLOW}Not reachable${NC}"
         fi
 
-        # Token health
+        # Token health — verify we can get a token (auto-refreshes via Azure CLI)
         local token_resource="${TOKEN_RESOURCE:-https://cognitiveservices.azure.com}"
-        local token_json
-        token_json=$(az account get-access-token --resource "$token_resource" 2>/dev/null)
-        if [ $? -eq 0 ]; then
-            local expires_on
-            expires_on=$(echo "$token_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('expiresOn',''))" 2>/dev/null)
-            if [ -n "$expires_on" ]; then
-                local expiry_epoch now_epoch remaining
-                expiry_epoch=$(date -d "$expires_on" +%s 2>/dev/null || date -j -f "%Y-%m-%d %H:%M:%S" "$expires_on" +%s 2>/dev/null)
-                now_epoch=$(date +%s)
-                if [ -n "$expiry_epoch" ]; then
-                    remaining=$(( (expiry_epoch - now_epoch) / 60 ))
-                    echo -e "  ${OK} Token valid for    ${GREEN}${remaining} minutes${NC}"
-                fi
-            fi
+        if az account get-access-token --resource "$token_resource" &>/dev/null; then
+            echo -e "  ${OK} Session            ${GREEN}Active${NC}"
+        else
+            echo -e "  ${YELLOW}!${NC} Session            ${YELLOW}Could not get token${NC}"
         fi
     fi
 

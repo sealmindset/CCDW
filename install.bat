@@ -175,7 +175,7 @@ echo   Web Terminal:  http://localhost:7681
 echo   VS Code:       http://localhost:8080
 echo.
 echo   FIRST TIME? Click "Web Terminal" in the dashboard
-echo   and follow the setup steps (Azure login, GitHub login).
+echo   and follow the login wizard to sign in to Azure.
 echo.
 echo   To stop:    docker rm -f claude-code
 echo   To restart: double-click "Claude Code" on your desktop
