@@ -179,4 +179,5 @@ exec su-exec coder ttyd \
     --writable \
     --client-option 'fontFamily="Menlo, Cascadia Mono, Consolas, DejaVu Sans Mono, Liberation Mono, monospace"' \
     --client-option 'fontSize=14' \
+    --client-option 'cursorBlink=true' \
     tmux new-session -A -s main "bash --init-file $SCRIPTS_DIR/shell-init.sh"

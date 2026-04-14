@@ -98,8 +98,11 @@ elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
 fi
 
 AZ_OK=0
-if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
-    # Azure CLI can be slow on cold start — try twice
+if [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
+    # API key auth — no Azure CLI needed
+    AZ_OK=1
+elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+    # Token-based auth — check Azure CLI login
     if az account show &>/dev/null 2>&1; then
         AZ_OK=1
     elif [ -f /home/coder/.azure/msal_token_cache.json ]; then
@@ -174,8 +177,9 @@ else
     fi
 
     # --- If Azure needs recovery, run wizard BEFORE showing status ---
+    # (skip entirely when using API key auth)
     NEEDS_AZ=0
-    if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+    if [ -z "$ANTHROPIC_FOUNDRY_API_KEY" ] && [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
         if [ "$AZ_OK" = "1" ]; then
             AZ_WARN=$("$SCRIPTS_DIR/check-azure-token.sh" 2>/dev/null)
             [ -n "$AZ_WARN" ] && NEEDS_AZ=1
@@ -204,7 +208,9 @@ else
         echo -e "  ${CHECK_FAIL} AI Provider"
     fi
 
-    if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+    if [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
+        echo -e "  ${CHECK_PASS} Auth          ${GREEN}API Key${NC}"
+    elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
         if [ "$AZ_OK" = "1" ]; then
             echo -e "  ${CHECK_PASS} Azure login"
         else
