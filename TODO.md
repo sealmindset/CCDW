@@ -14,3 +14,5 @@
 - [ ] Add optional TLS/HTTPS for ttyd and code-server
 - [ ] Add container resource limit recommendations in README
 - [ ] Create a quick-start video walkthrough
+- [ ] Login wizard: auto-open Microsoft device login in new browser tab via welcome-server redirect endpoint
+- [ ] Login wizard: add QR code option for device code (for users on separate devices)

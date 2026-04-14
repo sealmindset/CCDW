@@ -76,6 +76,18 @@ if [ ! -f "$CLAUDE_JSON" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Disable Claude Code auto-updater (version is pinned in the Docker image)
+# ---------------------------------------------------------------------------
+export DISABLE_AUTOUPDATER=1
+
+# ---------------------------------------------------------------------------
+# npm CA bundle (corporate SSL inspection / Zscaler compatibility)
+# ---------------------------------------------------------------------------
+if [ -f /etc/ssl/certs/ca-certificates.crt ]; then
+    su-exec coder npm config set cafile /etc/ssl/certs/ca-certificates.crt 2>/dev/null || true
+fi
+
+# ---------------------------------------------------------------------------
 # Configure AI provider from providers.yml
 # Reads config/providers.yml and generates settings.json + token helper.
 # Skips if settings.json already exists (preserves user edits).

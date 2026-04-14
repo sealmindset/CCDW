@@ -23,21 +23,6 @@ SCRIPTS_DIR="/opt/claude-code-docker/scripts"
 CONFIG_FILE="/opt/claude-code-docker/config/providers.yml"
 
 # ---------------------------------------------------------------------------
-# Clean up noisy post-auth output from gh CLI
-# gh prints 4 lines of technical noise after auth completes:
-#   - gh config set ...    ← noise
-#   ✓ Configured git ...   ← noise
-#   ! credentials saved... ← scary
-#   ✓ Logged in as ...     ← useful (we reprint it cleanly)
-# ---------------------------------------------------------------------------
-_gh_cleanup() {
-    printf '\033[A\033[2K\033[A\033[2K\033[A\033[2K\033[A\033[2K'
-    local user
-    user=$(gh api user --jq '.login' 2>/dev/null)
-    [ -n "$user" ] && printf '  \033[0;32m✓\033[0m Logged in as \033[0;32m%s\033[0m\n' "$user"
-}
-
-# ---------------------------------------------------------------------------
 # Load .env if it exists in workspace
 # ---------------------------------------------------------------------------
 if [ -f /home/coder/Documents/GitHub/.env ]; then
@@ -51,6 +36,9 @@ fi
 # ---------------------------------------------------------------------------
 export PS1="\[\033[0;34m\]claude-code\[\033[0m\]:\[\033[0;32m\]\w\[\033[0m\]\$ "
 
+# Version is pinned in the Docker image — disable Claude Code auto-updater
+export DISABLE_AUTOUPDATER=1
+
 # ---------------------------------------------------------------------------
 # Aliases
 # ---------------------------------------------------------------------------
@@ -58,6 +46,7 @@ alias cc='/opt/claude-code-docker/scripts/claude-wrapper.sh'
 alias doctor='/opt/claude-code-docker/scripts/doctor.sh'
 alias backup='/opt/claude-code-docker/scripts/backup.sh'
 alias restore='/opt/claude-code-docker/scripts/restore.sh'
+alias login='/opt/claude-code-docker/scripts/login-wizard.sh --force'
 
 # ---------------------------------------------------------------------------
 # Load provider config from settings.json (generated from providers.yml)
@@ -110,7 +99,13 @@ fi
 
 AZ_OK=0
 if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
-    az account show &>/dev/null 2>&1 && AZ_OK=1
+    # Azure CLI can be slow on cold start — try twice
+    if az account show &>/dev/null 2>&1; then
+        AZ_OK=1
+    elif [ -f /home/coder/.azure/msal_token_cache.json ]; then
+        sleep 1
+        az account show &>/dev/null 2>&1 && AZ_OK=1
+    fi
 fi
 
 GH_OK=0
@@ -126,130 +121,34 @@ FIRST_RUN_MARKER="/home/coder/.claude/.first-run-done"
 
 if [ ! -f "$FIRST_RUN_MARKER" ]; then
     # =======================================================================
-    # FIRST TIME — guided walkthrough
+    # FIRST TIME — launch the login wizard
+    # The wizard handles: preflight, Azure sign-in, validation
     # =======================================================================
-    echo ""
-    echo -e "${BLUE}  Welcome to Claude Code Docker!${NC}"
-    echo -e "  Let's get you set up. This only takes a few minutes."
-    echo ""
+    if [ "$AZ_OK" = "0" ]; then
+        "$SCRIPTS_DIR/login-wizard.sh"
+        WIZARD_EXIT=$?
 
-    # --- Step 1: Azure login (if Azure provider and not already logged in) ---
-    if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ] && [ "$AZ_OK" = "0" ]; then
-        echo -e "  ${BOLD}Step 1 of 2: Log in to Azure${NC}"
-        echo -e "  This connects you to the AI service that powers Claude."
+        # Re-check status after wizard
+        az account show &>/dev/null 2>&1 && AZ_OK=1
+
+        # If wizard completed, first-run marker is already set by the wizard
+    else
+        # Everything already logged in — just show status and mark done
         echo ""
-        echo -e "  You'll see a URL and a code. Open the URL in your browser,"
-        echo -e "  enter the code, and sign in with your work account."
+        echo -e "${BLUE}  Welcome to Claude Code Docker!${NC}"
         echo ""
-        read -p "  Press Enter to start..." _
-        echo ""
-
-        az login --use-device-code >/dev/null
-
-        if az account show &>/dev/null 2>&1; then
-            # Auto-select the correct subscription from providers.yml
-            SUB_ID=$(read_yaml "providers.azure-foundry.subscription_id")
-            SUB_NAME=$(read_yaml "providers.azure-foundry.subscription_name")
-            if [ -n "$SUB_ID" ]; then
-                echo ""
-                echo -e "  Setting subscription to ${GREEN}${SUB_NAME}${NC}..."
-                az account set --subscription "$SUB_ID" 2>/dev/null
-                if [ $? -eq 0 ]; then
-                    echo -e "  ${CHECK_PASS} Subscription set to ${GREEN}${SUB_NAME}${NC}"
-                else
-                    echo -e "  ${YELLOW}!${NC} Could not set subscription. You may need to select it manually."
-                fi
-            fi
-
-            echo ""
-            echo -e "  ${CHECK_PASS} ${GREEN}Azure login successful!${NC}"
-            AZ_OK=1
-        else
-            echo ""
-            echo -e "  ${CHECK_FAIL} Azure login didn't complete."
-            echo -e "  You can try again later by typing: ${GREEN}az login --use-device-code${NC}"
+        [ "$AI_OK" = "1" ] && echo -e "  ${CHECK_PASS} AI Provider  ${GREEN}${AI_LABEL}${NC}" || echo -e "  ${CHECK_FAIL} AI Provider"
+        if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+            [ "$AZ_OK" = "1" ] && echo -e "  ${CHECK_PASS} Azure login" || echo -e "  ${CHECK_FAIL} Azure login"
         fi
+        [ "$DOCKER_OK" = "1" ] && echo -e "  ${CHECK_PASS} Docker" || echo -e "  ${CHECK_FAIL} Docker"
         echo ""
-    elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ] && [ "$AZ_OK" = "1" ]; then
-        # Already logged in — make sure the right subscription is set
-        SUB_ID=$(read_yaml "providers.azure-foundry.subscription_id")
-        if [ -n "$SUB_ID" ]; then
-            CURRENT_SUB=$(az account show --query id -o tsv 2>/dev/null)
-            if [ "$CURRENT_SUB" != "$SUB_ID" ]; then
-                az account set --subscription "$SUB_ID" 2>/dev/null
-            fi
-        fi
-    fi
-
-    # --- Step 2: GitHub login ---
-    if [ "$GH_OK" = "0" ]; then
-        STEP_NUM="1"
-        [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ] && STEP_NUM="2"
-
-        echo -e "  ${BOLD}Step ${STEP_NUM} of 2: Log in to GitHub${NC}"
-        echo -e "  This is where your code gets saved and shared with your team."
-        echo ""
-
-        if [ "$AZ_OK" = "1" ] && [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
-            echo -e "  Since you just signed in with Azure, this should be quick —"
-            echo -e "  your browser will use the same login automatically."
-            echo ""
-        fi
-
-        echo -e "  You'll get a one-time code and a URL."
-        echo -e "  Open the URL on your computer, paste the code, and approve."
-        echo -e "  ${YELLOW}(Ignore any message about opening a browser.)${NC}"
-        echo ""
-        read -p "  Press Enter to start..." _
-        echo ""
-
-        # --web triggers device-code flow: prints URL + code, user opens in host browser.
-        # No pipes — gh needs a TTY to poll for completion.
-        gh auth login --hostname github.com --git-protocol https --web
-
-        if gh auth status &>/dev/null 2>&1; then
-            _gh_cleanup
-            echo ""
-            echo -e "  ${CHECK_PASS} ${GREEN}GitHub login successful!${NC}"
-            GH_OK=1
-        else
-            echo ""
-            echo -e "  ${CHECK_FAIL} GitHub login didn't complete."
-            echo -e "  You can try again later by typing: ${GREEN}gh auth login${NC}"
-        fi
-        echo ""
-    fi
-
-    # --- Regenerate settings.json now that Azure is logged in ---
-    if [ "$AZ_OK" = "1" ] && [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
-        # Force regeneration so the token helper is fresh
-        rm -f "$CLAUDE_SETTINGS" /home/coder/.claude/get-claude-token.sh
-        "$SCRIPTS_DIR/configure-provider.sh" 2>/dev/null
-    fi
-
-    # --- Final status ---
-    echo -e "${BLUE}  Setup complete! Here's your status:${NC}"
-    echo ""
-
-    [ "$AI_OK" = "1" ] && echo -e "  ${CHECK_PASS} AI Provider  ${GREEN}${AI_LABEL}${NC}" || echo -e "  ${CHECK_FAIL} AI Provider"
-    if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
-        [ "$AZ_OK" = "1" ] && echo -e "  ${CHECK_PASS} Azure login" || echo -e "  ${CHECK_FAIL} Azure login"
-    fi
-    [ "$GH_OK" = "1" ] && echo -e "  ${CHECK_PASS} GitHub login" || echo -e "  ${CHECK_FAIL} GitHub login"
-    [ "$DOCKER_OK" = "1" ] && echo -e "  ${CHECK_PASS} Docker" || echo -e "  ${CHECK_FAIL} Docker"
-
-    echo ""
-    if [ "$AI_OK" = "1" ] && [ "$AZ_OK" = "1" ] && [ "$GH_OK" = "1" ]; then
         echo -e "  ${GREEN}You're all set!${NC} Type ${GREEN}claude${NC} to start."
         echo -e "  Then type ${GREEN}/make-it${NC} to build your first app."
-    else
-        echo -e "  Fix any remaining items, then type ${GREEN}claude${NC} to start."
+        echo ""
+        mkdir -p /home/coder/.claude
+        touch "$FIRST_RUN_MARKER"
     fi
-    echo ""
-
-    # Mark first run complete
-    mkdir -p /home/coder/.claude
-    touch "$FIRST_RUN_MARKER"
 
 else
     # =======================================================================
@@ -274,7 +173,27 @@ else
         fi
     fi
 
-    NEEDS_AZ=0; NEEDS_GH=0
+    # --- If Azure needs recovery, run wizard BEFORE showing status ---
+    NEEDS_AZ=0
+    if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+        if [ "$AZ_OK" = "1" ]; then
+            AZ_WARN=$("$SCRIPTS_DIR/check-azure-token.sh" 2>/dev/null)
+            [ -n "$AZ_WARN" ] && NEEDS_AZ=1
+        else
+            NEEDS_AZ=1
+        fi
+    fi
+
+    if [ "$NEEDS_AZ" = "1" ]; then
+        "$SCRIPTS_DIR/login-wizard.sh" --refresh
+        # Re-check after wizard
+        if az account show &>/dev/null 2>&1; then
+            AZ_OK=1
+            NEEDS_AZ=0
+        fi
+    fi
+
+    # --- Now show the status (post-recovery if wizard ran) ---
     echo ""
     echo -e "${BLUE}  Claude Code Docker${NC}"
     echo ""
@@ -287,24 +206,10 @@ else
 
     if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
         if [ "$AZ_OK" = "1" ]; then
-            AZ_WARN=$("$SCRIPTS_DIR/check-azure-token.sh" 2>/dev/null)
-            if [ -n "$AZ_WARN" ]; then
-                echo -e "$AZ_WARN"
-                NEEDS_AZ=1
-            else
-                echo -e "  ${CHECK_PASS} Azure login"
-            fi
+            echo -e "  ${CHECK_PASS} Azure login"
         else
             echo -e "  ${CHECK_FAIL} Azure login"
-            NEEDS_AZ=1
         fi
-    fi
-
-    if [ "$GH_OK" = "1" ]; then
-        echo -e "  ${CHECK_PASS} GitHub login"
-    else
-        echo -e "  ${CHECK_FAIL} GitHub login"
-        NEEDS_GH=1
     fi
 
     if [ "$DOCKER_OK" = "1" ]; then
@@ -315,63 +220,10 @@ else
 
     echo ""
 
-    # --- Guided recovery for failed items ---
-    if [ "$NEEDS_AZ" = "1" ]; then
-        echo -e "  ${BOLD}Your Azure session needs to be refreshed.${NC}"
-        echo -e "  You'll see a URL and a code. Open the URL in your browser,"
-        echo -e "  enter the code, and sign in with your work account."
-        echo ""
-        read -p "  Press Enter to sign in to Azure..." _
-        echo ""
-
-        az login --use-device-code >/dev/null
-
-        if az account show &>/dev/null 2>&1; then
-            SUB_ID=$(read_yaml "providers.azure-foundry.subscription_id")
-            SUB_NAME=$(read_yaml "providers.azure-foundry.subscription_name")
-            if [ -n "$SUB_ID" ]; then
-                az account set --subscription "$SUB_ID" 2>/dev/null
-                echo -e "  ${CHECK_PASS} Subscription set to ${GREEN}${SUB_NAME}${NC}"
-            fi
-            echo -e "  ${CHECK_PASS} ${GREEN}Azure login successful!${NC}"
-            AZ_OK=1
-
-            # Regenerate settings.json with fresh token
-            rm -f "$CLAUDE_SETTINGS" /home/coder/.claude/get-claude-token.sh
-            "$SCRIPTS_DIR/configure-provider.sh" 2>/dev/null
-        else
-            echo -e "  ${CHECK_FAIL} Azure login didn't complete. It will be checked again next time."
-        fi
-        echo ""
-    fi
-
-    if [ "$NEEDS_GH" = "1" ]; then
-        echo -e "  ${BOLD}GitHub needs to be connected.${NC}"
-        echo -e "  You'll get a one-time code and a URL."
-        echo -e "  Open the URL on your computer, paste the code, and approve."
-        echo -e "  ${YELLOW}(Ignore any message about opening a browser.)${NC}"
-        echo ""
-        read -p "  Press Enter to sign in to GitHub..." _
-        echo ""
-
-        gh auth login --hostname github.com --git-protocol https --web
-
-        if gh auth status &>/dev/null 2>&1; then
-            _gh_cleanup
-            echo ""
-            echo -e "  ${CHECK_PASS} ${GREEN}GitHub login successful!${NC}"
-            GH_OK=1
-        else
-            echo ""
-            echo -e "  ${CHECK_FAIL} GitHub login didn't complete. It will be checked again next time."
-        fi
-        echo ""
-    fi
-
-    if [ "$AI_OK" = "1" ] && [ "$AZ_OK" = "1" ] && [ "$GH_OK" = "1" ]; then
+    if [ "$AI_OK" = "1" ] && [ "$AZ_OK" = "1" ]; then
         echo -e "  ${GREEN}Ready.${NC} Type ${GREEN}claude${NC} to start, then ${GREEN}/make-it${NC} to build an app."
-    elif [ "$NEEDS_AZ" = "1" ] || [ "$NEEDS_GH" = "1" ]; then
-        echo -e "  Some items still need attention. They'll be checked again next time."
+    elif [ "$NEEDS_AZ" = "1" ]; then
+        echo -e "  Some items still need attention. Type ${GREEN}login${NC} to try again."
     fi
     echo ""
 fi

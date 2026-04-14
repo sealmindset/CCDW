@@ -163,6 +163,7 @@ Apps you build are saved in the projects folder, which is shared with your host 
 |---------|-------------|
 | `claude` | Start Claude Code |
 | `cc` | Start Claude Code with friendly error messages |
+| `login` | Re-run the login wizard (refresh Azure/GitHub sessions) |
 | `doctor` | Run the connection troubleshooter |
 | `backup` | Save all settings to a backup file |
 | `restore <file>` | Restore settings from a backup |
