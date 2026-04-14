@@ -139,18 +139,10 @@ echo -e "${GREEN}[OK]${NC} Starting welcome page on port 3000..."
 su-exec coder "$SCRIPTS_DIR/welcome-server.sh" &
 
 # ---------------------------------------------------------------------------
-# Start watchdog (auto-restarts code-server if it crashes)
+# Start health monitor (self-healing: replaces watchdog + token-monitor)
 # ---------------------------------------------------------------------------
-su-exec coder "$SCRIPTS_DIR/watchdog.sh" &
-echo -e "${GREEN}[OK]${NC} Service watchdog started."
-
-# ---------------------------------------------------------------------------
-# Start Azure token monitor (background expiry warnings)
-# ---------------------------------------------------------------------------
-if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ] && [ -z "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
-    su-exec coder "$SCRIPTS_DIR/token-monitor.sh" &
-    echo -e "${GREEN}[OK]${NC} Azure token monitor started."
-fi
+su-exec coder "$SCRIPTS_DIR/health-monitor.sh" &
+echo -e "${GREEN}[OK]${NC} Health monitor started (self-healing enabled)."
 
 # ---------------------------------------------------------------------------
 # Start ttyd (web terminal) -- this is the foreground process

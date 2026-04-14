@@ -158,11 +158,11 @@ else
     # RETURNING USER — compact status check
     # =======================================================================
 
-    # Pick up background token monitor warnings
-    WARNING_FILE="/tmp/.azure-token-warning"
-    if [ -f "$WARNING_FILE" ]; then
-        TOKEN_WARN=$(cat "$WARNING_FILE" 2>/dev/null)
-        [ "$TOKEN_WARN" = "expired" ] && AZ_OK=0
+    # Pick up health monitor state
+    SH_STATE_FILE="/tmp/.health-state.json"
+    if [ -f "$SH_STATE_FILE" ]; then
+        SH_FAILURE=$(python3 -c "import json; print(json.load(open('$SH_STATE_FILE')).get('failure_type',''))" 2>/dev/null || echo "")
+        [ "$SH_FAILURE" = "azure_token_expired" ] && AZ_OK=0
     fi
 
     # Make sure correct subscription is set

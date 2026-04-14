@@ -133,6 +133,81 @@ function getUsageStats() {
     }
 }
 
+function getHealth() {
+    const stateFile = '/tmp/.health-state.json';
+    const telemetryFile = '/home/coder/.claude/health-telemetry.jsonl';
+
+    // Read shared state from health monitor
+    let state = {
+        status: 'unknown',
+        failure_type: '',
+        message: 'Health monitor not yet started',
+        last_check: '',
+        recent_failures_1h: 0,
+        services: {}
+    };
+
+    try {
+        const raw = fs.readFileSync(stateFile, 'utf8');
+        state = JSON.parse(raw);
+    } catch (e) {
+        // State file doesn't exist yet -- health monitor hasn't run
+    }
+
+    // Supplement with live auth info
+    const auth = { provider: 'none', method: 'none', endpoint_reachable: false };
+    const foundryUrl = process.env.ANTHROPIC_FOUNDRY_BASE_URL;
+    const foundryKey = process.env.ANTHROPIC_FOUNDRY_API_KEY;
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const bedrock = process.env.CLAUDE_CODE_USE_BEDROCK;
+
+    if (foundryUrl) {
+        auth.provider = 'Azure AI Foundry';
+        auth.method = foundryKey ? 'api_key' : 'azure_cli_token';
+        auth.endpoint_reachable = state.failure_type !== 'vpn_down' && state.failure_type !== 'endpoint_unreachable';
+    } else if (apiKey) {
+        auth.provider = 'Anthropic API';
+        auth.method = 'api_key';
+        auth.endpoint_reachable = state.failure_type !== 'endpoint_unreachable';
+    } else if (bedrock === '1') {
+        auth.provider = 'AWS Bedrock';
+        auth.method = process.env.AWS_ACCESS_KEY_ID ? 'access_key' : 'none';
+    }
+
+    // System info
+    let diskFreeMb = 0;
+    try {
+        const dfOut = execSync('df -k /home/coder 2>/dev/null | tail -1', { timeout: 5000 }).toString();
+        const parts = dfOut.trim().split(/\\s+/);
+        if (parts.length >= 4) diskFreeMb = Math.round(parseInt(parts[3]) / 1024);
+    } catch (e) {}
+
+    let dockerSocket = false;
+    try {
+        fs.accessSync('/var/run/docker.sock');
+        dockerSocket = true;
+    } catch (e) {}
+
+    // Last 5 telemetry events
+    let last5 = [];
+    try {
+        const lines = fs.readFileSync(telemetryFile, 'utf8').trim().split('\\n');
+        last5 = lines.slice(-5).map(l => { try { return JSON.parse(l); } catch(e) { return null; } }).filter(Boolean);
+    } catch (e) {}
+
+    return {
+        status: state.status,
+        message: state.message,
+        failure_type: state.failure_type,
+        last_check: state.last_check,
+        recent_failures_1h: state.recent_failures_1h,
+        services: state.services,
+        auth: auth,
+        system: { disk_free_mb: diskFreeMb, docker_socket: dockerSocket },
+        telemetry: { last_5_events: last5 }
+    };
+}
+
 const server = http.createServer((req, res) => {
     if (req.url === '/api/status') {
         res.writeHead(200, {
@@ -140,6 +215,15 @@ const server = http.createServer((req, res) => {
             'Access-Control-Allow-Origin': '*'
         });
         res.end(JSON.stringify(getStatus()));
+        return;
+    }
+
+    if (req.url === '/api/health') {
+        res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        });
+        res.end(JSON.stringify(getHealth()));
         return;
     }
 

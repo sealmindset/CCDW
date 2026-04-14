@@ -57,7 +57,7 @@ if curl -s -o /dev/null http://127.0.0.1:8080/ 2>/dev/null; then
     pass "VS Code (code-server) is running on port 8080"
 else
     fail "VS Code (code-server) is NOT responding on port 8080"
-    hint "The watchdog should restart it automatically. If not: docker restart claude-code"
+    hint "The health monitor should restart it automatically. If not: docker restart claude-code"
 fi
 
 echo ""
@@ -257,6 +257,62 @@ if [ -d /home/coder/.claude/commands ]; then
     pass "$CMD_COUNT skill commands available"
 else
     warn "No skill commands found"
+fi
+
+echo ""
+
+# ---------------------------------------------------------------------------
+# 7. Self-Healing Status
+# ---------------------------------------------------------------------------
+echo -e "${BOLD}Self-Healing${NC}"
+
+SH_STATE_FILE="/tmp/.health-state.json"
+SH_TELEMETRY_FILE="/home/coder/.claude/health-telemetry.jsonl"
+
+if [ -f "$SH_STATE_FILE" ]; then
+    SH_STATUS=$(python3 -c "import json; print(json.load(open('$SH_STATE_FILE')).get('status','unknown'))" 2>/dev/null || echo "unknown")
+    SH_MSG=$(python3 -c "import json; print(json.load(open('$SH_STATE_FILE')).get('message',''))" 2>/dev/null || echo "")
+    SH_FAILURES=$(python3 -c "import json; print(json.load(open('$SH_STATE_FILE')).get('recent_failures_1h',0))" 2>/dev/null || echo "0")
+    SH_LAST=$(python3 -c "import json; print(json.load(open('$SH_STATE_FILE')).get('last_check',''))" 2>/dev/null || echo "")
+
+    case "$SH_STATUS" in
+        healthy)  pass "Status: healthy -- ${SH_MSG}" ;;
+        degraded) warn "Status: degraded -- ${SH_MSG}" ;;
+        unhealthy) fail "Status: unhealthy -- ${SH_MSG}" ;;
+        *)        warn "Status: ${SH_STATUS}" ;;
+    esac
+
+    if [ "$SH_FAILURES" -gt 0 ]; then
+        warn "Failures in last hour: ${SH_FAILURES}"
+    else
+        pass "No failures in the last hour"
+    fi
+
+    [ -n "$SH_LAST" ] && echo -e "         Last check: ${SH_LAST}"
+else
+    warn "Health monitor state not found (may not be running)"
+    hint "Health monitor starts automatically with the container"
+fi
+
+# Telemetry history (last 5 events)
+if [ -f "$SH_TELEMETRY_FILE" ]; then
+    EVENT_COUNT=$(wc -l < "$SH_TELEMETRY_FILE" 2>/dev/null || echo 0)
+    pass "Telemetry log: ${EVENT_COUNT} events recorded"
+
+    echo ""
+    echo -e "  ${BOLD}Recent Events:${NC}"
+    tail -5 "$SH_TELEMETRY_FILE" 2>/dev/null | while IFS= read -r line; do
+        TS=$(echo "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ts',''))" 2>/dev/null || echo "?")
+        TYPE=$(echo "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('type',''))" 2>/dev/null || echo "?")
+        RESULT=$(echo "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('result',''))" 2>/dev/null || echo "?")
+        if [ "$RESULT" = "success" ]; then
+            echo -e "    ${GREEN}$TS${NC}  $TYPE  ${GREEN}$RESULT${NC}"
+        else
+            echo -e "    ${YELLOW}$TS${NC}  $TYPE  ${RED}$RESULT${NC}"
+        fi
+    done
+else
+    warn "No telemetry history yet"
 fi
 
 echo ""
