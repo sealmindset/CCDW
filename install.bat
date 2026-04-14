@@ -20,10 +20,10 @@ where docker >nul 2>nul
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Docker is not installed.
     echo.
-    echo Please install Rancher Desktop:
-    echo   https://rancherdesktop.io/
+    echo Please install one of the following:
+    echo   - Docker Desktop:   https://www.docker.com/products/docker-desktop/
+    echo   - Rancher Desktop:  https://rancherdesktop.io/
     echo.
-    echo During installation, select "dockerd (moby)" as the container engine.
     echo After installing, restart your computer and double-click this file again.
     echo.
     pause
@@ -50,13 +50,18 @@ if !DOCKER_READY! equ 0 (
     echo [ERROR] Docker engine did not start after 60 seconds.
     echo.
     echo How to fix:
-    echo   1. Open Rancher Desktop from your Start menu
-    echo   2. Wait for it to finish starting (icon stops spinning in system tray)
-    echo   3. Make sure the container engine is set to "dockerd (moby)":
-    echo      Rancher Desktop ^> Preferences ^> Container Engine ^> dockerd (moby)
-    echo   4. Double-click this file again
     echo.
-    echo If you're using Docker Desktop instead, make sure it's running.
+    echo   Docker Desktop:
+    echo     1. Open Docker Desktop from your Start menu
+    echo     2. Wait for "Docker Desktop is running" in the system tray
+    echo     3. Double-click this file again
+    echo.
+    echo   Rancher Desktop:
+    echo     1. Open Rancher Desktop from your Start menu
+    echo     2. Wait for it to finish starting (icon stops spinning)
+    echo     3. Make sure the container engine is set to "dockerd (moby)":
+    echo        Preferences ^> Container Engine ^> dockerd (moby)
+    echo     4. Double-click this file again
     echo.
     pause
     exit /b 1
@@ -133,7 +138,7 @@ if %ERRORLEVEL% neq 0 (
     echo.
     echo Common fixes:
     echo   - Make sure ports 3000, 7681 and 8080 are not in use
-    echo   - Restart Rancher Desktop and try again
+    echo   - Restart Docker Desktop or Rancher Desktop and try again
     echo.
     pause
     exit /b 1
