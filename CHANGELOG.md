@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.0] - 2026-04-15
+
+### Added
+- Self-healing health monitor daemon (scripts/health-monitor.sh) replaces watchdog + token-monitor
+  - Root cause classification across 4 layers: infrastructure, network, auth, services
+  - 11 failure types detected: DNS, internet, disk, VPN, endpoint, Azure token, API key, service crashes, Docker socket
+  - Auto-remediation: silent Azure token refresh, code-server/welcome-server restart, disk cleanup
+  - Exponential backoff with jitter (5s to 300s cap) on failure, fixed 30s when healthy
+  - Restart rate limiting: max 5 restarts per service per 10-minute window
+  - JSONL telemetry logging with auto-rotation at 1000 lines
+  - Shared state file (/tmp/.health-state.json) consumed by all other scripts
+- `/api/health` endpoint on welcome-server (port 3000) with full system status, auth info, telemetry
+- Self-Healing History section in doctor.sh diagnostics output
+
+### Changed
+- healthcheck.sh reads shared state file instead of basic curl checks
+- shell-init.sh reads health monitor state instead of token-monitor flag file
+- entrypoint.sh launches single health-monitor.sh instead of separate watchdog + token-monitor
+
 ## [0.2.0] - 2026-04-14
 
 ### Added

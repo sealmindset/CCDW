@@ -5,11 +5,6 @@
 - [ ] Test build on Windows 10/11 with Rancher Desktop
 - [ ] Verify Docker socket mounting works on Windows hosts
 
-## Medium Priority
-- [ ] Add VS Code extensions for common languages (Python, TypeScript, Go)
-- [ ] Add Copilot-style Claude extension to code-server
-- [ ] Support Docker socket on macOS (Colima, Docker Desktop, Rancher Desktop)
-
 ## High Priority (RBAC & Identity)
 - [ ] Determine RBAC model: Object_ID-based vs Application-based RBAC
   - Object_ID-based RBAC requires external setup steps outside the container:
@@ -30,6 +25,20 @@
   - Auto-configure GitHub Actions or ArgoCD pipeline
   - Handle secrets/env vars promotion across environments (dev -> staging -> prod)
   - Provide plain-English deployment status ("Your app is live at https://...")
+
+## High Priority (SMS Career Concierge)
+- [ ] Add SMS/Twilio integration to career-lens backend
+  - Webhook endpoint, conversation router, notification service
+  - All config via .env or app settings UI (zero hardcoded values)
+  - Twilio account SID, auth token, phone numbers all configurable
+  - Cloudflare Tunnel sidecar for local webhook delivery
+  - Two-tier approval: ask for major actions, auto for low-stakes
+- [ ] Explore Claude Cowork integration for heavy-lift tasks (research, resume tailoring, interview prep)
+
+## Medium Priority
+- [ ] Add VS Code extensions for common languages (Python, TypeScript, Go)
+- [ ] Add Copilot-style Claude extension to code-server
+- [ ] Support Docker socket on macOS (Colima, Docker Desktop, Rancher Desktop)
 
 ## Low Priority
 - [ ] Add optional TLS/HTTPS for ttyd and code-server
