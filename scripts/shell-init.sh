@@ -98,8 +98,11 @@ elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
 fi
 
 AZ_OK=0
-if [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
-    # API key auth — no Azure CLI needed
+if [ -n "$ANTHROPIC_API_KEY" ]; then
+    # Personal API key — no Azure anything needed
+    AZ_OK=1
+elif [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
+    # Foundry API key auth — no Azure CLI needed
     AZ_OK=1
 elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
     # Token-based auth — check Azure CLI login
@@ -141,7 +144,9 @@ if [ ! -f "$FIRST_RUN_MARKER" ]; then
         echo -e "${BLUE}  Welcome to Claude Code Docker!${NC}"
         echo ""
         [ "$AI_OK" = "1" ] && echo -e "  ${CHECK_PASS} AI Provider  ${GREEN}${AI_LABEL}${NC}" || echo -e "  ${CHECK_FAIL} AI Provider"
-        if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+        if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo -e "  ${CHECK_PASS} Auth          ${GREEN}API Key (personal)${NC}"
+        elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
             [ "$AZ_OK" = "1" ] && echo -e "  ${CHECK_PASS} Azure login" || echo -e "  ${CHECK_FAIL} Azure login"
         fi
         [ "$DOCKER_OK" = "1" ] && echo -e "  ${CHECK_PASS} Docker" || echo -e "  ${CHECK_FAIL} Docker"
@@ -177,9 +182,9 @@ else
     fi
 
     # --- If Azure needs recovery, run wizard BEFORE showing status ---
-    # (skip entirely when using API key auth)
+    # (skip entirely when using personal API key or Foundry API key auth)
     NEEDS_AZ=0
-    if [ -z "$ANTHROPIC_FOUNDRY_API_KEY" ] && [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+    if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$ANTHROPIC_FOUNDRY_API_KEY" ] && [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
         if [ "$AZ_OK" = "1" ]; then
             AZ_WARN=$("$SCRIPTS_DIR/check-azure-token.sh" 2>/dev/null)
             [ -n "$AZ_WARN" ] && NEEDS_AZ=1
@@ -208,8 +213,10 @@ else
         echo -e "  ${CHECK_FAIL} AI Provider"
     fi
 
-    if [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
-        echo -e "  ${CHECK_PASS} Auth          ${GREEN}API Key${NC}"
+    if [ -n "$ANTHROPIC_API_KEY" ]; then
+        echo -e "  ${CHECK_PASS} Auth          ${GREEN}API Key (personal)${NC}"
+    elif [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
+        echo -e "  ${CHECK_PASS} Auth          ${GREEN}API Key (Foundry)${NC}"
     elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
         if [ "$AZ_OK" = "1" ]; then
             echo -e "  ${CHECK_PASS} Azure login"

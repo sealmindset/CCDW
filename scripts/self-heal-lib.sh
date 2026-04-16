@@ -299,21 +299,22 @@ sh_classify() {
     fi
 
     # --- Layer 2: Network ---
-    if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
-        if ! sh_check_endpoint "$ANTHROPIC_FOUNDRY_BASE_URL"; then
-            # Internet works but endpoint doesn't => VPN/network issue
-            echo "vpn_down"
-            return
-        fi
-    elif [ -n "$ANTHROPIC_API_KEY" ]; then
+    # ANTHROPIC_API_KEY takes priority: personal API key bypasses Azure/VPN checks
+    if [ -n "$ANTHROPIC_API_KEY" ]; then
         if ! sh_check_endpoint "https://api.anthropic.com"; then
             echo "endpoint_unreachable"
+            return
+        fi
+    elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+        if ! sh_check_endpoint "$ANTHROPIC_FOUNDRY_BASE_URL"; then
+            echo "vpn_down"
             return
         fi
     fi
 
     # --- Layer 3: Auth ---
-    if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ] && [ -z "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
+    # Skip Azure token check when personal API key is set (no Azure needed)
+    if [ -z "$ANTHROPIC_API_KEY" ] && [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ] && [ -z "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
         if ! sh_check_azure_token; then
             echo "azure_token_expired"
             return

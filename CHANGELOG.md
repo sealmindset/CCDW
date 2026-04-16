@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.1] - 2026-04-16
+
+### Fixed
+- Personal API key (`ANTHROPIC_API_KEY`) now takes priority over Azure Foundry URL in all provider detection
+  - configure-provider.sh: API key checked before Foundry URL
+  - self-heal-lib.sh: health monitor checks api.anthropic.com instead of Azure endpoint when API key set
+  - shell-init.sh: skips Azure login wizard and VPN recovery when API key set
+  - welcome-server.sh: /api/health reports Anthropic API provider when API key set
+- Personal devices no longer require VPN when using a direct Anthropic API key
+
 ## [0.3.0] - 2026-04-15
 
 ### Added

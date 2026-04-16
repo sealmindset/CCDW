@@ -161,14 +161,14 @@ function getHealth() {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     const bedrock = process.env.CLAUDE_CODE_USE_BEDROCK;
 
-    if (foundryUrl) {
-        auth.provider = 'Azure AI Foundry';
-        auth.method = foundryKey ? 'api_key' : 'azure_cli_token';
-        auth.endpoint_reachable = state.failure_type !== 'vpn_down' && state.failure_type !== 'endpoint_unreachable';
-    } else if (apiKey) {
+    if (apiKey) {
         auth.provider = 'Anthropic API';
         auth.method = 'api_key';
         auth.endpoint_reachable = state.failure_type !== 'endpoint_unreachable';
+    } else if (foundryUrl) {
+        auth.provider = 'Azure AI Foundry';
+        auth.method = foundryKey ? 'api_key' : 'azure_cli_token';
+        auth.endpoint_reachable = state.failure_type !== 'vpn_down' && state.failure_type !== 'endpoint_unreachable';
     } else if (bedrock === '1') {
         auth.provider = 'AWS Bedrock';
         auth.method = process.env.AWS_ACCESS_KEY_ID ? 'access_key' : 'none';

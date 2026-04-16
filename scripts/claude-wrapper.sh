@@ -40,8 +40,8 @@ if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$ANTHROPIC_FOUNDRY_BASE_URL" ] && [ "${C
     exit $EXIT_CODE
 fi
 
-# 2. Azure token issues
-if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+# 2. Azure token issues (skip when personal API key is set)
+if [ -z "$ANTHROPIC_API_KEY" ] && [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
     if ! az account show &>/dev/null 2>&1; then
         echo -e "  ${BOLD}Problem:${NC} Your Azure login has expired."
         echo ""
@@ -57,7 +57,12 @@ if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
 fi
 
 # 3. Network / connectivity with VPN detection
-AI_ENDPOINT="${ANTHROPIC_FOUNDRY_BASE_URL:-https://api.anthropic.com}"
+# Personal API key always checks api.anthropic.com (no VPN needed)
+if [ -n "$ANTHROPIC_API_KEY" ]; then
+    AI_ENDPOINT="https://api.anthropic.com"
+else
+    AI_ENDPOINT="${ANTHROPIC_FOUNDRY_BASE_URL:-https://api.anthropic.com}"
+fi
 if ! curl -s --connect-timeout 5 -o /dev/null "$AI_ENDPOINT" 2>/dev/null; then
     # Check if general internet works (VPN detection)
     if curl -s --connect-timeout 5 -o /dev/null https://www.google.com 2>/dev/null; then

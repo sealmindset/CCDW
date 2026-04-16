@@ -58,14 +58,15 @@ print(val if val is not None else '')
 
 # ---------------------------------------------------------------------------
 # Determine which provider to configure
-# Priority: env vars > YAML default
+# Priority: personal API key > Azure Foundry > Bedrock > YAML default
+# ANTHROPIC_API_KEY wins over Foundry so personal devices work without VPN.
 # ---------------------------------------------------------------------------
-if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+if [ -n "$ANTHROPIC_API_KEY" ]; then
+    PROVIDER="api-key"
+elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
     PROVIDER="azure-foundry"
 elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
     PROVIDER="bedrock"
-elif [ -n "$ANTHROPIC_API_KEY" ]; then
-    PROVIDER="api-key"
 else
     PROVIDER=$(read_yaml "default_provider")
 fi
