@@ -23,7 +23,7 @@ NC='\033[0m'
 # If API key auth is set, remove any stale token-based settings
 # (settings.json with apiKeyHelper would override the API key)
 # ---------------------------------------------------------------------------
-if [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ] && [ -f "$SETTINGS_FILE" ]; then
+if { [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ] || [ -n "$ANTHROPIC_API_KEY" ]; } && [ -f "$SETTINGS_FILE" ]; then
     if grep -q "apiKeyHelper" "$SETTINGS_FILE" 2>/dev/null; then
         rm -f "$SETTINGS_FILE" "$TOKEN_SCRIPT"
     fi
