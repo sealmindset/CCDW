@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.4.0] - 2026-04-16
+
+### Added
+- Workshop: Business User IDE on port 9200 -- GUI front-end to /make-it
+  - No-terminal experience: describe an idea in chat, watch it build, explore and ship
+  - 6 views: Home (project list), Chat (ideation), Build (progress), Explore (dashboard), Iterate (changes), Ship (go live)
+  - Bifrost progress bar: MCU-inspired crystalline bridge with prismatic shimmer, phase circles, Claude walker icon, bug encounters
+  - WebSocket CLI bridge: real-time streaming between browser and Claude Code CLI
+  - Activity feed with auto-categorization (building, testing, auth, database, infra)
+  - Build map: component cards that light up as features are completed
+  - Iterate view: request board for tracking changes + chat panel for quick tweaks
+  - Ship wizard: readiness checklist, deployment mode selection (Docker, ZIP, GitHub), Go Live flow
+  - Project discovery API: auto-detects /make-it projects and their build state
+- Workshop integrated into Docker container infrastructure
+  - Entrypoint launches Workshop server as background service
+  - Health monitor tracks Workshop with auto-restart remediation on crash
+  - Welcome dashboard shows Workshop as primary card with health status
+  - Getting Started steps updated to guide users to Workshop first
+- CLI bridge uses bidirectional stream-json (`-p --input-format stream-json --output-format stream-json`)
+  - Structured JSON events replace fragile TUI/ANSI text parsing
+  - Tool-use events mapped to user-friendly activity messages (e.g., "Creating app/page.tsx")
+  - Bash commands translated to plain language ("Installing dependencies...", "Running tests...")
+- `/api/auth-status` endpoint: detects Anthropic API key, Azure Foundry (key + token), settings.json
+- Auth gate: banner shown on Workshop home when no AI credentials configured, links to terminal
+
 ## [0.3.1] - 2026-04-16
 
 ### Fixed

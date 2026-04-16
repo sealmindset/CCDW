@@ -385,6 +385,12 @@
       });
     });
 
+    // Auth banner terminal link
+    document.getElementById('authTerminalLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.open(`http://${window.location.hostname}:7681`, '_blank');
+    });
+
     // Walkthrough
     document.getElementById('btnWalkthroughSkip').addEventListener('click', () => {
       document.getElementById('walkthroughOverlay').classList.add('hidden');
@@ -396,10 +402,42 @@
   }
 
   // ============================================================
+  // AUTH GATE
+  // ============================================================
+
+  async function checkAuth() {
+    const banner = document.getElementById('authBanner');
+    try {
+      const res = await fetch('/api/auth-status');
+      const auth = await res.json();
+
+      if (!auth.configured) {
+        // Show setup banner
+        if (banner) {
+          banner.classList.remove('hidden');
+          const detail = banner.querySelector('.auth-banner-detail');
+          if (detail) detail.textContent = auth.detail;
+        }
+        setStatus('Setup needed', 'error');
+        return false;
+      }
+
+      // Auth OK -- hide banner, show provider in status
+      if (banner) banner.classList.add('hidden');
+      setStatus(auth.provider, '');
+      return true;
+    } catch {
+      // Can't reach server -- don't block, just warn
+      setStatus('Connecting...', 'busy');
+      return true;
+    }
+  }
+
+  // ============================================================
   // INITIALIZATION
   // ============================================================
 
-  function init() {
+  async function init() {
     // Create chat instances
     mainChat = new ChatController('chatMessages', 'chatInput', 'btnSend', 'quickReplies');
     mainChat.onSend = (text) => {
@@ -422,6 +460,9 @@
     // Setup
     setupButtons();
     setupCLIBridge();
+
+    // Check credentials before showing projects
+    await checkAuth();
     loadProjects();
 
     // Show home view

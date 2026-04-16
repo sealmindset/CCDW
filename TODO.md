@@ -1,5 +1,12 @@
 # TODO
 
+## High Priority (Workshop)
+- [ ] End-to-end test: create project through Workshop UI, verify CLI bridge flow
+- [ ] Browser test: verify all 6 views render correctly, transitions animate
+- [ ] Bifrost polish: test animation timing, walker movement, bug defeat sequence
+- [ ] Workshop auth: pass container AI credentials through to spawned CLI processes
+- [ ] Workshop error recovery: handle CLI crash mid-build, offer retry in UI
+
 ## High Priority
 - [ ] Test build on Windows 10/11 with Docker Desktop
 - [ ] Test build on Windows 10/11 with Rancher Desktop

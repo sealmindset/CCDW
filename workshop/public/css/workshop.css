@@ -79,6 +79,8 @@ body {
   background: var(--bg-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  display: flex;
+  flex-direction: column;
 }
 
 /* --- Header --- */
@@ -183,7 +185,7 @@ body {
 
 /* --- Main Content --- */
 .workshop-main {
-  height: calc(100vh - 48px);
+  flex: 1;
   overflow: hidden;
   position: relative;
 }
@@ -209,6 +211,46 @@ body {
   opacity: 0;
   transform: translateX(-20px);
   pointer-events: none;
+}
+
+/* --- Auth Banner --- */
+.auth-banner {
+  background: var(--warning-soft);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+  padding: var(--space-sm) var(--space-lg);
+  flex-shrink: 0;
+}
+
+.auth-banner.hidden {
+  display: none;
+}
+
+.auth-banner-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  font-size: 0.85rem;
+  color: var(--warning);
+}
+
+.auth-banner-content strong {
+  color: var(--text-primary);
+}
+
+.auth-banner-detail {
+  color: var(--text-secondary);
+}
+
+.auth-banner-link {
+  margin-left: auto;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.auth-banner-link:hover {
+  text-decoration: underline;
 }
 
 /* --- Home View --- */

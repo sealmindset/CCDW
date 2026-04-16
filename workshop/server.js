@@ -3,14 +3,15 @@
  * Business User IDE for Claude Code Docker
  *
  * HTTP server + WebSocket for real-time CLI orchestration.
- * Serves the Workshop SPA and bridges the browser to Claude Code CLI.
+ * Serves the Workshop SPA and bridges the browser to Claude Code CLI
+ * using bidirectional stream-json for structured, reliable communication.
  */
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 
 const PORT = parseInt(process.env.WORKSHOP_PORT || '9200', 10);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -35,6 +36,61 @@ const MIME_TYPES = {
 const sessions = new Map();
 
 // ---------------------------------------------------------------------------
+// Credential Detection
+// ---------------------------------------------------------------------------
+function detectAuthStatus() {
+  const result = { configured: false, provider: 'none', detail: '' };
+
+  // Check for direct API key (highest priority)
+  if (process.env.ANTHROPIC_API_KEY) {
+    result.configured = true;
+    result.provider = 'Anthropic API';
+    result.detail = 'API key configured';
+    return result;
+  }
+
+  // Check for Azure AI Foundry with API key
+  if (process.env.ANTHROPIC_FOUNDRY_BASE_URL && process.env.ANTHROPIC_FOUNDRY_API_KEY) {
+    result.configured = true;
+    result.provider = 'Azure AI Foundry (API Key)';
+    result.detail = 'Foundry endpoint + API key configured';
+    return result;
+  }
+
+  // Check for Azure AI Foundry with token auth
+  if (process.env.ANTHROPIC_FOUNDRY_BASE_URL) {
+    try {
+      execSync('az account get-access-token --resource https://cognitiveservices.azure.com 2>/dev/null', { timeout: 5000 });
+      result.configured = true;
+      result.provider = 'Azure AI Foundry (Token)';
+      result.detail = 'Foundry endpoint + Azure token active';
+    } catch {
+      result.configured = false;
+      result.provider = 'Azure AI Foundry';
+      result.detail = 'Foundry endpoint set but Azure token expired or missing';
+    }
+    return result;
+  }
+
+  // Check for settings.json with provider config
+  const settingsPath = '/home/coder/.claude/settings.json';
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      if (settings.env && (settings.env.ANTHROPIC_API_KEY || settings.env.ANTHROPIC_FOUNDRY_BASE_URL)) {
+        result.configured = true;
+        result.provider = 'Settings file';
+        result.detail = 'Credentials in settings.json';
+        return result;
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  result.detail = 'No AI provider credentials found. Open the Web Terminal and run "claude" to set up.';
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // HTTP Server
 // ---------------------------------------------------------------------------
 const server = http.createServer((req, res) => {
@@ -44,6 +100,14 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', service: 'workshop', sessions: sessions.size }));
+    return;
+  }
+
+  // API: Auth status (credential check)
+  if (url.pathname === '/api/auth-status') {
+    const auth = detectAuthStatus();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(auth));
     return;
   }
 
@@ -71,7 +135,15 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 wss.on('connection', (ws) => {
   const sessionId = crypto.randomUUID();
-  const session = { id: sessionId, ws, process: null, phase: 'idle', projectDir: null };
+  const session = {
+    id: sessionId,
+    ws,
+    process: null,
+    phase: 'idle',
+    projectDir: null,
+    claudeSessionId: null,  // for --resume
+    lineBuf: '',            // line buffer for stream-json parsing
+  };
   sessions.set(sessionId, session);
 
   ws.send(JSON.stringify({
@@ -90,7 +162,6 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    // Kill CLI process if still running
     if (session.process) {
       session.process.kill('SIGTERM');
     }
@@ -143,7 +214,6 @@ function startProject(session, msg) {
   const projectName = sanitizeProjectName(msg.name || 'my-app');
   const projectDir = path.join(PROJECTS_DIR, projectName);
 
-  // Create project directory if it doesn't exist
   if (!fs.existsSync(projectDir)) {
     fs.mkdirSync(projectDir, { recursive: true });
   }
@@ -157,7 +227,6 @@ function startProject(session, msg) {
     message: 'Starting your project...'
   }));
 
-  // Spawn Claude Code CLI with /make-it
   spawnCLI(session, projectDir, '/make-it');
 }
 
@@ -185,36 +254,81 @@ function runSkill(session, skill) {
   spawnCLI(session, session.projectDir, skill);
 }
 
-function spawnCLI(session, cwd, initialInput) {
-  // Kill any existing process
+/**
+ * Spawn Claude Code CLI with bidirectional stream-json.
+ *
+ * Uses: claude -p --output-format stream-json --input-format stream-json
+ *       --permission-mode auto --include-partial-messages
+ *
+ * This gives us structured JSON events on stdout and accepts JSON messages
+ * on stdin, avoiding all the TUI/ANSI parsing complexity.
+ */
+function spawnCLI(session, cwd, initialPrompt) {
   if (session.process) {
     session.process.kill('SIGTERM');
+    session.process = null;
   }
 
-  const proc = spawn('claude', ['--no-browser'], {
+  session.lineBuf = '';
+
+  const args = [
+    '-p',
+    '--output-format', 'stream-json',
+    '--input-format', 'stream-json',
+    '--include-partial-messages',
+    '--permission-mode', 'auto',
+    '--bare',
+  ];
+
+  const proc = spawn('claude', args, {
     cwd,
-    env: { ...process.env, TERM: 'dumb', NO_COLOR: '1' },
+    env: { ...process.env, NO_COLOR: '1' },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
   session.process = proc;
 
-  // Buffer for parsing CLI output
-  let outputBuffer = '';
+  // Accumulate partial text for the current assistant message
+  let currentText = '';
 
   proc.stdout.on('data', (data) => {
-    const text = data.toString();
-    outputBuffer += text;
-    parseCLIOutput(session, text, outputBuffer);
+    session.lineBuf += data.toString();
+
+    // Stream-json outputs one JSON object per line
+    let newlineIdx;
+    while ((newlineIdx = session.lineBuf.indexOf('\n')) !== -1) {
+      const line = session.lineBuf.slice(0, newlineIdx).trim();
+      session.lineBuf = session.lineBuf.slice(newlineIdx + 1);
+
+      if (!line) continue;
+
+      try {
+        const event = JSON.parse(line);
+        handleStreamEvent(session, event, { getText: () => currentText, setText: (t) => { currentText = t; } });
+      } catch {
+        // Not valid JSON -- could be a startup message, ignore
+      }
+    }
   });
 
   proc.stderr.on('data', (data) => {
-    const text = data.toString();
-    // Don't forward raw errors -- translate them
+    const text = data.toString().trim();
+    if (!text) return;
+    // Forward translated errors to the browser
     session.ws.send(JSON.stringify({
       type: 'activity',
       category: 'system',
       message: translateError(text)
+    }));
+  });
+
+  proc.on('error', (err) => {
+    session.process = null;
+    session.ws.send(JSON.stringify({
+      type: 'error',
+      message: err.code === 'ENOENT'
+        ? 'Claude Code CLI not found. Is it installed?'
+        : `Failed to start: ${err.message}`
     }));
   });
 
@@ -228,18 +342,27 @@ function spawnCLI(session, cwd, initialInput) {
     }));
   });
 
-  // Send the initial skill command after a brief delay
-  if (initialInput) {
-    setTimeout(() => {
-      proc.stdin.write(initialInput + '\n');
-    }, 1000);
+  // Send the initial prompt as a stream-json user message
+  if (initialPrompt) {
+    const inputMsg = JSON.stringify({
+      type: 'user_message',
+      content: initialPrompt,
+    });
+    proc.stdin.write(inputMsg + '\n');
   }
 }
 
+/**
+ * Send a user message to the running CLI process via stream-json.
+ */
 function sendToProcess(session, text) {
-  if (session.process && session.process.stdin.writable) {
-    session.process.stdin.write(text + '\n');
-  }
+  if (!session.process || !session.process.stdin.writable) return;
+
+  const msg = JSON.stringify({
+    type: 'user_message',
+    content: text,
+  });
+  session.process.stdin.write(msg + '\n');
 }
 
 function cancelProcess(session) {
@@ -252,60 +375,174 @@ function cancelProcess(session) {
 }
 
 // ---------------------------------------------------------------------------
-// CLI Output Parser -- Translates raw output to Workshop events
+// Stream-JSON Event Handler
+// Maps Claude Code stream events to Workshop UI events.
+//
+// Known event types from stream-json:
+//   message_start, content_block_start, content_block_delta,
+//   content_block_stop, message_delta, message_stop,
+//   result (final), tool_use, tool_result
 // ---------------------------------------------------------------------------
-function parseCLIOutput(session, chunk, fullBuffer) {
-  // Detect phase transitions from /make-it output
-  const phasePatterns = [
-    { pattern: /ideation|describe.*app|what.*build/i, phase: 'ideation', label: 'Understanding your idea' },
-    { pattern: /design|architecture|stack|database/i, phase: 'design', label: 'Designing the architecture' },
-    { pattern: /building|generating|creating.*file|writing.*code/i, phase: 'building', label: 'Building your app' },
-    { pattern: /build-verify|testing|smoke.?test|verif/i, phase: 'verifying', label: 'Testing everything' },
-    { pattern: /try-it|handoff|your app is/i, phase: 'complete', label: 'Ready to explore' },
-  ];
+function handleStreamEvent(session, event, textAcc) {
+  const type = event.type;
 
-  // Check for phase changes
-  for (const { pattern, phase, label } of phasePatterns) {
-    if (pattern.test(chunk) && session.phase !== phase) {
-      session.phase = phase;
-      session.ws.send(JSON.stringify({ type: 'phase-change', phase, message: label }));
-    }
+  // --- Assistant text content (partial and complete) ---
+  if (type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+    const chunk = event.delta.text || '';
+    textAcc.setText(textAcc.getText() + chunk);
+    // Don't flood the browser -- we'll send the full text on block_stop
+    return;
   }
 
-  // Detect questions (lines ending with ?)
-  const lines = chunk.split('\n').filter(l => l.trim());
-  for (const line of lines) {
-    const trimmed = line.trim();
+  if (type === 'content_block_stop') {
+    const fullText = textAcc.getText();
+    textAcc.setText('');
 
-    // Skip empty lines and control characters
-    if (!trimmed || /^[\x00-\x1f]+$/.test(trimmed)) continue;
+    if (fullText) {
+      processAssistantText(session, fullText);
+    }
+    return;
+  }
 
-    // Detect yes/no questions for quick-reply buttons
-    if (/\?\s*$/.test(trimmed)) {
-      const isYesNo = /\b(yes|no|y\/n)\b/i.test(trimmed) ||
-                      /\b(do you|will|should|is this|does|are you|would you)\b/i.test(trimmed);
-
-      session.ws.send(JSON.stringify({
-        type: 'question',
-        text: cleanTerminalOutput(trimmed),
-        quickReplies: isYesNo ? ['Yes', 'No'] : null
-      }));
-    } else if (trimmed.length > 10) {
-      // Regular output -- send as activity
+  // --- Tool use (shows what Claude is doing) ---
+  if (type === 'content_block_start' && event.content_block?.type === 'tool_use') {
+    const toolName = event.content_block.name || 'unknown';
+    const activity = toolToActivity(toolName, event.content_block.input);
+    if (activity) {
       session.ws.send(JSON.stringify({
         type: 'activity',
-        category: detectCategory(trimmed),
-        message: cleanTerminalOutput(trimmed)
+        category: activity.category,
+        message: activity.message,
+      }));
+    }
+    return;
+  }
+
+  // --- Tool result (outcome of a tool call) ---
+  if (type === 'tool_result' || (type === 'content_block_start' && event.content_block?.type === 'tool_result')) {
+    // Could check for errors here
+    return;
+  }
+
+  // --- Message complete ---
+  if (type === 'message_stop' || type === 'result') {
+    // Session ID from result for --resume
+    if (event.session_id) {
+      session.claudeSessionId = event.session_id;
+    }
+    return;
+  }
+}
+
+/**
+ * Process a complete assistant text block.
+ * Detects phase changes, questions, and general updates.
+ */
+function processAssistantText(session, text) {
+  // Phase detection
+  const phasePatterns = [
+    { pattern: /ideation|describe.*app|what.*build|what kind/i, phase: 'ideation', label: 'Understanding your idea' },
+    { pattern: /design|architecture|stack|planning|blueprint/i, phase: 'design', label: 'Designing the architecture' },
+    { pattern: /building|generating|creating.*file|writing.*code|implementing/i, phase: 'building', label: 'Building your app' },
+    { pattern: /build-verify|testing|smoke.?test|verification|verif/i, phase: 'verifying', label: 'Testing everything' },
+    { pattern: /try-it|your app is.*running|ready to explore|everything.*(pass|look)/i, phase: 'complete', label: 'Ready to explore' },
+  ];
+
+  for (const { pattern, phase, label } of phasePatterns) {
+    if (pattern.test(text) && session.phase !== phase) {
+      session.phase = phase;
+      session.ws.send(JSON.stringify({ type: 'phase-change', phase, message: label }));
+      break;
+    }
+  }
+
+  // Question detection: look for a question at the end of the text
+  const lines = text.split('\n').filter(l => l.trim());
+  const lastLine = lines[lines.length - 1]?.trim() || '';
+
+  if (/\?\s*$/.test(lastLine)) {
+    const isYesNo = /\b(yes|no|y\/n)\b/i.test(lastLine) ||
+                    /\b(do you|will you|should|is this|does|are you|would you|want me)\b/i.test(lastLine);
+
+    // Detect option-style questions (A, B, C, D patterns)
+    const optionMatch = text.match(/\*\*([A-D])\.\*\*|^([A-D])\.\s/gm);
+    let quickReplies = null;
+    if (optionMatch && optionMatch.length >= 2) {
+      quickReplies = optionMatch.map(m => m.replace(/\*\*/g, '').trim().charAt(0));
+    } else if (isYesNo) {
+      quickReplies = ['Yes', 'No'];
+    }
+
+    session.ws.send(JSON.stringify({
+      type: 'question',
+      text: text,
+      quickReplies,
+    }));
+  } else {
+    // General assistant message -- send as activity or AI message
+    // Long messages go as questions (they likely need a response)
+    // Short messages go as activity feed items
+    if (text.length > 200) {
+      session.ws.send(JSON.stringify({
+        type: 'question',
+        text: text,
+        quickReplies: null,
+      }));
+    } else {
+      session.ws.send(JSON.stringify({
+        type: 'activity',
+        category: detectCategory(text),
+        message: text.length > 120 ? text.substring(0, 120) + '...' : text,
       }));
     }
   }
+}
+
+/**
+ * Map tool names to user-friendly activity messages.
+ */
+function toolToActivity(toolName, input) {
+  const toolMap = {
+    'Write': { category: 'building', msg: (i) => `Creating ${shortPath(i?.file_path)}` },
+    'Edit': { category: 'building', msg: (i) => `Editing ${shortPath(i?.file_path)}` },
+    'Read': { category: 'general', msg: (i) => `Reading ${shortPath(i?.file_path)}` },
+    'Bash': { category: 'infra', msg: (i) => bashToMessage(i?.command) },
+    'Glob': { category: 'general', msg: () => 'Searching for files...' },
+    'Grep': { category: 'general', msg: () => 'Searching code...' },
+    'Agent': { category: 'building', msg: () => 'Working on a subtask...' },
+    'TodoWrite': { category: 'general', msg: () => 'Updating task list...' },
+  };
+
+  const handler = toolMap[toolName];
+  if (!handler) return { category: 'general', message: `Running ${toolName}...` };
+
+  return { category: handler.category, message: handler.msg(input || {}) };
+}
+
+function shortPath(filePath) {
+  if (!filePath) return 'a file';
+  const parts = filePath.split('/');
+  return parts.length > 2 ? parts.slice(-2).join('/') : filePath;
+}
+
+function bashToMessage(command) {
+  if (!command) return 'Running a command...';
+  if (/docker|compose/i.test(command)) return 'Setting up Docker services...';
+  if (/npm|yarn|pip|install/i.test(command)) return 'Installing dependencies...';
+  if (/test|pytest|playwright/i.test(command)) return 'Running tests...';
+  if (/git/i.test(command)) return 'Working with git...';
+  if (/mkdir|touch|cp|mv/i.test(command)) return 'Organizing project files...';
+  if (/curl|wget/i.test(command)) return 'Fetching resources...';
+  if (/alembic|migrate/i.test(command)) return 'Running database migrations...';
+  if (/seed/i.test(command)) return 'Seeding the database...';
+  return 'Running a command...';
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function detectCategory(text) {
-  if (/creat|generat|writ|build|add/i.test(text)) return 'building';
+  if (/creat|generat|writ|build|add|implement/i.test(text)) return 'building';
   if (/test|verif|check|pass|fail/i.test(text)) return 'testing';
   if (/fix|error|issue|bug/i.test(text)) return 'fixing';
   if (/auth|login|oidc|permission/i.test(text)) return 'auth';
@@ -314,20 +551,12 @@ function detectCategory(text) {
   return 'general';
 }
 
-function cleanTerminalOutput(text) {
-  // Strip ANSI escape codes, control chars, spinner chars
-  return text
-    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
-    .replace(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏●◯⣾⣽⣻⢿⡿⣟⣯⣷]/g, '')
-    .trim();
-}
-
 function translateError(text) {
   if (/ENOENT/i.test(text)) return 'Setting up a missing piece...';
   if (/ECONNREFUSED/i.test(text)) return 'Waiting for a service to start...';
   if (/permission denied/i.test(text)) return 'Adjusting permissions...';
   if (/timeout/i.test(text)) return 'Taking a bit longer than expected...';
+  if (/ANTHROPIC_API_KEY|auth|credential/i.test(text)) return 'Checking credentials...';
   return 'Working through something...';
 }
 
@@ -355,7 +584,6 @@ function serveStatic(pathname, res) {
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      // SPA fallback -- serve index.html for unmatched routes
       if (err.code === 'ENOENT' && !ext) {
         fs.readFile(path.join(PUBLIC_DIR, 'index.html'), (err2, html) => {
           if (err2) { res.writeHead(500); res.end('Internal Error'); return; }
@@ -410,22 +638,18 @@ function projectStatus(projectName, res) {
 
   result.exists = true;
 
-  // Read state file
   try {
     result.state = fs.readFileSync(path.join(dir, '.make-it-state.md'), 'utf-8');
   } catch { result.state = null; }
 
-  // Read app context
   try {
     result.context = JSON.parse(fs.readFileSync(path.join(dir, '.make-it', 'app-context.json'), 'utf-8'));
   } catch { result.context = null; }
 
-  // Read TODO
   try {
     result.todo = fs.readFileSync(path.join(dir, 'TODO.md'), 'utf-8');
   } catch { result.todo = null; }
 
-  // Read CHANGELOG
   try {
     result.changelog = fs.readFileSync(path.join(dir, 'CHANGELOG.md'), 'utf-8');
   } catch { result.changelog = null; }

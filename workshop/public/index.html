@@ -37,6 +37,18 @@
   <!-- ============================================================ -->
   <main class="workshop-main">
 
+    <!-- AUTH BANNER (shown when no AI credentials configured) -->
+    <div class="auth-banner hidden" id="authBanner">
+      <div class="auth-banner-content">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div>
+          <strong>AI provider not configured.</strong>
+          <span class="auth-banner-detail">Open the Web Terminal and run "claude" to set up your API key.</span>
+        </div>
+        <a class="auth-banner-link" id="authTerminalLink" href="#">Open Terminal</a>
+      </div>
+    </div>
+
     <!-- HOME VIEW: Project list + New Project -->
     <section class="view view-home active" id="viewHome">
       <div class="home-hero">
