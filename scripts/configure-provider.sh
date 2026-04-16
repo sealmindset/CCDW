@@ -139,10 +139,14 @@ print(json.dumps(settings, indent=2))
             # --- Token-based auth: generate Azure CLI token helper ---
             cat > "$TOKEN_SCRIPT" <<TOKENEOF
 #!/bin/bash
-if ! az account get-access-token > /dev/null 2>&1; then
-    az login --use-device-code > /dev/null 2>&1
+# Fetch Azure token for Claude Code. Fails fast if not logged in
+# (never attempts interactive az login -- that would hang in subprocess).
+TOKEN=\$(az account get-access-token --resource "${TOKEN_RESOURCE}" --query accessToken -o tsv 2>/dev/null)
+if [ -z "\$TOKEN" ]; then
+    echo "ERROR: Azure token expired or not logged in. Run: az login --use-device-code" >&2
+    exit 1
 fi
-az account get-access-token --resource "${TOKEN_RESOURCE}" --query accessToken -o tsv
+echo "\$TOKEN"
 TOKENEOF
             chmod +x "$TOKEN_SCRIPT"
 

@@ -131,17 +131,20 @@
   }
 
   /**
-   * Resume working on an existing project via /resume-it.
+   * Resume working on an existing project.
+   * Uses startProject which auto-detects /make-it vs /resume-it.
    */
   function resumeProject(name) {
     state.projectName = name;
-    window.cliBridge.openProject(name);
-    showView('iterate');
-    iterateChat.clear();
-    iterateChat.addMessage('ai', `Welcome back to **${name}**! What would you like to change?`);
-    window.board.render();
-    window.cliBridge.resumeIt();
+
+    showView('chat');
+    mainChat.clear();
+    mainChat.showStartupTips(name);
+
     setStatus('Resuming...', 'busy');
+
+    // startProject auto-detects: empty dir → /make-it, has code → /resume-it
+    window.cliBridge.startProject(name);
   }
 
   async function loadProjectStatus(name) {
@@ -188,7 +191,14 @@
   // NEW PROJECT FLOW
   // ============================================================
 
-  function startNewProject() {
+  async function startNewProject() {
+    setStatus('Checking environment...', 'busy');
+
+    // Run preflight before showing the project dialog
+    const ready = await runPreflightCheck();
+    if (!ready) return; // Setup wizard is showing -- it will call startNewProject() again
+
+    setStatus('Ready', '');
     const dialog = document.getElementById('dialogNewProject');
     const input = document.getElementById('inputProjectName');
     input.value = '';
@@ -207,11 +217,11 @@
     // Switch to chat view
     showView('chat');
     mainChat.clear();
-    mainChat.addWelcome(name);
+    mainChat.showStartupTips(name);
 
-    setStatus('Chatting', 'busy');
+    setStatus('Starting project...', 'busy');
 
-    // Connect to CLI and start the project
+    // Start the project -- /make-it's response will be the first chat message
     window.cliBridge.startProject(name);
   }
 
@@ -225,20 +235,28 @@
     bridge.on('session-ready', () => {
       setStatus('Connected', '');
       hideConnectionOverlay();
+      updateBootstrapStep('ws', 'pass', 'Connected');
+      bootstrapLog('WebSocket connected (session: ' + (bridge.sessionId || '?').slice(0, 8) + ')', 'ok');
     });
 
     bridge.on('disconnected', () => {
       setStatus('Reconnecting...', 'busy');
-      showConnectionOverlay('Reconnecting to Workshop server...');
+      // Don't show blocking overlay for brief disconnects -- just update status
+      updateBootstrapStep('ws', 'checking', 'Reconnecting...');
+      bootstrapLog('WebSocket disconnected, attempting reconnect...', 'warn');
     });
 
     bridge.on('reconnect-failed', () => {
       setStatus('Disconnected', 'error');
-      showConnectionOverlay('Connection lost. Check that the container is running.', true);
+      showConnectionOverlay('Workshop lost its connection. Click retry or check the bootstrap panel (gear icon) for details.', true);
+      updateBootstrapStep('ws', 'fail', 'Connection lost');
+      bootstrapLog('WebSocket reconnect failed after 5 attempts', 'err');
     });
 
     bridge.on('phase-change', (msg) => {
       state.phase = msg.phase;
+      updateBootstrapStep('skill', 'pass', msg.message || msg.phase);
+      bootstrapLog('Phase: ' + msg.phase + ' -- ' + (msg.message || ''));
 
       // Map phases to Bifrost
       const bifrostPhases = {
@@ -253,6 +271,7 @@
         // If we're leaving chat phase, transition to build view
         if (msg.phase === 'design' || msg.phase === 'building') {
           if (state.currentView === 'chat') {
+            mainChat.stopTips();
             transitionToBuild();
           }
         }
@@ -272,9 +291,17 @@
     });
 
     bridge.on('question', (msg) => {
+      // If we're in build view and a question comes in, switch to chat to show it
+      if (state.currentView === 'build') {
+        showView('chat');
+        mainChat.clear();
+      }
+
       // Show question in chat
-      if (state.currentView === 'chat') {
+      if (state.currentView === 'chat' || state.currentView === 'build') {
+        mainChat.stopTips();
         mainChat.hideTyping();
+        mainChat.clearStatus();
         mainChat.addMessage('ai', msg.text);
         if (msg.quickReplies) {
           mainChat.setQuickReplies(msg.quickReplies);
@@ -291,14 +318,11 @@
     bridge.on('activity', (msg) => {
       // Add to build dashboard feed
       window.dashboard.addFeedItem(msg.category || 'general', msg.message);
+      bootstrapLog(msg.message);
 
-      // If in chat view and it's early, show as chat message
-      if (state.currentView === 'chat' && state.phase === 'ideation') {
-        // Don't flood chat with activity -- only meaningful messages
-        if (msg.message.length > 20 && !msg.message.startsWith('[')) {
-          mainChat.hideTyping();
-          mainChat.addMessage('ai', msg.message);
-        }
+      // In chat view: show as a muted status line (not a chat bubble)
+      if (state.currentView === 'chat') {
+        mainChat.setStatus(msg.message);
       }
     });
 
@@ -315,11 +339,36 @@
         iterateChat.hideTyping();
         iterateChat.addMessage('ai', msg.message || 'Done! The change has been applied.');
         setStatus('Ready', '');
+      } else if (msg.phase === 'complete') {
+        // Build fully finished
+        window.bifrost.complete();
+        window.dashboard.completeAll();
+        window.dashboard.showTryIt();
+        setStatus('Ready to explore!', '');
+      } else if (msg.phase === 'ideation' || msg.phase === 'design') {
+        // Paused during ideation/design (safety valve or waiting)
+        if (state.currentView === 'chat') {
+          mainChat.hideTyping();
+          mainChat.clearStatus();
+        }
+        setStatus(msg.message || 'Waiting for your input', '');
+      } else if (msg.phase === 'building' || msg.phase === 'verifying') {
+        // Build paused (safety valve hit)
+        if (state.currentView === 'build') {
+          window.dashboard.setStatus(msg.message || 'Paused');
+        }
+        setStatus(msg.message || 'Paused', '');
       }
+    });
+
+    bridge.on('debug', (msg) => {
+      const level = msg.source === 'stderr' ? 'warn' : 'info';
+      bootstrapLog(`[${msg.source}] ${msg.message}`, level);
     });
 
     bridge.on('error', (msg) => {
       const errorMsg = msg?.message || 'Something went wrong.';
+      bootstrapLog('Error: ' + errorMsg, 'err');
 
       // Show bug on Bifrost during build
       if (state.currentView === 'build') {
@@ -329,6 +378,7 @@
 
       // Show error in active chat with retry
       if (state.currentView === 'chat') {
+        mainChat.stopTips();
         mainChat.hideTyping();
         mainChat.addError(errorMsg, () => {
           if (state.projectName) {
@@ -354,8 +404,7 @@
   // ============================================================
 
   function transitionToBuild() {
-    // Initialize build map
-    window.dashboard.initBuildMap();
+    window.dashboard.reset();
     window.bifrost.reset();
 
     showView('build');
@@ -528,7 +577,16 @@
 
     // Setup
     setupButtons();
+    setupBootstrapPanel();
     setupCLIBridge();
+
+    // Run preflight into bootstrap panel (don't block UI)
+    runPreflightCheck().then(ready => {
+      if (!ready) {
+        // Don't show the setup overlay on load -- just mark the gear icon
+        document.getElementById('setupOverlay').classList.add('hidden');
+      }
+    });
 
     // Check credentials before showing projects
     await checkAuth();
@@ -567,6 +625,178 @@
   function hideConnectionOverlay() {
     const overlay = document.getElementById('connectionOverlay');
     if (overlay) overlay.classList.add('hidden');
+  }
+
+  // ============================================================
+  // BOOTSTRAP PANEL + PREFLIGHT
+  // ============================================================
+
+  const bootstrapSteps = [
+    { id: 'network',  label: 'Network / VPN',       detail: 'Checking connectivity...' },
+    { id: 'auth',     label: 'AI Provider Login',    detail: 'Checking credentials...' },
+    { id: 'cli',      label: 'Claude Code CLI',      detail: 'Checking installation...' },
+    { id: 'ws',       label: 'WebSocket Connection',  detail: 'Waiting...' },
+    { id: 'skill',    label: 'Skill Ready',           detail: 'Waiting...' },
+  ];
+
+  let bootstrapState = {}; // { stepId: { status, detail } }
+  let bootstrapLogLines = [];
+
+  function bootstrapLog(msg, level) {
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+    bootstrapLogLines.push({ time, msg, level: level || 'info' });
+    if (bootstrapLogLines.length > 100) bootstrapLogLines.shift();
+    renderBootstrapLog();
+  }
+
+  function updateBootstrapStep(id, status, detail) {
+    bootstrapState[id] = { status, detail };
+    renderBootstrapSequence();
+
+    // Update the header icon -- show red dot if any step fails
+    const btn = document.getElementById('btnBootstrap');
+    const hasFail = Object.values(bootstrapState).some(s => s.status === 'fail');
+    btn.classList.toggle('has-issue', hasFail);
+  }
+
+  function renderBootstrapSequence() {
+    const el = document.getElementById('bootstrapSequence');
+    el.innerHTML = bootstrapSteps.map(step => {
+      const s = bootstrapState[step.id] || { status: 'pending', detail: step.detail };
+      const iconMap = { pass: '\u2713', fail: '\u2717', checking: '\u2026', pending: '\u2022' };
+      const icon = iconMap[s.status] || '\u2022';
+
+      let actionHtml = '';
+      if (s.status === 'fail') {
+        if (step.id === 'auth' || step.id === 'network') {
+          actionHtml = `<span class="bootstrap-step-action" onclick="window.open('http://${window.location.hostname}:7681','_blank')">Open Terminal</span>`;
+        }
+      }
+
+      return `<div class="bootstrap-step">
+        <div class="bootstrap-step-icon ${s.status}">${icon}</div>
+        <div class="bootstrap-step-body">
+          <div class="bootstrap-step-label">${step.label}</div>
+          <div class="bootstrap-step-detail">${s.detail}</div>
+          ${actionHtml}
+        </div>
+        <div class="bootstrap-step-connector"></div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderBootstrapLog() {
+    const el = document.getElementById('bootstrapLogEntries');
+    if (!el) return;
+    el.innerHTML = bootstrapLogLines.map(entry =>
+      `<div class="bootstrap-log-entry ${entry.level === 'ok' ? 'log-ok' : entry.level === 'err' ? 'log-err' : entry.level === 'warn' ? 'log-warn' : ''}">` +
+      `<span class="log-time">${entry.time}</span>${entry.msg}</div>`
+    ).join('');
+    el.scrollTop = el.scrollHeight;
+  }
+
+  /**
+   * Run preflight checks, update bootstrap panel, and return readiness.
+   */
+  async function runPreflightCheck() {
+    // Mark all as checking
+    ['network', 'auth', 'cli'].forEach(id => updateBootstrapStep(id, 'checking', 'Checking...'));
+    bootstrapLog('Running preflight checks...');
+
+    try {
+      const res = await fetch('/api/preflight');
+      const data = await res.json();
+
+      // Update each step
+      for (const [key, check] of Object.entries(data.checks)) {
+        updateBootstrapStep(key, check.pass ? 'pass' : 'fail', check.detail);
+        bootstrapLog(`${check.label}: ${check.pass ? 'OK' : 'FAILED'} -- ${check.detail}`, check.pass ? 'ok' : 'err');
+      }
+
+      if (!data.ready) {
+        // Show setup wizard for failing steps
+        const overlay = document.getElementById('setupOverlay');
+        const checksEl = document.getElementById('setupChecks');
+        const stepsEl = document.getElementById('setupSteps');
+
+        renderSetupChecks(data, checksEl);
+        renderSetupSteps(data.steps, stepsEl);
+        overlay.classList.remove('hidden');
+        bootstrapLog('Environment not ready -- showing setup wizard', 'warn');
+        return false;
+      }
+
+      bootstrapLog('All preflight checks passed', 'ok');
+      document.getElementById('setupOverlay').classList.add('hidden');
+      return true;
+
+    } catch (e) {
+      updateBootstrapStep('network', 'fail', 'Cannot reach Workshop server');
+      bootstrapLog('Failed to reach /api/preflight: ' + e.message, 'err');
+      return false;
+    }
+  }
+
+  function renderSetupChecks(data, checksEl) {
+    const order = ['network', 'auth', 'cli'];
+    checksEl.innerHTML = order.map(key => {
+      const check = data.checks[key];
+      if (!check) return '';
+      return `<div class="setup-check">
+        <div class="setup-check-icon ${check.pass ? 'pass' : 'fail'}">${check.pass ? '\u2713' : '\u2717'}</div>
+        <span class="setup-check-label">${check.label}</span>
+        <span class="setup-check-detail">${check.detail}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderSetupSteps(steps, stepsEl) {
+    if (!steps || steps.length === 0) {
+      stepsEl.classList.add('hidden');
+      return;
+    }
+    stepsEl.classList.remove('hidden');
+    stepsEl.innerHTML = '<div style="font-size:0.8rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">What to do</div>' +
+      steps.map((step, i) => `<div class="setup-step">
+        <span class="setup-step-num">${i + 1}.</span>
+        <span>${step.instruction}</span>
+      </div>`).join('');
+  }
+
+  function setupBootstrapPanel() {
+    // Toggle panel
+    document.getElementById('btnBootstrap').addEventListener('click', () => {
+      document.getElementById('bootstrapPanel').classList.toggle('hidden');
+    });
+    document.getElementById('btnCloseBootstrap').addEventListener('click', () => {
+      document.getElementById('bootstrapPanel').classList.add('hidden');
+    });
+
+    // Recheck button
+    document.getElementById('btnBootstrapRefresh').addEventListener('click', async () => {
+      const ready = await runPreflightCheck();
+      if (ready) bootstrapLog('Environment ready!', 'ok');
+    });
+
+    // Terminal button
+    document.getElementById('btnBootstrapTerminal').addEventListener('click', () => {
+      window.open(`http://${window.location.hostname}:7681`, '_blank');
+    });
+
+    // Setup wizard buttons
+    document.getElementById('btnSetupTerminal').addEventListener('click', () => {
+      window.open(`http://${window.location.hostname}:7681`, '_blank');
+    });
+    document.getElementById('btnSetupRecheck').addEventListener('click', async () => {
+      const ready = await runPreflightCheck();
+      if (ready) {
+        document.getElementById('setupOverlay').classList.add('hidden');
+        startNewProject();
+      }
+    });
+
+    // Initial render
+    renderBootstrapSequence();
   }
 
   // ============================================================

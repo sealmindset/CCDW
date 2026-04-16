@@ -1,129 +1,106 @@
 /**
  * Dashboard Controller
- * Manages the build dashboard (activity feed + build map),
+ * Manages the build status display (component label + status line),
  * explore dashboard, and project management.
  */
 
 class DashboardController {
   constructor() {
-    this.feedEl = document.getElementById('feedItems');
-    this.mapEl = document.getElementById('mapCards');
+    this.componentLabelEl = document.getElementById('buildComponentLabel');
+    this.statusTextEl = document.getElementById('buildStatusText');
     this.buildCompleteEl = document.getElementById('buildComplete');
-    this.feedItems = [];
-    this.buildComponents = [];
   }
 
   /**
-   * Initialize the build map with expected components.
+   * Set the component label above Bifrost (what's being built).
+   * e.g. "Setting up Authentication" or "Building the Dashboard"
    */
-  initBuildMap(components) {
-    this.buildComponents = components || [
-      'Database', 'Authentication', 'Permissions',
-      'Dashboard', 'API Routes', 'Admin Panel',
-      'Settings', 'Activity Logs', 'Tests', 'Docker'
-    ];
-
-    this.mapEl.innerHTML = '';
-    this.buildComponents.forEach(name => {
-      const card = document.createElement('div');
-      card.className = 'map-card';
-      card.textContent = name;
-      card.dataset.component = name.toLowerCase().replace(/\s+/g, '-');
-      this.mapEl.appendChild(card);
-    });
+  setComponent(text) {
+    if (this.componentLabelEl) {
+      this.componentLabelEl.textContent = text;
+    }
   }
 
   /**
-   * Add an item to the activity feed.
+   * Update the single status line below Bifrost.
+   * Overwrites in place — always shows only the latest.
+   */
+  setStatus(text) {
+    if (this.statusTextEl) {
+      this.statusTextEl.textContent = text;
+    }
+  }
+
+  /**
+   * Process an activity message — detect component and update display.
    */
   addFeedItem(category, message) {
-    const item = document.createElement('div');
-    item.className = 'feed-item';
+    // Update the status line (overwrites previous)
+    this.setStatus(message);
 
-    const dot = document.createElement('span');
-    dot.className = `feed-category ${category}`;
-
-    item.appendChild(dot);
-    item.appendChild(document.createTextNode(message));
-
-    // Prepend (newest first)
-    this.feedEl.prepend(item);
-
-    // Keep feed manageable
-    while (this.feedEl.children.length > 50) {
-      this.feedEl.lastChild.remove();
+    // Detect component from message and update the label
+    const component = this.detectComponent(message);
+    if (component) {
+      this.setComponent(component);
     }
-
-    // Try to mark matching build map card
-    this.detectComponentProgress(message);
   }
 
   /**
-   * Detect if an activity message relates to a build component.
+   * Detect what app component is being worked on from an activity message.
    */
-  detectComponentProgress(message) {
+  detectComponent(message) {
     const lower = message.toLowerCase();
-    const mappings = {
-      'database': ['database', 'migration', 'seed', 'table', 'postgresql'],
-      'authentication': ['auth', 'oidc', 'login', 'jwt', 'cookie'],
-      'permissions': ['permission', 'rbac', 'role', 'admin.users'],
-      'dashboard': ['dashboard', 'home page', 'main page'],
-      'api-routes': ['api', 'endpoint', 'route', 'router'],
-      'admin-panel': ['admin', 'user management', 'role management'],
-      'settings': ['settings', 'app_settings', 'configuration'],
-      'activity-logs': ['activity', 'log', 'logstore', 'circular buffer'],
-      'tests': ['test', 'pytest', 'playwright', 'verify'],
-      'docker': ['docker', 'compose', 'container', 'dockerfile'],
-    };
+    const mappings = [
+      { keywords: ['database', 'migration', 'seed', 'table', 'postgresql', 'alembic'], label: 'Setting up the Database' },
+      { keywords: ['auth', 'oidc', 'login', 'jwt', 'cookie', 'session'], label: 'Building Authentication' },
+      { keywords: ['permission', 'rbac', 'role', 'admin.users'], label: 'Configuring Permissions' },
+      { keywords: ['dashboard', 'home page', 'main page', 'landing'], label: 'Building the Dashboard' },
+      { keywords: ['api', 'endpoint', 'route', 'router'], label: 'Setting up API Routes' },
+      { keywords: ['admin', 'user management', 'role management'], label: 'Building the Admin Panel' },
+      { keywords: ['settings', 'app_settings', 'configuration'], label: 'Adding Settings' },
+      { keywords: ['notification', 'bell', 'alert'], label: 'Adding Notifications' },
+      { keywords: ['activity', 'log', 'logstore', 'audit'], label: 'Setting up Activity Logs' },
+      { keywords: ['test', 'pytest', 'playwright', 'verify', 'smoke'], label: 'Running Tests' },
+      { keywords: ['docker', 'compose', 'container', 'dockerfile'], label: 'Configuring Docker' },
+      { keywords: ['frontend', 'react', 'next', 'component', 'page.tsx'], label: 'Building the Frontend' },
+      { keywords: ['backend', 'fastapi', 'express', 'server'], label: 'Building the Backend' },
+      { keywords: ['install', 'dependencies', 'npm', 'pip'], label: 'Installing Dependencies' },
+    ];
 
-    for (const [component, keywords] of Object.entries(mappings)) {
+    for (const { keywords, label } of mappings) {
       if (keywords.some(kw => lower.includes(kw))) {
-        this.markComponent(component, 'in-progress');
+        return label;
       }
     }
+    return null;
   }
 
   /**
-   * Mark a build map card as in-progress or complete.
-   */
-  markComponent(componentId, status) {
-    const card = this.mapEl.querySelector(`[data-component="${componentId}"]`);
-    if (!card) return;
-
-    if (status === 'complete') {
-      card.classList.remove('in-progress');
-      card.classList.add('complete');
-    } else if (status === 'in-progress' && !card.classList.contains('complete')) {
-      card.classList.add('in-progress');
-    }
-  }
-
-  /**
-   * Mark all components as complete.
+   * Mark all as complete.
    */
   completeAll() {
-    this.mapEl.querySelectorAll('.map-card').forEach(card => {
-      card.classList.remove('in-progress');
-      card.classList.add('complete');
-    });
+    this.setComponent('All done!');
+    this.setStatus('');
   }
 
   /**
    * Show the "Try It" button.
    */
   showTryIt() {
-    this.buildCompleteEl.classList.remove('hidden');
+    if (this.buildCompleteEl) {
+      this.buildCompleteEl.classList.remove('hidden');
+    }
   }
 
   /**
-   * Clear the feed and reset the build map.
+   * Clear status and reset.
    */
   reset() {
-    this.feedEl.innerHTML = '';
-    this.mapEl.querySelectorAll('.map-card').forEach(card => {
-      card.classList.remove('in-progress', 'complete');
-    });
-    this.buildCompleteEl.classList.add('hidden');
+    this.setComponent('');
+    this.setStatus('');
+    if (this.buildCompleteEl) {
+      this.buildCompleteEl.classList.add('hidden');
+    }
   }
 
   // --- Explore Dashboard ---
@@ -139,7 +116,6 @@ class DashboardController {
       title.textContent = projectData.name;
     }
 
-    // Stats
     const setStatSafe = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value;

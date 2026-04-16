@@ -84,6 +84,58 @@
   30% { transform: translateY(-6px); }
 }
 
+/* --- Status Line (activity updates shown below typing dots) --- */
+.chat-status {
+  align-self: flex-start;
+  max-width: 85%;
+  padding: 0 var(--space-lg);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: status-in 0.2s ease;
+  min-height: 1.2em;
+}
+
+.chat-status .status-dots {
+  display: flex;
+  gap: 3px;
+}
+
+.chat-status .status-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: typing-bounce 1.4s ease-in-out infinite;
+}
+
+.chat-status .status-dot:nth-child(2) { animation-delay: 0.2s; }
+.chat-status .status-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes status-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* --- Startup Tips --- */
+.tip-rotation {
+  max-width: 85%;
+  align-self: flex-start;
+}
+
+.tip-bubble {
+  background: transparent !important;
+  border: none !important;
+  padding: var(--space-sm) var(--space-lg) !important;
+  color: var(--text-muted) !important;
+  font-size: 0.8rem !important;
+  font-style: italic;
+  transition: opacity 0.3s ease;
+}
+
 /* --- Quick Replies --- */
 .quick-replies {
   display: flex;
@@ -113,6 +165,21 @@
 .quick-reply-btn:hover {
   background: var(--accent);
   color: white;
+}
+
+.quick-reply-btn.selected {
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 3px var(--accent);
+}
+
+.quick-replies-hint {
+  width: 100%;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  padding-top: 2px;
 }
 
 /* --- Input Area --- */

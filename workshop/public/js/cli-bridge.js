@@ -87,6 +87,10 @@ class CLIBridge {
         this.emit('error', msg);
         break;
 
+      case 'debug':
+        this.emit('debug', msg);
+        break;
+
       default:
         this.emit('message', msg);
     }
@@ -99,8 +103,8 @@ class CLIBridge {
     }
   }
 
-  startProject(name) {
-    this.send({ type: 'start-project', name });
+  startProject(name, description) {
+    this.send({ type: 'start-project', name, description: description || '' });
   }
 
   openProject(name) {
