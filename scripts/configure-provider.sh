@@ -20,10 +20,21 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # ---------------------------------------------------------------------------
-# If API key auth is set, remove any stale token-based settings
-# (settings.json with apiKeyHelper would override the API key)
+# Personal API key: wipe any existing settings.json unconditionally.
+# The volume persists stale Azure token config across rebuilds/restarts.
+# ANTHROPIC_API_KEY doesn't need settings.json -- Claude Code reads it
+# directly from the environment variable.
 # ---------------------------------------------------------------------------
-if { [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ] || [ -n "$ANTHROPIC_API_KEY" ]; } && [ -f "$SETTINGS_FILE" ]; then
+if [ -n "$ANTHROPIC_API_KEY" ]; then
+    rm -f "$SETTINGS_FILE" "$TOKEN_SCRIPT"
+    echo -e "${GREEN}[OK]${NC} Using personal API key (no settings.json needed)"
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Foundry API key: remove stale token-based settings if switching auth mode
+# ---------------------------------------------------------------------------
+if [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ] && [ -f "$SETTINGS_FILE" ]; then
     if grep -q "apiKeyHelper" "$SETTINGS_FILE" 2>/dev/null; then
         rm -f "$SETTINGS_FILE" "$TOKEN_SCRIPT"
     fi
