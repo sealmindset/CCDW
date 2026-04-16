@@ -59,6 +59,10 @@ class CLIBridge {
         this.emit('session-ready', msg);
         break;
 
+      case 'project-opened':
+        this.emit('project-opened', msg);
+        break;
+
       case 'phase-change':
         this.emit('phase-change', msg);
         break;
@@ -97,6 +101,10 @@ class CLIBridge {
 
   startProject(name) {
     this.send({ type: 'start-project', name });
+  }
+
+  openProject(name) {
+    this.send({ type: 'open-project', name });
   }
 
   sendInput(text) {

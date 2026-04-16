@@ -57,7 +57,47 @@ class ChatController {
 
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
-    bubble.textContent = text;
+
+    // AI messages get markdown rendering
+    if (role === 'ai' && window.renderMarkdown) {
+      bubble.innerHTML = window.renderMarkdown(text);
+    } else {
+      bubble.textContent = text;
+    }
+
+    msg.appendChild(bubble);
+    this.messagesEl.appendChild(msg);
+    this.scrollToBottom();
+
+    return msg;
+  }
+
+  /**
+   * Add an error message with optional retry action.
+   */
+  addError(text, onRetry) {
+    const msg = document.createElement('div');
+    msg.className = 'message error';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+
+    const errorText = document.createElement('div');
+    errorText.textContent = text;
+    bubble.appendChild(errorText);
+
+    if (onRetry) {
+      const actions = document.createElement('div');
+      actions.className = 'error-actions';
+
+      const retryBtn = document.createElement('button');
+      retryBtn.className = 'quick-reply-btn';
+      retryBtn.textContent = 'Try Again';
+      retryBtn.addEventListener('click', onRetry);
+      actions.appendChild(retryBtn);
+
+      bubble.appendChild(actions);
+    }
 
     msg.appendChild(bubble);
     this.messagesEl.appendChild(msg);

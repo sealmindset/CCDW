@@ -190,6 +190,10 @@ function handleMessage(session, msg) {
       cancelProcess(session);
       break;
 
+    case 'open-project':
+      openProject(session, msg);
+      break;
+
     case 'try-it':
       runSkill(session, '/try-it');
       break;
@@ -228,6 +232,30 @@ function startProject(session, msg) {
   }));
 
   spawnCLI(session, projectDir, '/make-it');
+}
+
+/**
+ * Open an existing project -- sets projectDir on the session so skills can use it.
+ */
+function openProject(session, msg) {
+  const projectName = sanitizeProjectName(msg.name || '');
+  if (!projectName) {
+    session.ws.send(JSON.stringify({ type: 'error', message: 'No project name provided' }));
+    return;
+  }
+
+  const projectDir = path.join(PROJECTS_DIR, projectName);
+  if (!fs.existsSync(projectDir)) {
+    session.ws.send(JSON.stringify({ type: 'error', message: 'Project not found' }));
+    return;
+  }
+
+  session.projectDir = projectDir;
+  session.ws.send(JSON.stringify({
+    type: 'project-opened',
+    name: projectName,
+    dir: projectDir,
+  }));
 }
 
 function runSkill(session, skill) {

@@ -177,3 +177,80 @@
   cursor: not-allowed;
   transform: none;
 }
+
+/* --- Markdown in AI messages --- */
+.message.ai .message-bubble p {
+  margin: 0 0 0.5em;
+}
+
+.message.ai .message-bubble p:last-child {
+  margin-bottom: 0;
+}
+
+.md-h1, .md-h2, .md-h3 {
+  font-weight: 700;
+  margin: 0.75em 0 0.25em;
+  color: var(--text-primary);
+}
+
+.md-h1 { font-size: 1.1rem; }
+.md-h2 { font-size: 1rem; }
+.md-h3 { font-size: 0.95rem; }
+
+.md-code-block {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-md);
+  margin: 0.5em 0;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.md-inline-code {
+  background: var(--bg-primary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--accent);
+}
+
+.md-li {
+  padding: 2px 0 2px 8px;
+  color: var(--text-secondary);
+}
+
+.md-hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.75em 0;
+}
+
+.md-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.md-link:hover {
+  text-decoration: underline;
+}
+
+/* --- Error message in chat --- */
+.message.error .message-bubble {
+  background: var(--error-soft);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-lg);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.message.error .error-actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}

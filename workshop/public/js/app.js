@@ -96,7 +96,25 @@
           <div class="project-card-name">${escapeHtml(project.name)}</div>
           <div class="project-card-status">${project.builtWithMakeIt ? 'Built with Workshop' : 'Project'}</div>
           ${project.builtWithMakeIt ? '<span class="project-card-badge">Workshop</span>' : ''}
+          <div class="project-card-actions">
+            <button class="btn-card-action btn-card-open" title="View dashboard">Open</button>
+            ${project.builtWithMakeIt ? '<button class="btn-card-action btn-card-resume" title="Make changes">Resume</button>' : ''}
+          </div>
         `;
+
+        card.querySelector('.btn-card-open').addEventListener('click', (e) => {
+          e.stopPropagation();
+          openProject(project.name);
+        });
+
+        const resumeBtn = card.querySelector('.btn-card-resume');
+        if (resumeBtn) {
+          resumeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            resumeProject(project.name);
+          });
+        }
+
         card.addEventListener('click', () => openProject(project.name));
         grid.appendChild(card);
       });
@@ -107,9 +125,23 @@
 
   function openProject(name) {
     state.projectName = name;
-    // For existing projects, go to explore view
+    window.cliBridge.openProject(name);
     showView('explore');
     loadProjectStatus(name);
+  }
+
+  /**
+   * Resume working on an existing project via /resume-it.
+   */
+  function resumeProject(name) {
+    state.projectName = name;
+    window.cliBridge.openProject(name);
+    showView('iterate');
+    iterateChat.clear();
+    iterateChat.addMessage('ai', `Welcome back to **${name}**! What would you like to change?`);
+    window.board.render();
+    window.cliBridge.resumeIt();
+    setStatus('Resuming...', 'busy');
   }
 
   async function loadProjectStatus(name) {
@@ -117,26 +149,36 @@
       const res = await fetch(`/api/project/${encodeURIComponent(name)}/status`);
       const data = await res.json();
 
+      const projectData = { name };
+
       if (data.context) {
-        window.dashboard.populateExplore({
-          name: data.context.app_name || name,
-          pages: data.context.pages ? data.context.pages.length : '--',
-          users: data.context.roles ? data.context.roles.length : '--',
-          tests: '--',
-          testUsers: data.context.roles ? data.context.roles.map(r => ({
-            name: `Mock ${r.name}`,
-            role: r.name
-          })) : [],
-          readinessChecks: [
-            { label: 'App builds successfully', pass: true },
-            { label: 'All services healthy', pass: true },
-            { label: 'Login works for all roles', pass: data.state && data.state.includes('auth') },
-            { label: 'All pages load', pass: data.state && data.state.includes('pages') },
-          ]
-        });
-      } else {
-        window.dashboard.populateExplore({ name });
+        projectData.name = data.context.app_name || name;
+        projectData.pages = data.context.pages ? data.context.pages.length : '--';
+        projectData.users = data.context.roles ? data.context.roles.length : '--';
+        projectData.tests = '--';
+        projectData.testUsers = data.context.roles ? data.context.roles.map(r => ({
+          name: `Mock ${r.name}`,
+          role: r.name
+        })) : [];
+        projectData.readinessChecks = [
+          { label: 'App builds successfully', pass: true },
+          { label: 'All services healthy', pass: true },
+          { label: 'Login works for all roles', pass: data.state && data.state.includes('auth') },
+          { label: 'All pages load', pass: data.state && data.state.includes('pages') },
+        ];
       }
+
+      // Parse TODO count
+      if (data.todo) {
+        const todoItems = (data.todo.match(/^- \[ \]/gm) || []).length;
+        const doneItems = (data.todo.match(/^- \[x\]/gm) || []).length;
+        projectData.todoCount = todoItems;
+        projectData.doneCount = doneItems;
+      }
+
+      projectData.builtWithMakeIt = !!(data.state || data.context);
+
+      window.dashboard.populateExplore(projectData);
     } catch (e) {
       window.dashboard.populateExplore({ name });
     }
@@ -182,14 +224,17 @@
 
     bridge.on('session-ready', () => {
       setStatus('Connected', '');
+      hideConnectionOverlay();
     });
 
     bridge.on('disconnected', () => {
       setStatus('Reconnecting...', 'busy');
+      showConnectionOverlay('Reconnecting to Workshop server...');
     });
 
     bridge.on('reconnect-failed', () => {
       setStatus('Disconnected', 'error');
+      showConnectionOverlay('Connection lost. Check that the container is running.', true);
     });
 
     bridge.on('phase-change', (msg) => {
@@ -274,11 +319,30 @@
     });
 
     bridge.on('error', (msg) => {
-      // Show bug on Bifrost
+      const errorMsg = msg?.message || 'Something went wrong.';
+
+      // Show bug on Bifrost during build
       if (state.currentView === 'build') {
         window.bifrost.showBug();
         setTimeout(() => window.bifrost.defeatBug(), 2000);
       }
+
+      // Show error in active chat with retry
+      if (state.currentView === 'chat') {
+        mainChat.hideTyping();
+        mainChat.addError(errorMsg, () => {
+          if (state.projectName) {
+            mainChat.addMessage('ai', 'Let me try that again...');
+            mainChat.showTyping();
+            window.cliBridge.startProject(state.projectName);
+          }
+        });
+      } else if (state.currentView === 'iterate') {
+        iterateChat.hideTyping();
+        iterateChat.addError(errorMsg);
+      }
+
+      setStatus('Issue detected', 'error');
     });
 
     // Connect
@@ -330,12 +394,16 @@
       transitionToExplore();
     });
 
-    // Iterate button
+    // Iterate button (from explore dashboard)
     document.getElementById('btnIterate').addEventListener('click', () => {
-      showView('iterate');
-      iterateChat.clear();
-      iterateChat.addMessage('ai', 'What would you like to change? You can describe a quick tweak or a bigger feature.');
-      window.board.render();
+      if (state.projectName) {
+        resumeProject(state.projectName);
+      } else {
+        showView('iterate');
+        iterateChat.clear();
+        iterateChat.addMessage('ai', 'What would you like to change? You can describe a quick tweak or a bigger feature.');
+        window.board.render();
+      }
     });
 
     // New Request button (iterate board)
@@ -393,11 +461,12 @@
 
     // Walkthrough
     document.getElementById('btnWalkthroughSkip').addEventListener('click', () => {
+      localStorage.setItem('workshop-walkthrough-done', '1');
       document.getElementById('walkthroughOverlay').classList.add('hidden');
     });
 
     document.getElementById('btnWalkthroughNext').addEventListener('click', () => {
-      document.getElementById('walkthroughOverlay').classList.add('hidden');
+      advanceWalkthrough();
     });
   }
 
@@ -467,6 +536,104 @@
 
     // Show home view
     showView('home');
+
+    // First visit walkthrough
+    showWalkthrough();
+  }
+
+  // ============================================================
+  // CONNECTION OVERLAY
+  // ============================================================
+
+  function showConnectionOverlay(message, showRetry) {
+    let overlay = document.getElementById('connectionOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'connectionOverlay';
+      overlay.className = 'connection-overlay';
+      document.body.appendChild(overlay);
+    }
+
+    overlay.innerHTML = `
+      <div class="connection-overlay-content">
+        ${showRetry ? '' : '<div class="check-spinner" style="width:24px;height:24px;margin-bottom:12px;"></div>'}
+        <div>${message}</div>
+        ${showRetry ? '<button class="btn-primary" style="margin-top:12px;" onclick="window.cliBridge.connect(); document.getElementById(\'connectionOverlay\').classList.add(\'hidden\');">Retry</button>' : ''}
+      </div>
+    `;
+    overlay.classList.remove('hidden');
+  }
+
+  function hideConnectionOverlay() {
+    const overlay = document.getElementById('connectionOverlay');
+    if (overlay) overlay.classList.add('hidden');
+  }
+
+  // ============================================================
+  // GUIDED WALKTHROUGH
+  // ============================================================
+
+  const walkthroughSteps = [
+    {
+      title: 'Welcome to Workshop',
+      body: 'Workshop lets you build full applications just by describing what you want. No coding, no terminal -- just plain English.',
+    },
+    {
+      title: 'Start a New Project',
+      body: 'Click <strong>New Project</strong>, give it a name, then describe your idea in the chat. Workshop will design and build the whole thing.',
+    },
+    {
+      title: 'Watch It Build',
+      body: 'The Bifrost progress bar shows each phase -- from idea to architecture to working code. The activity feed shows exactly what\'s happening.',
+    },
+    {
+      title: 'Explore and Iterate',
+      body: 'Once built, you can try your app in the browser, check the dashboard, and request changes. Just describe what you want different.',
+    },
+    {
+      title: 'Go Live When Ready',
+      body: 'When you\'re happy with your app, the Go Live wizard packages it up so you can share it with the world. That\'s it -- you\'re a builder now!',
+    },
+  ];
+
+  let walkthroughIndex = 0;
+
+  function showWalkthrough() {
+    if (localStorage.getItem('workshop-walkthrough-done')) return;
+
+    walkthroughIndex = 0;
+    renderWalkthroughStep();
+    document.getElementById('walkthroughOverlay').classList.remove('hidden');
+  }
+
+  function renderWalkthroughStep() {
+    const step = walkthroughSteps[walkthroughIndex];
+    const contentEl = document.getElementById('walkthroughContent');
+    const dotsEl = document.getElementById('walkthroughDots');
+    const nextBtn = document.getElementById('btnWalkthroughNext');
+
+    contentEl.innerHTML = `<h2 style="font-size:1.15rem;margin-bottom:0.5rem;">${step.title}</h2><p style="color:var(--text-secondary);font-size:0.9rem;line-height:1.6;">${step.body}</p>`;
+
+    // Dots
+    dotsEl.innerHTML = '';
+    walkthroughSteps.forEach((_, i) => {
+      const dot = document.createElement('span');
+      dot.className = `walkthrough-dot${i === walkthroughIndex ? ' active' : ''}`;
+      dotsEl.appendChild(dot);
+    });
+
+    // Last step changes button text
+    nextBtn.textContent = walkthroughIndex === walkthroughSteps.length - 1 ? 'Get Started' : 'Next';
+  }
+
+  function advanceWalkthrough() {
+    walkthroughIndex++;
+    if (walkthroughIndex >= walkthroughSteps.length) {
+      localStorage.setItem('workshop-walkthrough-done', '1');
+      document.getElementById('walkthroughOverlay').classList.add('hidden');
+      return;
+    }
+    renderWalkthroughStep();
   }
 
   // --- Utility ---

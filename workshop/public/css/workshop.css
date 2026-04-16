@@ -333,6 +333,35 @@ body {
   margin-top: var(--space-sm);
 }
 
+.project-card-actions {
+  display: flex;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+}
+
+.btn-card-action {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-card-action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.btn-card-resume {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* --- Buttons --- */
 .btn-primary {
   display: inline-flex;
@@ -905,6 +934,28 @@ dialog::backdrop {
 
 .walkthrough-dot.active {
   background: var(--accent);
+}
+
+/* --- Connection Overlay --- */
+.connection-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(12, 14, 20, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.connection-overlay.hidden {
+  display: none;
+}
+
+.connection-overlay-content {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
 }
 
 /* --- Utilities --- */
