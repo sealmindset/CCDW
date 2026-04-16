@@ -224,17 +224,23 @@
     </div>
 
     <div class="cards">
-        <a class="card" href="/terminal/" id="terminal-link">
-            <div class="card-icon">&#9000;</div>
-            <h2>Web Terminal</h2>
-            <p>Open Claude Code in a browser-based terminal. Start building with <code>/make-it</code>.</p>
-            <span class="port">localhost:7681</span>
+        <a class="card" href="" id="workshop-link" style="border-color: #a78bfa;">
+            <div class="card-icon">&#9881;</div>
+            <h2>Workshop</h2>
+            <p>Build apps without touching a terminal. Describe your idea, watch it come to life, and ship it.</p>
+            <span class="port">localhost:9200</span>
         </a>
-        <a class="card" href="/code/" id="vscode-link">
+        <a class="card" href="" id="vscode-link">
             <div class="card-icon">&#128187;</div>
             <h2>VS Code</h2>
             <p>Full IDE with file explorer, extensions, and integrated terminal. No password needed.</p>
             <span class="port">localhost:8080</span>
+        </a>
+        <a class="card" href="" id="terminal-link">
+            <div class="card-icon">&#9000;</div>
+            <h2>Web Terminal</h2>
+            <p>Open Claude Code in a browser-based terminal. Start building with <code>/make-it</code>.</p>
+            <span class="port">localhost:7681</span>
         </a>
     </div>
 
@@ -242,10 +248,10 @@
         <h3>System Status</h3>
         <div class="status-grid">
             <div class="status-item">
-                <div class="status-dot checking" id="dot-terminal"></div>
+                <div class="status-dot checking" id="dot-workshop"></div>
                 <div>
-                    <div class="status-label">Web Terminal</div>
-                    <div class="status-detail" id="status-terminal">Checking...</div>
+                    <div class="status-label">Workshop</div>
+                    <div class="status-detail" id="status-workshop">Checking...</div>
                 </div>
             </div>
             <div class="status-item">
@@ -253,6 +259,13 @@
                 <div>
                     <div class="status-label">VS Code</div>
                     <div class="status-detail" id="status-vscode">Checking...</div>
+                </div>
+            </div>
+            <div class="status-item">
+                <div class="status-dot checking" id="dot-terminal"></div>
+                <div>
+                    <div class="status-label">Web Terminal</div>
+                    <div class="status-detail" id="status-terminal">Checking...</div>
                 </div>
             </div>
             <div class="status-item">
@@ -299,19 +312,19 @@
         <div class="steps">
             <div class="step">
                 <div class="step-num">1</div>
-                <div class="step-text">Click <strong>Web Terminal</strong> above to open the terminal</div>
+                <div class="step-text">Click <strong>Workshop</strong> above to build an app without touching a terminal</div>
             </div>
             <div class="step">
                 <div class="step-num">2</div>
-                <div class="step-text">Type <code>claude</code> and press Enter to start Claude Code</div>
+                <div class="step-text">Describe your app idea in plain English -- Workshop does the rest</div>
             </div>
             <div class="step">
                 <div class="step-num">3</div>
-                <div class="step-text">Type <code>/make-it</code> to build your first app from scratch</div>
+                <div class="step-text">Watch your app being built in real-time, then explore and test it</div>
             </div>
             <div class="step">
                 <div class="step-num">4</div>
-                <div class="step-text">Describe your app idea in plain English -- Claude does the rest</div>
+                <div class="step-text">Need more control? Open <strong>VS Code</strong> or <strong>Web Terminal</strong> for full access</div>
             </div>
         </div>
     </div>
@@ -319,6 +332,7 @@
     <script>
         // Set correct links based on current hostname
         const host = window.location.hostname;
+        document.getElementById('workshop-link').href = 'http://' + host + ':9200';
         document.getElementById('terminal-link').href = 'http://' + host + ':7681';
         document.getElementById('vscode-link').href = 'http://' + host + ':8080';
 
@@ -363,6 +377,7 @@
         // Check status on load and every 30s
         async function checkAll() {
             const h = window.location.hostname;
+            checkService('http://' + h + ':9200', 'dot-workshop', 'status-workshop', 'Workshop');
             checkService('http://' + h + ':7681', 'dot-terminal', 'status-terminal', 'Terminal');
             checkService('http://' + h + ':8080', 'dot-vscode', 'status-vscode', 'VS Code');
 

@@ -1,0 +1,323 @@
+/* ============================================================
+   BIFROST PROGRESS BAR
+   MCU-inspired crystalline bridge connecting phase circles.
+   Thin, luminous, prismatic brick texture (3-4 bricks wide).
+   ============================================================ */
+
+.bifrost-container {
+  position: relative;
+  width: 100%;
+  padding: 3rem 2rem 2rem;
+  user-select: none;
+}
+
+.bifrost-track {
+  position: relative;
+  height: 80px;
+  display: flex;
+  align-items: center;
+}
+
+/* --- The Path (crystalline brick bridge) --- */
+.bifrost-path {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+/* Prismatic brick texture -- angled bricks, 3-4 wide */
+.bifrost-bricks {
+  position: absolute;
+  inset: 0;
+  background:
+    /* Brick pattern: angled repeating segments */
+    repeating-linear-gradient(
+      75deg,
+      transparent 0px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.08) 2px,
+      rgba(255, 255, 255, 0.08) 3px
+    ),
+    /* Horizontal brick rows */
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 3px,
+      rgba(255, 255, 255, 0.06) 3px,
+      rgba(255, 255, 255, 0.06) 4px
+    );
+  /* Base: dark translucent */
+  background-color: rgba(100, 110, 140, 0.15);
+  border-radius: 7px;
+  transition: background-color 0.8s ease;
+}
+
+/* The luminous fill that progresses along the bricks */
+.bifrost-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  /* Prismatic shimmer gradient */
+  background: linear-gradient(
+    90deg,
+    #6366f1 0%,
+    #818cf8 15%,
+    #a78bfa 30%,
+    #c084fc 45%,
+    #e879f9 55%,
+    #a78bfa 70%,
+    #818cf8 85%,
+    #6366f1 100%
+  );
+  background-size: 200% 100%;
+  animation: bifrost-shimmer 4s ease-in-out infinite;
+  /* Clip to show progress */
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Overlay the brick texture */
+  mix-blend-mode: screen;
+}
+
+/* Progress states via clip-path */
+.bifrost-glow[data-progress="0"]   { clip-path: inset(0 100% 0 0); }
+.bifrost-glow[data-progress="25"]  { clip-path: inset(0 75% 0 0); }
+.bifrost-glow[data-progress="50"]  { clip-path: inset(0 50% 0 0); }
+.bifrost-glow[data-progress="75"]  { clip-path: inset(0 25% 0 0); }
+.bifrost-glow[data-progress="100"] { clip-path: inset(0 0% 0 0); }
+
+/* Shimmer animation */
+@keyframes bifrost-shimmer {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Subtle light particles floating above the bridge */
+.bifrost-glow::after {
+  content: '';
+  position: absolute;
+  inset: -4px 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(129, 140, 248, 0.3) 25%,
+    rgba(167, 139, 250, 0.4) 50%,
+    rgba(192, 132, 252, 0.3) 75%,
+    transparent 100%
+  );
+  filter: blur(6px);
+  animation: bifrost-particles 3s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes bifrost-particles {
+  0%   { opacity: 0.4; transform: translateY(0); }
+  100% { opacity: 0.8; transform: translateY(-2px); }
+}
+
+/* --- Phase Circles --- */
+.bifrost-phases {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.phase-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.phase-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(100, 110, 140, 0.3);
+  background: var(--bg-primary);
+  transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+/* Active phase: glowing ring */
+.phase-node.active .phase-circle {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.5), 0 0 24px rgba(99, 102, 241, 0.2);
+  animation: phase-pulse 2s ease-in-out infinite;
+}
+
+/* Completed phase: filled */
+.phase-node.completed .phase-circle {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
+}
+
+.phase-node.completed .phase-circle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: white;
+  transform: translate(-50%, -50%);
+  opacity: 0.9;
+}
+
+@keyframes phase-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(99, 102, 241, 0.5), 0 0 24px rgba(99, 102, 241, 0.2); }
+  50% { box-shadow: 0 0 18px rgba(99, 102, 241, 0.7), 0 0 36px rgba(99, 102, 241, 0.3); }
+}
+
+.phase-label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: color 0.4s ease;
+}
+
+.phase-node.active .phase-label,
+.phase-node.completed .phase-label {
+  color: var(--text-primary);
+}
+
+/* --- Walker (Claude icon moving along path) --- */
+.bifrost-walker {
+  position: absolute;
+  top: 50%;
+  left: 8%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  transition: left 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.walker-icon {
+  position: relative;
+  z-index: 2;
+  filter: drop-shadow(0 2px 6px rgba(99, 102, 241, 0.5));
+  animation: walker-bob 2s ease-in-out infinite;
+}
+
+@keyframes walker-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.walker-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.3), transparent 70%);
+  transform: translate(-50%, -50%);
+  animation: walker-pulse-anim 2s ease-in-out infinite;
+}
+
+@keyframes walker-pulse-anim {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.5; }
+  50% { transform: translate(-50%, -50%) scale(1.3); opacity: 0.2; }
+}
+
+/* Walker position states */
+.bifrost-walker[data-position="start"]   { left: 8%; }
+.bifrost-walker[data-position="phase-1"] { left: 8%; }
+.bifrost-walker[data-position="phase-2"] { left: 36.7%; }
+.bifrost-walker[data-position="phase-3"] { left: 65.3%; }
+.bifrost-walker[data-position="phase-4"] { left: 92%; }
+
+/* --- Bug Character --- */
+.bifrost-bug {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  transition: left 0.6s ease, opacity 0.4s ease;
+}
+
+.bifrost-bug.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bug-icon {
+  animation: bug-wobble 0.5s ease-in-out infinite;
+}
+
+@keyframes bug-wobble {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+
+/* Bug defeat animation */
+.bug-defeat {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.bug-defeat.hidden {
+  display: none;
+}
+
+.bug-defeat .defeat-spark {
+  font-size: 1.5rem;
+  animation: bug-defeat-anim 0.8s ease-out forwards;
+}
+
+@keyframes bug-defeat-anim {
+  0% { transform: scale(0.5); opacity: 0; }
+  30% { transform: scale(1.5); opacity: 1; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+/* When bug is being defeated */
+.bifrost-bug.defeating .bug-icon {
+  animation: bug-shrink 0.6s ease-in forwards;
+}
+
+@keyframes bug-shrink {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2) rotate(15deg); opacity: 0.8; }
+  100% { transform: scale(0); opacity: 0; }
+}
+
+/* --- Responsive --- */
+@media (max-width: 640px) {
+  .bifrost-container {
+    padding: 2rem 1rem 1.5rem;
+  }
+
+  .phase-label {
+    font-size: 0.6rem;
+  }
+
+  .phase-circle {
+    width: 22px;
+    height: 22px;
+  }
+
+  .bifrost-path {
+    height: 10px;
+    border-radius: 5px;
+  }
+}

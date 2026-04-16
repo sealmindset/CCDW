@@ -14,6 +14,7 @@ services:
     image: ghcr.io/sealmindset/claude-code-docker:latest
     container_name: claude-code
     ports:
+      - "${WORKSHOP_PORT:-9200}:9200"        # Workshop (Business User IDE)
       - "${WELCOME_PORT:-3000}:3000"         # Welcome dashboard
       - "${TTYD_PORT:-7681}:7681"            # Web terminal (ttyd)
       - "${CODE_SERVER_PORT:-8080}:8080"     # VS Code in browser (code-server)

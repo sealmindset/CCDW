@@ -280,7 +280,7 @@ sh_check_docker_socket() {
 # Output: failure_type (empty string = healthy)
 # ===========================================================================
 sh_classify() {
-    local svc_ttyd="ok" svc_cs="ok" svc_welcome="ok"
+    local svc_ttyd="ok" svc_cs="ok" svc_welcome="ok" svc_workshop="ok"
 
     # --- Layer 1: Infrastructure ---
     if ! sh_check_dns; then
@@ -346,6 +346,14 @@ sh_classify() {
         fi
     fi
 
+    if ! sh_check_service "${WORKSHOP_PORT:-9200}"; then
+        sleep 2
+        if ! sh_check_service "${WORKSHOP_PORT:-9200}"; then
+            echo "service_crashed:workshop"
+            return
+        fi
+    fi
+
     # Docker socket (non-critical, just track)
     if ! sh_check_docker_socket; then
         echo "docker_socket_lost"
@@ -361,13 +369,14 @@ sh_classify() {
 # Returns JSON object with service statuses
 # ===========================================================================
 sh_service_status() {
-    local ttyd="ok" cs="ok" welcome="ok"
+    local ttyd="ok" cs="ok" welcome="ok" workshop="ok"
 
     sh_check_service 7681  || ttyd="down"
     sh_check_service 8080  || cs="down"
     sh_check_service "${WELCOME_PORT:-3000}" || welcome="down"
+    sh_check_service "${WORKSHOP_PORT:-9200}" || workshop="down"
 
-    echo "{\"ttyd\":\"${ttyd}\",\"code_server\":\"${cs}\",\"welcome_server\":\"${welcome}\"}"
+    echo "{\"ttyd\":\"${ttyd}\",\"code_server\":\"${cs}\",\"welcome_server\":\"${welcome}\",\"workshop\":\"${workshop}\"}"
 }
 
 # ===========================================================================
@@ -458,6 +467,32 @@ sh_remediate_welcome_server() {
     fi
 }
 
+sh_remediate_workshop() {
+    if ! sh_can_restart "workshop"; then
+        sh_log "workshop restart rate limited."
+        sh_telemetry_log "service_crashed" "restart_workshop" "skipped" "restart_limit"
+        return 1
+    fi
+
+    sh_log "Restarting workshop..."
+
+    pkill -f "workshop/server.js" 2>/dev/null || true
+    sleep 1
+
+    "$SH_SCRIPTS_DIR/workshop-server.sh" &
+
+    sleep 2
+
+    if sh_check_service "${WORKSHOP_PORT:-9200}"; then
+        sh_log "workshop restarted successfully."
+        sh_telemetry_log "service_crashed" "restart_workshop" "success"
+        return 0
+    else
+        sh_telemetry_log "service_crashed" "restart_workshop" "fail"
+        return 1
+    fi
+}
+
 sh_remediate_disk() {
     sh_log "Attempting disk cleanup..."
     local freed=0
@@ -504,6 +539,10 @@ sh_remediate() {
             ;;
         service_crashed:welcome_server)
             sh_remediate_welcome_server
+            return $?
+            ;;
+        service_crashed:workshop)
+            sh_remediate_workshop
             return $?
             ;;
         disk_full)
@@ -562,6 +601,9 @@ sh_failure_message() {
         service_crashed:welcome_server)
             echo "Welcome page server crashed. Auto-restart attempted."
             ;;
+        service_crashed:workshop)
+            echo "Workshop server crashed. Auto-restart attempted."
+            ;;
         docker_socket_lost)
             echo "Docker socket is not accessible."
             ;;
@@ -585,7 +627,7 @@ sh_failure_status() {
         "")
             echo "healthy"
             ;;
-        docker_socket_lost|service_crashed:welcome_server)
+        docker_socket_lost|service_crashed:welcome_server|service_crashed:workshop)
             echo "degraded"
             ;;
         *)

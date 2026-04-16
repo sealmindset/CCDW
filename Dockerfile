@@ -98,6 +98,8 @@ ENV LC_ALL=C.UTF-8
 # ---------------------------------------------------------------------------
 COPY scripts/ /opt/claude-code-docker/scripts/
 COPY welcome/ /opt/claude-code-docker/welcome/
+COPY workshop/ /opt/claude-code-docker/workshop/
+RUN cd /opt/claude-code-docker/workshop && npm install --omit=dev ws
 COPY config/ /opt/claude-code-docker/config/
 # Fix CRLF line endings from Windows git checkouts, then set executable
 RUN sed -i 's/\r$//' /opt/claude-code-docker/scripts/*.sh \
@@ -132,9 +134,9 @@ RUN printf '%s\n' \
 USER root
 
 # ---------------------------------------------------------------------------
-# Ports: ttyd (7681), code-server (8080)
+# Ports: Workshop (9200), Welcome (3000), ttyd (7681), code-server (8080)
 # ---------------------------------------------------------------------------
-EXPOSE 3000 7681 8080
+EXPOSE 3000 7681 8080 9200
 
 # ---------------------------------------------------------------------------
 # Health check

@@ -133,6 +133,12 @@ su-exec coder code-server \
     /home/coder/Documents/GitHub &
 
 # ---------------------------------------------------------------------------
+# Start Workshop server (Business User IDE)
+# ---------------------------------------------------------------------------
+echo -e "${GREEN}[OK]${NC} Starting Workshop on port ${WORKSHOP_PORT:-9200}..."
+su-exec coder "$SCRIPTS_DIR/workshop-server.sh" &
+
+# ---------------------------------------------------------------------------
 # Start welcome page server (landing page with status + links)
 # ---------------------------------------------------------------------------
 echo -e "${GREEN}[OK]${NC} Starting welcome page on port 3000..."
@@ -151,6 +157,7 @@ echo -e "${GREEN}[OK]${NC} Health monitor started (self-healing enabled)."
 echo -e "${GREEN}[OK]${NC} Starting web terminal on port 7681..."
 echo ""
 echo -e "${BLUE}========================================${NC}"
+echo -e "  Workshop:      ${GREEN}http://localhost:${WORKSHOP_PORT:-9200}${NC}"
 echo -e "  Dashboard:     ${GREEN}http://localhost:${WELCOME_PORT:-3000}${NC}"
 echo -e "  Web Terminal:  ${GREEN}http://localhost:${TTYD_PORT:-7681}${NC}"
 echo -e "  VS Code:       ${GREEN}http://localhost:${CODE_SERVER_PORT:-8080}${NC}"
