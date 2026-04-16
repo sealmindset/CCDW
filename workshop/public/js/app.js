@@ -291,14 +291,26 @@
     });
 
     bridge.on('question', (msg) => {
-      // If we're in build view and a question comes in, switch to chat to show it
+      // During build, only interrupt for REAL questions (ones with quick replies
+      // or that end with '?'). Long informational messages are NOT questions --
+      // they just happen to be >200 chars and get classified as 'question' type.
+      const isRealQuestion = msg.quickReplies || /\?\s*$/.test((msg.text || '').trim());
+
       if (state.currentView === 'build') {
-        showView('chat');
-        mainChat.clear();
+        if (isRealQuestion) {
+          // Actual question — switch to chat so user can answer
+          showView('chat');
+          mainChat.clear();
+        } else {
+          // Informational message during build — show as status, stay on build view
+          const short = (msg.text || '').split('\n')[0].substring(0, 120);
+          window.dashboard.setStatus(short);
+          return;
+        }
       }
 
       // Show question in chat
-      if (state.currentView === 'chat' || state.currentView === 'build') {
+      if (state.currentView === 'chat') {
         mainChat.stopTips();
         mainChat.hideTyping();
         mainChat.clearStatus();
