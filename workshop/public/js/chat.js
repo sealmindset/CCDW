@@ -243,6 +243,26 @@ class ChatController {
   }
 
   /**
+   * Show welcome-back action buttons (not text replies -- these dispatch actions).
+   */
+  setWelcomeActions(options, onAction) {
+    this.clearQuickReplies();
+    if (!options || options.length === 0) return;
+
+    options.forEach(option => {
+      const btn = document.createElement('button');
+      btn.className = 'quick-reply-btn welcome-action-btn';
+      btn.textContent = option.label;
+      btn.addEventListener('click', () => {
+        this.clearQuickReplies();
+        this.addMessage('user', option.label);
+        if (onAction) onAction(option.action);
+      });
+      this.quickRepliesEl.appendChild(btn);
+    });
+  }
+
+  /**
    * Clear quick reply buttons.
    */
   clearQuickReplies() {

@@ -12,6 +12,7 @@
     currentView: 'home',
     projectName: null,
     phase: 'idle', // idle, ideation, design, building, verifying, complete, testing, iterating, shipping
+    appUrl: null,   // detected URL for the built app (for try-it embed)
   };
 
   // --- Chat instances ---
@@ -72,6 +73,11 @@
     if (type === 'error') statusDot.classList.add('error');
   }
 
+  function updateSeeAppTag() {
+    const btn = document.getElementById('btnSeeApp');
+    if (btn) btn.classList.toggle('hidden', !state.appUrl);
+  }
+
   // ============================================================
   // PROJECT LOADING
   // ============================================================
@@ -96,25 +102,7 @@
           <div class="project-card-name">${escapeHtml(project.name)}</div>
           <div class="project-card-status">${project.builtWithMakeIt ? 'Built with Workshop' : 'Project'}</div>
           ${project.builtWithMakeIt ? '<span class="project-card-badge">Workshop</span>' : ''}
-          <div class="project-card-actions">
-            <button class="btn-card-action btn-card-open" title="View dashboard">Open</button>
-            ${project.builtWithMakeIt ? '<button class="btn-card-action btn-card-resume" title="Make changes">Resume</button>' : ''}
-          </div>
         `;
-
-        card.querySelector('.btn-card-open').addEventListener('click', (e) => {
-          e.stopPropagation();
-          openProject(project.name);
-        });
-
-        const resumeBtn = card.querySelector('.btn-card-resume');
-        if (resumeBtn) {
-          resumeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            resumeProject(project.name);
-          });
-        }
-
         card.addEventListener('click', () => openProject(project.name));
         grid.appendChild(card);
       });
@@ -126,8 +114,44 @@
   function openProject(name) {
     state.projectName = name;
     window.cliBridge.openProject(name);
-    showView('explore');
+
+    showView('chat');
+    mainChat.clear();
+    mainChat.addMessage('ai',
+      `Welcome back to **${name}**! What would you like to do?`
+    );
+    mainChat.setWelcomeActions([
+      { label: 'Add something new',            action: 'resume' },
+      { label: 'Take a look at your creation', action: 'tryit'  },
+      { label: "We're ready to go live",       action: 'ship'   },
+    ], handleWelcomeAction);
+
     loadProjectStatus(name);
+    setStatus('Ready', '');
+  }
+
+  function handleWelcomeAction(action) {
+    switch (action) {
+      case 'resume':
+        mainChat.showStartupTips(state.projectName);
+        mainChat.showTyping();
+        setStatus('Resuming...', 'busy');
+        window.cliBridge.startProject(state.projectName);
+        break;
+
+      case 'tryit':
+        mainChat.addMessage('ai', 'Starting up your app so you can take a look...');
+        mainChat.showTyping();
+        setStatus('Starting app...', 'busy');
+        window.cliBridge.tryIt();
+        break;
+
+      case 'ship':
+        mainChat.addMessage('ai', "Let's get you live!");
+        showView('ship');
+        if (window.ship && window.ship.start) window.ship.start();
+        break;
+    }
   }
 
   /**
@@ -180,6 +204,11 @@
       }
 
       projectData.builtWithMakeIt = !!(data.state || data.context);
+
+      if (data.appPort) {
+        state.appUrl = `http://${window.location.hostname}:${data.appPort}`;
+        updateSeeAppTag();
+      }
 
       window.dashboard.populateExplore(projectData);
     } catch (e) {
@@ -264,12 +293,14 @@
         design: 'design',
         building: 'building',
         verifying: 'building',
+        iterating: 'building',
+        testing: 'building',
         complete: 'complete',
       };
 
       if (bifrostPhases[msg.phase]) {
         // If we're leaving chat phase, transition to build view
-        if (msg.phase === 'design' || msg.phase === 'building') {
+        if (msg.phase === 'design' || msg.phase === 'building' || msg.phase === 'iterating' || msg.phase === 'testing') {
           if (state.currentView === 'chat') {
             mainChat.stopTips();
             transitionToBuild();
@@ -340,8 +371,27 @@
 
     bridge.on('process-complete', (msg) => {
       if (msg.phase === 'testing') {
-        // /try-it finished, show embedded app
-        setStatus('App ready', '');
+        const url = msg.appUrl
+          ? msg.appUrl.replace('localhost', window.location.hostname)
+          : state.appUrl;
+
+        if (url) { state.appUrl = url; updateSeeAppTag(); }
+
+        if (state.currentView === 'chat' || state.currentView === 'build') {
+          if (state.currentView === 'chat') {
+            mainChat.hideTyping();
+            mainChat.clearStatus();
+          }
+          window.bifrost.complete();
+          setTimeout(() => {
+            showView('explore');
+            loadProjectStatus(state.projectName);
+            if (url) window.dashboard.showEmbeddedApp(url);
+          }, 600);
+        } else if (url) {
+          window.dashboard.showEmbeddedApp(url);
+        }
+        setStatus('App running', '');
       } else if (msg.phase === 'shipping') {
         setStatus('Shipped!', '');
         window.ship.complete(msg);
@@ -356,6 +406,10 @@
         window.bifrost.complete();
         window.dashboard.completeAll();
         window.dashboard.showTryIt();
+        if (msg.appUrl) {
+          state.appUrl = msg.appUrl.replace('localhost', window.location.hostname);
+          updateSeeAppTag();
+        }
         setStatus('Ready to explore!', '');
       } else if (msg.phase === 'ideation' || msg.phase === 'design') {
         // Paused during ideation/design (safety valve or waiting)
@@ -453,17 +507,18 @@
     document.getElementById('btnTryIt').addEventListener('click', () => {
       window.cliBridge.tryIt();
       transitionToExplore();
+      if (state.appUrl) {
+        window.dashboard.showEmbeddedApp(state.appUrl);
+      }
     });
 
-    // Iterate button (from explore dashboard)
+    // Iterate button (from explore dashboard) — always starts fresh /resume-it
     document.getElementById('btnIterate').addEventListener('click', () => {
       if (state.projectName) {
-        resumeProject(state.projectName);
-      } else {
-        showView('iterate');
-        iterateChat.clear();
-        iterateChat.addMessage('ai', 'What would you like to change? You can describe a quick tweak or a bigger feature.');
-        window.board.render();
+        showView('chat');
+        mainChat.clear();
+        mainChat.addMessage('ai', `What would you like to change about **${state.projectName}**?`);
+        setStatus('Ready', '');
       }
     });
 
@@ -487,10 +542,6 @@
     });
 
     // Embedded app controls
-    document.getElementById('btnCloseApp').addEventListener('click', () => {
-      window.dashboard.hideEmbeddedApp();
-    });
-
     document.getElementById('btnRefreshApp').addEventListener('click', () => {
       const frame = document.getElementById('appFrame');
       if (frame) frame.src = frame.src;
@@ -512,6 +563,13 @@
           showView(view);
         }
       });
+    });
+
+    // "See your app" tag — opens the running app in a new tab
+    document.getElementById('btnSeeApp').addEventListener('click', () => {
+      if (state.appUrl) {
+        window.open(state.appUrl, '_blank');
+      }
     });
 
     // Auth banner terminal link
@@ -571,8 +629,14 @@
     // Create chat instances
     mainChat = new ChatController('chatMessages', 'chatInput', 'btnSend', 'quickReplies');
     mainChat.onSend = (text) => {
-      window.cliBridge.sendInput(text);
-      mainChat.showTyping();
+      if (state.projectName && (!state.phase || state.phase === 'idle')) {
+        mainChat.showTyping();
+        setStatus('Working on it...', 'busy');
+        window.cliBridge.startProject(state.projectName, text);
+      } else {
+        window.cliBridge.sendInput(text);
+        mainChat.showTyping();
+      }
     };
 
     iterateChat = new ChatController('iterateChatMessages', 'iterateChatInput', 'btnIterateSend', 'iterateQuickReplies');

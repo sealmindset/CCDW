@@ -106,7 +106,7 @@ class DashboardController {
   // --- Explore Dashboard ---
 
   /**
-   * Populate the explore dashboard with project data.
+   * Populate the simplified explore header with project data.
    */
   populateExplore(projectData) {
     if (!projectData) return;
@@ -116,80 +116,33 @@ class DashboardController {
       title.textContent = projectData.name;
     }
 
-    const setStatSafe = (id, value) => {
+    const set = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value;
     };
 
-    setStatSafe('statHealth', 'Healthy');
-    setStatSafe('statPages', projectData.pages || '--');
-    setStatSafe('statUsers', projectData.users || '--');
-    setStatSafe('statTests', projectData.tests || '--');
-
-    // Test users
-    const usersList = document.getElementById('usersList');
-    if (usersList && projectData.testUsers) {
-      usersList.innerHTML = '';
-      projectData.testUsers.forEach(user => {
-        const card = document.createElement('div');
-        card.className = 'user-card';
-
-        const avatar = document.createElement('div');
-        avatar.className = 'user-avatar';
-        avatar.textContent = user.name.charAt(0).toUpperCase();
-
-        const info = document.createElement('span');
-        info.textContent = `${user.name} (${user.role})`;
-
-        card.appendChild(avatar);
-        card.appendChild(info);
-        usersList.appendChild(card);
-      });
+    set('summaryHealth', 'Healthy');
+    if (projectData.pages && projectData.pages !== '--') {
+      set('summaryPages', projectData.pages + ' pages');
     }
-
-    // Readiness
-    const readiness = document.getElementById('readinessItems');
-    if (readiness && projectData.readinessChecks) {
-      readiness.innerHTML = '';
-      projectData.readinessChecks.forEach(check => {
-        const item = document.createElement('div');
-        item.className = 'readiness-item';
-
-        const box = document.createElement('div');
-        box.className = `readiness-check ${check.pass ? 'pass' : 'fail'}`;
-        if (check.pass) box.textContent = '\u2713';
-
-        const label = document.createElement('span');
-        label.textContent = check.label;
-
-        item.appendChild(box);
-        item.appendChild(label);
-        readiness.appendChild(item);
-      });
+    if (projectData.users && projectData.users !== '--') {
+      set('summaryUsers', projectData.users + ' roles');
     }
   }
 
   /**
-   * Show the embedded app iframe.
+   * Show the embedded app iframe with the given URL.
    */
   showEmbeddedApp(url) {
-    const appPanel = document.getElementById('exploreApp');
     const frame = document.getElementById('appFrame');
     const urlDisplay = document.getElementById('appUrl');
 
-    if (appPanel && frame) {
+    if (frame) {
       frame.src = url;
-      if (urlDisplay) urlDisplay.textContent = url;
-      appPanel.classList.remove('hidden');
     }
-  }
-
-  /**
-   * Hide the embedded app.
-   */
-  hideEmbeddedApp() {
-    const appPanel = document.getElementById('exploreApp');
-    if (appPanel) appPanel.classList.add('hidden');
+    if (urlDisplay) {
+      urlDisplay.textContent = url;
+    }
   }
 }
 

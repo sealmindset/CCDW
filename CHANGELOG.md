@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.4.3] - 2026-04-17
+
+### Added
+- Welcome-back flow for existing projects: conversational DM-style greeting with three actions
+  - "Add something new" → runs /resume-it with Bifrost progress bar (same experience as new builds)
+  - "Take a look at your creation" → runs /try-it, starts Docker, embeds app in iframe
+  - "We're ready to go live" → opens Ship wizard
+  - Free-text input also works: type anything and it routes through /resume-it
+- Bifrost progress bar now shows during /resume-it (iterating phase mapped to building)
+
+### Fixed
+- Quick reply suggestions: no longer offers generic YES/NO for non-binary questions
+  - Extracts contextual options from numbered lists, lettered choices, and bold bullets
+  - Detects "A or B?" alternatives and offers both as buttons
+  - Only shows Yes/No for truly confirmatory questions (e.g., "Should I proceed?")
+- Try-It redirect: now opens the actual app URL instead of redirecting to Workshop
+  - Detects app port from CLI output and docker-compose.yml port mappings
+  - Embeds the running app in an iframe on the Explore view
+  - Stores detected URL across views so Try It button works immediately
+
+### Changed
+- Explore view simplified: technical dashboard replaced with clean header bar + full-size app iframe
+  - Removed stat cards, test users list, and readiness checklist
+  - Summary bar shows project name, health badge, page/role counts
+  - App iframe is the primary content, not a toggle overlay
+- Project cards on Home simplified: single click opens welcome-back chat (removed separate Open/Resume buttons)
+
 ## [0.4.2] - 2026-04-17
 
 ### Fixed

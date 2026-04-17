@@ -25,6 +25,7 @@
       <button class="nav-btn" data-view="terminal" title="Terminal (optional)">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
       </button>
+      <button class="nav-tag hidden" id="btnSeeApp" title="Open your running app">See your app</button>
     </nav>
     <div class="header-status">
       <span class="status-dot" id="statusDot"></span>
@@ -175,92 +176,36 @@
       </div>
     </section>
 
-    <!-- EXPLORE VIEW: Dashboard + Embedded App -->
+    <!-- EXPLORE VIEW: Simplified header + Embedded App -->
     <section class="view view-explore" id="viewExplore">
-      <div class="explore-dashboard" id="exploreDashboard">
-        <div class="dashboard-header">
-          <h2 id="projectTitle">Your App</h2>
-          <div class="dashboard-actions">
-            <button class="btn-secondary" id="btnIterate">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              Make Changes
-            </button>
-            <button class="btn-accent" id="btnGoLive">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9 22 2z"/></svg>
-              Go Live
-            </button>
-          </div>
+      <div class="explore-header" id="exploreHeader">
+        <h2 id="projectTitle">Your App</h2>
+        <div class="explore-summary">
+          <span class="summary-badge" id="summaryHealth">Healthy</span>
+          <span class="summary-stat" id="summaryPages"></span>
+          <span class="summary-stat" id="summaryUsers"></span>
         </div>
-
-        <!-- Stats cards -->
-        <div class="dashboard-stats" id="dashboardStats">
-          <div class="stat-card">
-            <div class="stat-icon stat-health">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-            </div>
-            <div class="stat-info">
-              <span class="stat-value" id="statHealth">--</span>
-              <span class="stat-label">Health</span>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon stat-pages">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-            </div>
-            <div class="stat-info">
-              <span class="stat-value" id="statPages">--</span>
-              <span class="stat-label">Pages</span>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon stat-users">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </div>
-            <div class="stat-info">
-              <span class="stat-value" id="statUsers">--</span>
-              <span class="stat-label">Test Users</span>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon stat-tests">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            </div>
-            <div class="stat-info">
-              <span class="stat-value" id="statTests">--</span>
-              <span class="stat-label">Tests</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Test users -->
-        <div class="dashboard-users" id="dashboardUsers">
-          <h3>Test Users</h3>
-          <div class="users-list" id="usersList">
-            <!-- Populated by JS -->
-          </div>
-        </div>
-
-        <!-- Readiness checklist -->
-        <div class="dashboard-readiness" id="dashboardReadiness">
-          <h3>Readiness</h3>
-          <div class="readiness-items" id="readinessItems">
-            <!-- Populated by JS -->
-          </div>
+        <div class="dashboard-actions">
+          <button class="btn-secondary" id="btnIterate">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Make Changes
+          </button>
+          <button class="btn-accent" id="btnGoLive">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9 22 2z"/></svg>
+            Go Live
+          </button>
         </div>
       </div>
 
       <!-- Embedded app iframe -->
-      <div class="explore-app hidden" id="exploreApp">
+      <div class="explore-app" id="exploreApp">
         <div class="app-toolbar">
-          <span class="app-url" id="appUrl">http://localhost:3000</span>
+          <span class="app-url" id="appUrl"></span>
           <button class="btn-icon" id="btnOpenExternal" title="Open in new tab">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </button>
           <button class="btn-icon" id="btnRefreshApp" title="Refresh">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          </button>
-          <button class="btn-icon" id="btnCloseApp" title="Back to dashboard">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         <iframe class="app-frame" id="appFrame" sandbox="allow-same-origin allow-scripts allow-forms allow-popups"></iframe>

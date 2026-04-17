@@ -64,6 +64,59 @@ function getFreshEnv() {
 }
 
 // ---------------------------------------------------------------------------
+// App URL Detection (for Try-It embedded preview)
+// ---------------------------------------------------------------------------
+const SKIP_PORTS = new Set([5432, 6379, 27017, 3306, 1433, 9200, 7681, 3000, 8080]);
+
+function detectAppUrl(projectDir) {
+  if (!projectDir) return null;
+  const composeFiles = ['docker-compose.yml', 'docker-compose.yaml'];
+  for (const f of composeFiles) {
+    const fp = path.join(projectDir, f);
+    if (!fs.existsSync(fp)) continue;
+    try {
+      const content = fs.readFileSync(fp, 'utf-8');
+      const portMatches = [...content.matchAll(/["']?(\d{2,5}):(\d{2,5})["']?/g)];
+      for (const m of portMatches) {
+        const hostPort = parseInt(m[1], 10);
+        if (!SKIP_PORTS.has(hostPort) && hostPort >= 1024 && hostPort <= 65535) {
+          return hostPort;
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  }
+  return null;
+}
+
+/**
+ * Fast try-it: check if app is already running and code is unchanged.
+ * Returns the port if we can skip /try-it, or null if a full run is needed.
+ */
+function tryItFast(projectDir) {
+  if (!projectDir) return null;
+  const port = detectAppUrl(projectDir);
+  if (!port) return null;
+
+  // Check if the app port is actually responding
+  try {
+    execSync(`curl -sf --max-time 2 http://localhost:${port}/ > /dev/null 2>&1`, { timeout: 5000 });
+  } catch {
+    return null; // not running
+  }
+
+  // Check for uncommitted changes
+  try {
+    const status = execSync('git status --short 2>/dev/null', { cwd: projectDir, timeout: 5000 }).toString().trim();
+    if (status.length > 0) return null; // has changes, need rebuild
+  } catch {
+    // no git or error — be safe, run full try-it
+    return null;
+  }
+
+  return port;
+}
+
+// ---------------------------------------------------------------------------
 // Credential Detection
 // ---------------------------------------------------------------------------
 function detectAuthStatus() {
@@ -166,6 +219,7 @@ wss.on('connection', (ws) => {
     activityTimer: null,    // debounce timer for activity batching
     waitingForUser: false,  // true when a question was sent and we're awaiting user reply
     autoContCount: 0,       // safety counter: how many auto-continuations in a row
+    detectedAppPort: null,  // port detected from CLI output or docker-compose for try-it
   };
   sessions.set(sessionId, session);
 
@@ -217,9 +271,23 @@ function handleMessage(session, msg) {
       openProject(session, msg);
       break;
 
-    case 'try-it':
-      runSkill(session, '/try-it');
+    case 'try-it': {
+      const fastPort = tryItFast(session.projectDir);
+      if (fastPort) {
+        session.phase = 'testing';
+        session.ws.send(JSON.stringify({ type: 'phase-change', phase: 'testing', message: 'App is already running!' }));
+        session.ws.send(JSON.stringify({
+          type: 'process-complete',
+          phase: 'testing',
+          exitCode: 0,
+          appUrl: `http://localhost:${fastPort}`,
+          message: 'Your app is already up and running!',
+        }));
+      } else {
+        runSkill(session, '/try-it');
+      }
       break;
+    }
 
     case 'resume-it':
       runSkill(session, '/resume-it');
@@ -280,6 +348,10 @@ function startProject(session, msg) {
   }
 
   session.projectDir = projectDir;
+  session.claudeSessionId = null;
+  session.autoContCount = 0;
+  session.waitingForUser = false;
+  session.detectedAppPort = null;
 
   // Auto-detect: /make-it for new projects, /resume-it for existing ones
   const skill = detectSkill(projectDir);
@@ -334,6 +406,12 @@ function runSkill(session, skill) {
     session.ws.send(JSON.stringify({ type: 'error', message: 'No active project' }));
     return;
   }
+
+  // Clear previous session so new skill starts fresh (no --resume into old context)
+  session.claudeSessionId = null;
+  session.autoContCount = 0;
+  session.waitingForUser = false;
+  session.detectedAppPort = null;
 
   const phaseMap = {
     '/try-it': 'testing',
@@ -534,7 +612,7 @@ function spawnCLI(session, cwd, prompt, resumeId) {
     // so the skill keeps executing.
     // ---------------------------------------------------------------
     const activePhases = new Set([
-      'ideation', 'design', 'building', 'verifying', 'testing', 'iterating',
+      'ideation', 'design', 'building', 'verifying', 'iterating',
     ]);
 
     if (
@@ -574,10 +652,18 @@ function spawnCLI(session, cwd, prompt, resumeId) {
       return;
     }
 
+    // Resolve app URL for try-it phase: prefer CLI-detected port, fall back to docker-compose
+    let appUrl = null;
+    if (code === 0 && (session.phase === 'testing' || session.phase === 'complete')) {
+      const port = session.detectedAppPort || detectAppUrl(session.projectDir);
+      if (port) appUrl = `http://localhost:${port}`;
+    }
+
     session.ws.send(JSON.stringify({
       type: 'process-complete',
       phase: session.phase,
       exitCode: code,
+      appUrl,
       message: code === 0 ? 'Done!' : 'Something went wrong, but I can try again.'
     }));
   });
@@ -843,6 +929,66 @@ function flushActivity(session) {
 }
 
 /**
+ * Extract contextual quick reply options from question text.
+ * Priority: structured options > "A or B?" pattern > binary confirmation > nothing.
+ */
+function extractQuickReplies(fullText, lastLine) {
+  // 1. Numbered options: "1. Option text" or "**1.** Option text"
+  const numberedOpts = fullText.match(/^\s*(?:\*\*)?(\d+)[\.\)](?:\*\*)?\s+(.+)$/gm);
+  if (numberedOpts && numberedOpts.length >= 2) {
+    const opts = numberedOpts.map(m =>
+      m.replace(/^\s*(?:\*\*)?\d+[\.\)](?:\*\*)?\s+/, '').replace(/\*\*/g, '').trim()
+    ).filter(t => t.length > 0 && t.length <= 80);
+    if (opts.length >= 2) return opts;
+  }
+
+  // 2. Lettered options: "A. Option" or "**A.** Option" or "**A)** Option"
+  const letteredOpts = fullText.match(/^\s*(?:\*\*)?([A-Z])[\.\)](?:\*\*)?\s+(.+)$/gm);
+  if (letteredOpts && letteredOpts.length >= 2) {
+    const opts = letteredOpts.map(m =>
+      m.replace(/^\s*(?:\*\*)?[A-Z][\.\)](?:\*\*)?\s+/, '').replace(/\*\*/g, '').trim()
+    ).filter(t => t.length > 0 && t.length <= 80);
+    if (opts.length >= 2) return opts;
+  }
+
+  // 3. Bold bullet options: "- **Option text** -- description"
+  const boldBullets = fullText.match(/^\s*[-*]\s+\*\*(.+?)\*\*/gm);
+  if (boldBullets && boldBullets.length >= 2) {
+    const opts = boldBullets.map(m => {
+      const match = m.match(/\*\*(.+?)\*\*/);
+      return match ? match[1].trim() : '';
+    }).filter(t => t.length > 0 && t.length <= 80);
+    if (opts.length >= 2) return opts;
+  }
+
+  // 4. "X or Y?" pattern in the last line (only for short, clean alternatives)
+  const orMatch = lastLine.match(/(?:^|\b)(\w[\w\s]{0,30}?)\s+or\s+(\w[\w\s]{0,30}?)\?\s*$/i);
+  if (orMatch) {
+    let opt1 = orMatch[1].replace(/^.*\b(?:use|prefer|choose|pick|go with|want)\s+/i, '').trim();
+    let opt2 = orMatch[2].trim();
+    if (opt1.length >= 2 && opt1.length <= 40 && opt2.length >= 2 && opt2.length <= 40) {
+      return [opt1, opt2];
+    }
+  }
+
+  // 5. Binary confirmation ONLY for truly yes/no questions:
+  //    - Must NOT be a wh-question (what, which, how, where, when, who, why)
+  //    - Must NOT contain "or" (offering alternatives)
+  //    - Must match specific confirmatory patterns
+  const isWh = /^\s*(?:what|which|how|where|when|who|why|describe|list|name|tell|can you)\b/i.test(lastLine);
+  const hasOr = /\bor\b/i.test(lastLine);
+  if (!isWh && !hasOr) {
+    const isBinary =
+      /\by\/n\b/i.test(lastLine) ||
+      /^\s*(?:shall I|should I|want me to|would you like me to|can I|may I)\b/i.test(lastLine) ||
+      /\b(?:proceed|continue|go ahead|look(?:s)? good|sound(?:s)? good|ready|correct|right)\?\s*$/i.test(lastLine);
+    if (isBinary) return ['Yes', 'No'];
+  }
+
+  return null;
+}
+
+/**
  * Process a complete assistant text block.
  * Detects phase changes, questions, and general updates.
  * Tracks lastSentText for dedup against the result event.
@@ -854,7 +1000,8 @@ function processAssistantText(session, text) {
   // Track for dedup (result event sends the same text again)
   session.lastSentText = text;
 
-  // Phase detection
+  // Phase detection (skip when /try-it is running — 'testing' phase is authoritative)
+  const skipPhaseDetection = session.phase === 'testing';
   const phasePatterns = [
     { pattern: /ideation|describe.*app|what.*build|what kind/i, phase: 'ideation', label: 'Understanding your idea' },
     { pattern: /design|architecture|stack|planning|blueprint/i, phase: 'design', label: 'Designing the architecture' },
@@ -863,7 +1010,7 @@ function processAssistantText(session, text) {
     { pattern: /try-it|your app is.*running|ready to explore|everything.*(pass|look)/i, phase: 'complete', label: 'Ready to explore' },
   ];
 
-  for (const { pattern, phase, label } of phasePatterns) {
+  if (!skipPhaseDetection) for (const { pattern, phase, label } of phasePatterns) {
     if (pattern.test(text) && session.phase !== phase) {
       session.phase = phase;
       session.ws.send(JSON.stringify({ type: 'phase-change', phase, message: label }));
@@ -871,22 +1018,18 @@ function processAssistantText(session, text) {
     }
   }
 
+  // URL extraction: capture app URLs from CLI output (for try-it embed)
+  const urlMatch = text.match(/https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})/);
+  if (urlMatch && !SKIP_PORTS.has(parseInt(urlMatch[1], 10))) {
+    session.detectedAppPort = parseInt(urlMatch[1], 10);
+  }
+
   // Question detection: look for a question at the end of the text
   const lines = text.split('\n').filter(l => l.trim());
   const lastLine = lines[lines.length - 1]?.trim() || '';
 
   if (/\?\s*$/.test(lastLine)) {
-    const isYesNo = /\b(yes|no|y\/n)\b/i.test(lastLine) ||
-                    /\b(do you|will you|should|is this|does|are you|would you|want me)\b/i.test(lastLine);
-
-    // Detect option-style questions (A, B, C, D patterns)
-    const optionMatch = text.match(/\*\*([A-D])\.\*\*|^([A-D])\.\s/gm);
-    let quickReplies = null;
-    if (optionMatch && optionMatch.length >= 2) {
-      quickReplies = optionMatch.map(m => m.replace(/\*\*/g, '').trim().charAt(0));
-    } else if (isYesNo) {
-      quickReplies = ['Yes', 'No'];
-    }
+    const quickReplies = extractQuickReplies(text, lastLine);
 
     session.waitingForUser = true;
     session.ws.send(JSON.stringify({
@@ -1290,6 +1433,9 @@ function projectStatus(projectName, res) {
   try {
     result.changelog = fs.readFileSync(path.join(dir, 'CHANGELOG.md'), 'utf-8');
   } catch { result.changelog = null; }
+
+  const appPort = detectAppUrl(dir);
+  result.appPort = appPort || null;
 
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(result));

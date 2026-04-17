@@ -173,6 +173,12 @@
   box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 3px var(--accent);
 }
 
+.welcome-action-btn {
+  padding: 10px 20px;
+  font-size: 0.9rem;
+  border-width: 2px;
+}
+
 .quick-replies-hint {
   width: 100%;
   text-align: center;
