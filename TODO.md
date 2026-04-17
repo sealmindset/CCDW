@@ -35,15 +35,6 @@
   - Handle secrets/env vars promotion across environments (dev -> staging -> prod)
   - Provide plain-English deployment status ("Your app is live at https://...")
 
-## High Priority (SMS Career Concierge)
-- [ ] Add SMS/Twilio integration to career-lens backend
-  - Webhook endpoint, conversation router, notification service
-  - All config via .env or app settings UI (zero hardcoded values)
-  - Twilio account SID, auth token, phone numbers all configurable
-  - Cloudflare Tunnel sidecar for local webhook delivery
-  - Two-tier approval: ask for major actions, auto for low-stakes
-- [ ] Explore Claude Cowork integration for heavy-lift tasks (research, resume tailoring, interview prep)
-
 ## Medium Priority
 - [ ] Add VS Code extensions for common languages (Python, TypeScript, Go)
 - [ ] Add Copilot-style Claude extension to code-server
