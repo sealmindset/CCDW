@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.1] - 2026-04-16
+
+### Fixed
+- Bifrost progress bar now stays visible during the entire build phase
+  - Informational messages no longer switch from build view to chat view
+  - Only real questions (with reply options or ending with '?') interrupt the build view
+- Auto-continuation: builds chain multiple turns via `--resume` so code actually gets written
+- Full skill inlining: Workshop sends the complete /make-it skill content on turn 1 (TUI parity)
+- Large prompt handling: prompts exceeding 128KB piped via stdin instead of command-line args
+
+### Changed
+- Docker image rebuilt with all Workshop fixes baked in
+
 ## [0.4.0] - 2026-04-16
 
 ### Added

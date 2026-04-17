@@ -1,11 +1,13 @@
 # TODO
 
 ## High Priority (Workshop)
-- [ ] End-to-end test: create project through Workshop UI, verify CLI bridge flow
+- [ ] End-to-end Bifrost test: create a project, verify Bifrost stays visible through entire build
 - [ ] Browser test: verify all 6 views render correctly, transitions animate
 - [ ] Bifrost polish: test animation timing, walker movement, bug defeat sequence
 - [ ] Workshop auth: pass container AI credentials through to spawned CLI processes
-- [ ] Workshop error recovery: handle CLI crash mid-build, offer retry in UI
+- [x] Fix Bifrost not showing during builds (informational messages incorrectly switching views)
+- [x] Auto-continuation: builds now chain turns via --resume so code gets written
+- [x] Full skill inlining: resolveSkill() sends complete /make-it content on turn 1
 
 ## High Priority
 - [ ] Test build on Windows 10/11 with Docker Desktop
