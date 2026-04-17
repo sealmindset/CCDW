@@ -19,7 +19,8 @@ class BifrostController {
   }
 
   /**
-   * Set the current phase. Animates the Bifrost forward.
+   * Set the current phase. Animates the Bifrost forward with staggered timing:
+   * glow fills first, then walker moves, then circle activates.
    */
   setPhase(phaseName) {
     const index = this.phases.indexOf(phaseName);
@@ -27,8 +28,8 @@ class BifrostController {
 
     this.currentPhaseIndex = index;
     this.updateProgress();
-    this.updatePhaseNodes();
-    this.moveWalker();
+    setTimeout(() => this.moveWalker(), 200);
+    setTimeout(() => this.updatePhaseNodes(), 500);
   }
 
   /**
@@ -67,23 +68,23 @@ class BifrostController {
   }
 
   /**
-   * Show a bug at the current walker position.
-   * Called when a test fails or an issue is found.
+   * Show a bug slightly ahead of the walker's current position.
+   * Uses the same percentage-based positioning as the walker.
    */
   showBug() {
     if (!this.bug) return;
 
-    // Position bug slightly ahead of walker
-    const walkerLeft = parseFloat(getComputedStyle(this.walker).left);
-    this.bug.style.left = (walkerLeft + 40) + 'px';
+    const positionPcts = { 'start': 2, 'phase-1': 8, 'phase-2': 36.7, 'phase-3': 65.3, 'phase-4': 92 };
+    const walkerPos = this.walker.getAttribute('data-position') || 'start';
+    const pct = (positionPcts[walkerPos] || 8) + 5;
+    this.bug.style.left = pct + '%';
 
     this.bug.classList.remove('hidden', 'defeating');
     this.bugDefeat.classList.add('hidden');
   }
 
   /**
-   * Animate defeating the bug.
-   * Called when the issue is fixed.
+   * Animate defeating the bug with flash + shrink.
    */
   defeatBug() {
     if (!this.bug) return;
@@ -95,7 +96,7 @@ class BifrostController {
       this.bug.classList.add('hidden');
       this.bug.classList.remove('defeating');
       this.bugDefeat.classList.add('hidden');
-    }, 800);
+    }, 900);
   }
 
   /**
@@ -104,32 +105,42 @@ class BifrostController {
   reset() {
     this.currentPhaseIndex = -1;
     this.glow.setAttribute('data-progress', '0');
+    this.glow.classList.remove('celebrating');
     this.walker.setAttribute('data-position', 'start');
+    this.walker.classList.remove('celebrating');
     this.phaseNodes.forEach(node => {
       node.classList.remove('active', 'completed');
     });
-    this.bug.classList.add('hidden');
+    if (this.bug) this.bug.classList.add('hidden');
   }
 
   /**
-   * Complete animation -- all phases done, celebration effect.
+   * Complete animation -- all phases done, celebration sweep + walker jump.
    */
   complete() {
     this.currentPhaseIndex = this.phases.length - 1;
     this.updateProgress();
     this.moveWalker();
 
-    // Mark all as completed
-    this.phaseNodes.forEach(node => {
-      node.classList.remove('active');
-      node.classList.add('completed');
+    // Mark all as completed with staggered pops
+    this.phaseNodes.forEach((node, i) => {
+      setTimeout(() => {
+        node.classList.remove('active');
+        node.classList.add('completed');
+      }, i * 120);
     });
 
-    // Add a brief celebration glow
-    this.glow.style.filter = 'brightness(1.3)';
+    // Celebration: light sweep across the bridge + walker jump
     setTimeout(() => {
-      this.glow.style.filter = '';
-    }, 2000);
+      this.glow.classList.add('celebrating');
+      this.walker.classList.add('celebrating');
+    }, 500);
+
+    // Clean up celebration classes
+    setTimeout(() => {
+      this.glow.classList.remove('celebrating');
+      this.walker.classList.remove('celebrating');
+    }, 2500);
   }
 }
 

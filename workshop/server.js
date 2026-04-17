@@ -46,29 +46,45 @@ const MIME_TYPES = {
 const sessions = new Map();
 
 // ---------------------------------------------------------------------------
+// Fresh Credential Reading
+// ---------------------------------------------------------------------------
+const SETTINGS_PATH = path.join(HOME_DIR, '.claude', 'settings.json');
+
+function readSettingsEnv() {
+  try {
+    if (!fs.existsSync(SETTINGS_PATH)) return {};
+    const settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8'));
+    return (settings && settings.env) || {};
+  } catch { return {}; }
+}
+
+function getFreshEnv() {
+  const settingsEnv = readSettingsEnv();
+  return { ...process.env, ...settingsEnv, NO_COLOR: '1' };
+}
+
+// ---------------------------------------------------------------------------
 // Credential Detection
 // ---------------------------------------------------------------------------
 function detectAuthStatus() {
   const result = { configured: false, provider: 'none', detail: '' };
+  const env = getFreshEnv();
 
-  // Check for direct API key (highest priority)
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (env.ANTHROPIC_API_KEY) {
     result.configured = true;
     result.provider = 'Anthropic API';
     result.detail = 'API key configured';
     return result;
   }
 
-  // Check for Azure AI Foundry with API key
-  if (process.env.ANTHROPIC_FOUNDRY_BASE_URL && process.env.ANTHROPIC_FOUNDRY_API_KEY) {
+  if (env.ANTHROPIC_FOUNDRY_BASE_URL && env.ANTHROPIC_FOUNDRY_API_KEY) {
     result.configured = true;
     result.provider = 'Azure AI Foundry (API Key)';
     result.detail = 'Foundry endpoint + API key configured';
     return result;
   }
 
-  // Check for Azure AI Foundry with token auth
-  if (process.env.ANTHROPIC_FOUNDRY_BASE_URL) {
+  if (env.ANTHROPIC_FOUNDRY_BASE_URL) {
     try {
       execSync('az account get-access-token --resource https://cognitiveservices.azure.com 2>/dev/null', { timeout: 5000 });
       result.configured = true;
@@ -80,20 +96,6 @@ function detectAuthStatus() {
       result.detail = 'Foundry endpoint set but Azure token expired or missing';
     }
     return result;
-  }
-
-  // Check for settings.json with provider config
-  const settingsPath = '/home/coder/.claude/settings.json';
-  if (fs.existsSync(settingsPath)) {
-    try {
-      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-      if (settings.env && (settings.env.ANTHROPIC_API_KEY || settings.env.ANTHROPIC_FOUNDRY_BASE_URL)) {
-        result.configured = true;
-        result.provider = 'Settings file';
-        result.detail = 'Credentials in settings.json';
-        return result;
-      }
-    } catch { /* ignore parse errors */ }
   }
 
   result.detail = 'No AI provider credentials found. Open the Web Terminal and run "claude" to set up.';
@@ -393,6 +395,10 @@ function spawnCLI(session, cwd, prompt, resumeId) {
 
   const resumeArg = resumeId ? ` --resume ${resumeId}` : '';
 
+  // Re-read credentials fresh from settings.json + process.env on every spawn.
+  // This picks up credentials configured after Workshop started (e.g., setup wizard).
+  const env = getFreshEnv();
+
   let proc;
 
   if (useStdin) {
@@ -407,7 +413,7 @@ function spawnCLI(session, cwd, prompt, resumeId) {
 
     proc = spawn('sh', ['-c', cmd], {
       cwd,
-      env: { ...process.env, NO_COLOR: '1' },
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } else {
@@ -426,8 +432,8 @@ function spawnCLI(session, cwd, prompt, resumeId) {
 
     proc = spawn('claude', args, {
       cwd,
-      env: { ...process.env, NO_COLOR: '1' },
-      stdio: ['ignore', 'pipe', 'pipe'],  // stdin not needed for -p arg mode
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
   }
 
@@ -1133,19 +1139,18 @@ async function runPreflight(res) {
   checks.auth.detail = auth.configured ? auth.provider : auth.detail;
   checks.auth.provider = auth.provider;
 
-  // 3. Check network -- if Azure Foundry, verify we can reach the endpoint
-  if (process.env.ANTHROPIC_FOUNDRY_BASE_URL) {
+  // 3. Check network -- use fresh env (picks up credentials set after Workshop started)
+  const env = getFreshEnv();
+  if (env.ANTHROPIC_FOUNDRY_BASE_URL) {
     try {
-      // TCP-level reachability check -- any HTTP response (even 404) means network is OK
-      const host = new URL(process.env.ANTHROPIC_FOUNDRY_BASE_URL).hostname;
+      const host = new URL(env.ANTHROPIC_FOUNDRY_BASE_URL).hostname;
       execSync(`curl --connect-timeout 5 --max-time 5 -o /dev/null -w "%{http_code}" https://${host} 2>/dev/null`, { timeout: 10000 });
       checks.network.pass = true;
       checks.network.detail = 'Connected to Azure AI Foundry';
     } catch {
       checks.network.detail = 'Cannot reach Azure AI Foundry -- VPN may be required';
     }
-  } else if (process.env.ANTHROPIC_API_KEY) {
-    // Direct API key -- check api.anthropic.com reachability
+  } else if (env.ANTHROPIC_API_KEY) {
     try {
       execSync('curl -sf --connect-timeout 5 --max-time 5 https://api.anthropic.com -o /dev/null', { timeout: 10000 });
       checks.network.pass = true;
@@ -1154,7 +1159,6 @@ async function runPreflight(res) {
       checks.network.detail = 'Cannot reach Anthropic API -- check your network connection';
     }
   } else {
-    // No provider configured -- network check is N/A
     checks.network.pass = true;
     checks.network.detail = 'No provider configured yet';
   }
@@ -1172,7 +1176,7 @@ async function runPreflight(res) {
     });
   }
   if (!checks.auth.pass) {
-    if (process.env.ANTHROPIC_FOUNDRY_BASE_URL) {
+    if (env.ANTHROPIC_FOUNDRY_BASE_URL) {
       steps.push({
         id: 'az-login',
         label: 'Sign in to Azure',

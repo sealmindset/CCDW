@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.2] - 2026-04-17
+
+### Fixed
+- Workshop auth passthrough: credentials configured after server start are now detected
+  - Auth status, preflight checks, and CLI spawning all read fresh from settings.json
+  - Users who configure AI credentials in the terminal no longer need to restart Workshop
+
+### Changed
+- Bifrost animations polished across the board:
+  - Walker starts behind the first phase node so ideation phase has visible travel
+  - Phase circles pop and scale when activating/completing (entrance animation)
+  - Completed circle dot fades in with a delayed scale animation
+  - Walker bob has a subtle tilt for more character
+  - Bug wobble is faster and more frantic (0.3s with scale variation)
+  - Bug defeat adds an expanding ring flash effect
+  - Completion triggers a light sweep across the bridge and walker celebration jump
+  - Phase transitions staggered: glow fills → walker moves → circle activates
+  - Bug positioning uses percentage-based system instead of brittle pixel calculation
+
 ## [0.4.1] - 2026-04-16
 
 ### Fixed

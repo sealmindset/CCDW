@@ -150,20 +150,35 @@
   position: relative;
 }
 
-/* Active phase: glowing ring */
+/* Active phase: glowing ring with entrance pop */
 .phase-node.active .phase-circle {
   border-color: var(--accent);
   box-shadow: 0 0 12px rgba(99, 102, 241, 0.5), 0 0 24px rgba(99, 102, 241, 0.2);
-  animation: phase-pulse 2s ease-in-out infinite;
+  animation: phase-activate 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+             phase-pulse 2s ease-in-out 0.4s infinite;
 }
 
-/* Completed phase: filled */
+@keyframes phase-activate {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+/* Completed phase: filled with pop */
 .phase-node.completed .phase-circle {
   background: var(--accent);
   border-color: var(--accent);
   box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
+  animation: phase-complete 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
+@keyframes phase-complete {
+  0%   { transform: scale(1); box-shadow: 0 0 8px rgba(99, 102, 241, 0.4); }
+  40%  { transform: scale(1.3); box-shadow: 0 0 20px rgba(99, 102, 241, 0.7); }
+  100% { transform: scale(1); box-shadow: 0 0 8px rgba(99, 102, 241, 0.4); }
+}
+
+/* Checkmark inside completed circle */
 .phase-node.completed .phase-circle::after {
   content: '';
   position: absolute;
@@ -173,8 +188,14 @@
   height: 10px;
   border-radius: 50%;
   background: white;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(0);
   opacity: 0.9;
+  animation: phase-dot-in 0.3s ease-out 0.2s forwards;
+}
+
+@keyframes phase-dot-in {
+  0%   { transform: translate(-50%, -50%) scale(0); }
+  100% { transform: translate(-50%, -50%) scale(1); }
 }
 
 @keyframes phase-pulse {
@@ -215,8 +236,9 @@
 }
 
 @keyframes walker-bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-3px) rotate(2deg); }
+  75% { transform: translateY(-1px) rotate(-2deg); }
 }
 
 .walker-pulse {
@@ -236,8 +258,8 @@
   50% { transform: translate(-50%, -50%) scale(1.3); opacity: 0.2; }
 }
 
-/* Walker position states */
-.bifrost-walker[data-position="start"]   { left: 8%; }
+/* Walker position states -- start is behind first node for visible travel */
+.bifrost-walker[data-position="start"]   { left: 2%; }
 .bifrost-walker[data-position="phase-1"] { left: 8%; }
 .bifrost-walker[data-position="phase-2"] { left: 36.7%; }
 .bifrost-walker[data-position="phase-3"] { left: 65.3%; }
@@ -259,12 +281,13 @@
 }
 
 .bug-icon {
-  animation: bug-wobble 0.5s ease-in-out infinite;
+  animation: bug-wobble 0.3s ease-in-out infinite;
 }
 
 @keyframes bug-wobble {
-  0%, 100% { transform: rotate(-5deg); }
-  50% { transform: rotate(5deg); }
+  0%, 100% { transform: rotate(-8deg) scale(1); }
+  25% { transform: rotate(6deg) scale(1.05); }
+  75% { transform: rotate(-6deg) scale(0.95); }
 }
 
 /* Bug defeat animation */
@@ -286,8 +309,28 @@
 
 @keyframes bug-defeat-anim {
   0% { transform: scale(0.5); opacity: 0; }
-  30% { transform: scale(1.5); opacity: 1; }
-  100% { transform: scale(2); opacity: 0; }
+  20% { transform: scale(1.8); opacity: 1; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+/* Flash ring on defeat */
+.bifrost-bug.defeating::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid rgba(99, 102, 241, 0.8);
+  transform: translate(-50%, -50%) scale(1);
+  animation: defeat-ring 0.6s ease-out forwards;
+}
+
+@keyframes defeat-ring {
+  0%   { transform: translate(-50%, -50%) scale(1); opacity: 1; border-width: 3px; }
+  100% { transform: translate(-50%, -50%) scale(4); opacity: 0; border-width: 1px; }
 }
 
 /* When bug is being defeated */
@@ -296,9 +339,50 @@
 }
 
 @keyframes bug-shrink {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.2) rotate(15deg); opacity: 0.8; }
-  100% { transform: scale(0); opacity: 0; }
+  0% { transform: scale(1) rotate(0deg); opacity: 1; }
+  30% { transform: scale(1.3) rotate(20deg); opacity: 0.9; }
+  60% { transform: scale(0.8) rotate(-10deg); opacity: 0.5; }
+  100% { transform: scale(0) rotate(30deg); opacity: 0; }
+}
+
+/* --- Completion celebration --- */
+.bifrost-glow.celebrating {
+  filter: brightness(1.4);
+  transition: filter 0.3s ease;
+}
+
+.bifrost-glow.celebrating::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.6) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: celebration-sweep 1s ease-out forwards;
+}
+
+@keyframes celebration-sweep {
+  0%   { background-position: -40% 0; opacity: 1; }
+  100% { background-position: 140% 0; opacity: 0; }
+}
+
+/* Walker does a little jump on completion */
+.bifrost-walker.celebrating .walker-icon {
+  animation: walker-celebrate 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes walker-celebrate {
+  0%   { transform: translateY(0) scale(1); }
+  30%  { transform: translateY(-10px) scale(1.15); }
+  50%  { transform: translateY(-12px) scale(1.2); }
+  70%  { transform: translateY(-4px) scale(1.05); }
+  100% { transform: translateY(0) scale(1); }
 }
 
 /* --- Responsive --- */

@@ -3,8 +3,8 @@
 ## High Priority (Workshop)
 - [ ] End-to-end Bifrost test: create a project, verify Bifrost stays visible through entire build
 - [ ] Browser test: verify all 6 views render correctly, transitions animate
-- [ ] Bifrost polish: test animation timing, walker movement, bug defeat sequence
-- [ ] Workshop auth: pass container AI credentials through to spawned CLI processes
+- [x] Bifrost polish: walker start offset, phase pop animations, celebration sweep, bug flash ring
+- [x] Workshop auth: getFreshEnv() reads settings.json before every CLI spawn and auth check
 - [x] Fix Bifrost not showing during builds (informational messages incorrectly switching views)
 - [x] Auto-continuation: builds now chain turns via --resume so code gets written
 - [x] Full skill inlining: resolveSkill() sends complete /make-it content on turn 1
