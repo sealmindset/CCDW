@@ -1,9 +1,9 @@
 # TODO
 
 ## High Priority (Workshop)
-- [ ] End-to-end Bifrost test: create a project, verify Bifrost stays visible through entire build
-- [ ] Browser test: verify all 6 views render correctly, transitions animate
-- [ ] Configure git remote and push all commits
+- [x] End-to-end Bifrost test: 20 Playwright tests covering all phases, walker, bug, reset, celebration
+- [x] Browser test: 17 Playwright tests across all 6 views, overlays, panels (37/37 passing)
+- [x] Configure git remote and push all commits (pushed to sealmindset + sleepnumberinc)
 - [x] Bifrost polish: phase icons (lightbulb, pencil, wrench, rocket), icons above bridge, Claude mascot walker
 - [x] VS Code terminal fix: node-pty recompiled for Alpine musl, tini as PID 1
 - [x] VS Code Claude Code terminal profile: auto-launches in right panel on workspace open

@@ -1,0 +1,19 @@
+{
+  "name": "claude-code-docker",
+  "version": "1.0.0",
+  "description": "Run Claude Code on Windows -- no WSL, no Node.js, no Linux setup. Just Docker.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}
