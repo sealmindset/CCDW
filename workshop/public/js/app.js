@@ -75,7 +75,9 @@
 
   function updateSeeAppTag() {
     const btn = document.getElementById('btnSeeApp');
-    if (btn) btn.classList.toggle('hidden', !state.appUrl);
+    if (!btn) return;
+    btn.classList.remove('hidden');
+    btn.classList.toggle('disabled', !state.appUrl);
   }
 
   // ============================================================

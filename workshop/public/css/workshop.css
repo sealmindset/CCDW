@@ -172,6 +172,12 @@ body {
   display: none;
 }
 
+.nav-tag.disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
 .header-status {
   margin-left: auto;
   display: flex;
