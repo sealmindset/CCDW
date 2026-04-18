@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.4] - 2026-04-17
+
+### Added
+- tini as PID 1 init process to reap zombie children (fixes 509+ zombie accumulation)
+- VS Code code-server terminal now works: recompiled node-pty for Alpine musl libc
+- VS Code Claude Code terminal profile: auto-launches Claude Code in right panel on workspace open
+- New config files: code-server-settings.json, code-server-tasks.json
+
+### Changed
+- Bifrost walker: replaced smiley face with Claude pixel mascot icon (terracotta body, dark features)
+- Bifrost phases: circles replaced with meaningful icons (lightbulb, pencil, wrench, rocket)
+- Bifrost layout: phase icons moved above the bridge path (two-layer layout)
+- "See your app" button: always visible, faded when app isn't running (was hidden entirely)
+
 ## [0.4.3] - 2026-04-17
 
 ### Added

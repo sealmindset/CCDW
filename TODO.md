@@ -3,7 +3,11 @@
 ## High Priority (Workshop)
 - [ ] End-to-end Bifrost test: create a project, verify Bifrost stays visible through entire build
 - [ ] Browser test: verify all 6 views render correctly, transitions animate
-- [x] Bifrost polish: walker start offset, phase pop animations, celebration sweep, bug flash ring
+- [ ] Configure git remote and push all commits
+- [x] Bifrost polish: phase icons (lightbulb, pencil, wrench, rocket), icons above bridge, Claude mascot walker
+- [x] VS Code terminal fix: node-pty recompiled for Alpine musl, tini as PID 1
+- [x] VS Code Claude Code terminal profile: auto-launches in right panel on workspace open
+- [x] "See your app" button always visible (faded when disabled)
 - [x] Workshop auth: getFreshEnv() reads settings.json before every CLI spawn and auth check
 - [x] Fix Bifrost not showing during builds (informational messages incorrectly switching views)
 - [x] Auto-continuation: builds now chain turns via --resume so code gets written
