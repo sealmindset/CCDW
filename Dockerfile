@@ -33,7 +33,8 @@ RUN apk update && apk upgrade && apk add --no-cache \
     libstdc++ \
     tmux \
     su-exec \
-    rsync
+    rsync \
+    tini
 
 # ---------------------------------------------------------------------------
 # Corporate/VPN CA certificates (for SSL inspection proxies)
@@ -61,6 +62,10 @@ RUN CODE_SERVER_VERSION="4.100.3" \
     && ln -s "$(which node)" "/usr/local/lib/code-server-${CODE_SERVER_VERSION}-linux-${CS_ARCH}/lib/node" \
     && ln -s "/usr/local/lib/code-server-${CODE_SERVER_VERSION}-linux-${CS_ARCH}/bin/code-server" /usr/local/bin/code-server \
     && rm /tmp/code-server.tar.gz
+
+# Rebuild node-pty for Alpine/musl (the pre-built binary targets glibc)
+RUN cd /usr/local/lib/code-server-*/lib/vscode/node_modules/node-pty \
+    && npm rebuild
 
 # ---------------------------------------------------------------------------
 # Install Claude Code CLI
@@ -147,4 +152,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
-ENTRYPOINT ["/opt/claude-code-docker/scripts/entrypoint.sh"]
+ENTRYPOINT ["/sbin/tini", "--", "/opt/claude-code-docker/scripts/entrypoint.sh"]

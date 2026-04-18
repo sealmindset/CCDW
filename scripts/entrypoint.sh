@@ -117,6 +117,23 @@ export XDG_CONFIG_HOME=/tmp/.config
 mkdir -p /tmp/.config
 chown -R coder:coder /tmp/.config 2>/dev/null || true
 
+# ---------------------------------------------------------------------------
+# Code-server settings: panel on right, Claude Code terminal profile
+# ---------------------------------------------------------------------------
+CS_USER_DIR="/home/coder/.local/share/code-server/User"
+CS_CONFIG="/opt/claude-code-docker/config"
+mkdir -p "$CS_USER_DIR"
+if [ ! -f "$CS_USER_DIR/settings.json" ]; then
+    cp "$CS_CONFIG/code-server-settings.json" "$CS_USER_DIR/settings.json"
+fi
+# Workspace task: auto-launch Claude Code on folder open
+VSCODE_DIR="$GITHUB_DIR/.vscode"
+mkdir -p "$VSCODE_DIR"
+if [ ! -f "$VSCODE_DIR/tasks.json" ]; then
+    cp "$CS_CONFIG/code-server-tasks.json" "$VSCODE_DIR/tasks.json"
+fi
+chown -R coder:coder "$CS_USER_DIR" "$VSCODE_DIR" 2>/dev/null || true
+
 CS_AUTH="${CODE_SERVER_AUTH:-none}"
 if [ "$CS_AUTH" = "password" ]; then
     if [ -z "$CODE_SERVER_PASSWORD" ]; then

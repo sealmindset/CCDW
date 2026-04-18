@@ -1,0 +1,21 @@
+{
+  "workbench.panel.defaultLocation": "right",
+  "workbench.panel.opensMaximized": "never",
+  "terminal.integrated.defaultProfile.linux": "Bash",
+  "terminal.integrated.profiles.linux": {
+    "Bash": {
+      "path": "/bin/bash",
+      "icon": "terminal"
+    },
+    "Claude Code": {
+      "path": "/bin/bash",
+      "args": ["-l", "-c", "claude"],
+      "icon": "sparkle",
+      "color": "terminal.ansiMagenta"
+    }
+  },
+  "terminal.integrated.tabs.location": "left",
+  "security.workspace.trust.enabled": false,
+  "telemetry.telemetryLevel": "off",
+  "update.mode": "none"
+}
