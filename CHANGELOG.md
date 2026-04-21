@@ -17,6 +17,17 @@
   - Replaced nested if/else with labeled sections and goto jumps
   - Inline docker run commands instead of building in variables (avoids nested quote bugs)
   - Removed all parentheses from user-facing text (use dashes instead)
+- install.bat: Fixed OneDrive interference with default projects folder
+  - Default changed from %USERPROFILE%\Documents\GitHub to %USERPROFILE%\GitHub
+  - OneDrive Known Folder Move redirects Documents into cloud sync, breaking paths
+- install.bat: Expanded Docker CLI discovery to find Rancher Desktop on locked-down machines
+  - Added: docker.exe in script directory (admin can pre-stage the binary)
+  - Added: Rancher Desktop MSI install path in Program Files
+  - Added: Rancher Desktop in current user's LocalAppData\Programs
+  - Added: Windows registry search for Rancher Desktop install location via PowerShell
+  - Added: Named pipe detection -- if Docker daemon is running but docker.exe is inaccessible,
+    gives specific instructions for the admin to copy the binary
+  - "Not found" error now lists every location that was checked
 
 ### Added
 - .env.example: DOCKER_PATH override for cases where docker.exe is in a non-standard location
