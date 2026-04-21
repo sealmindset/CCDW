@@ -12,6 +12,11 @@
 - install.bat: Workshop port 9200 now mapped (was missing from docker run)
 - install.bat: Progress counter during Docker engine wait ("Still waiting... 3 of 12")
 - install.bat: Falls back to cached image gracefully when offline (instead of forcing a local build)
+- install.bat: Rewrote all complex if-blocks to goto-based flow to fix batch parentheses escaping bug
+  - Parentheses in echo text (e.g. "recommended", "moby") silently terminated script execution
+  - Replaced nested if/else with labeled sections and goto jumps
+  - Inline docker run commands instead of building in variables (avoids nested quote bugs)
+  - Removed all parentheses from user-facing text (use dashes instead)
 
 ### Added
 - .env.example: DOCKER_PATH override for cases where docker.exe is in a non-standard location
