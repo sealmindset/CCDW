@@ -15,7 +15,7 @@
 
 ## High Priority
 - [x] Fix install.bat for Rancher Desktop under local admin (SSMITH) account
-- [ ] Test install.bat on Windows 10/11 with Rancher Desktop (under own account)
+- [x] Test install.bat on Windows 10/11 with Rancher Desktop (under own account)
 - [ ] Test install.bat on Windows 10/11 with Rancher Desktop (under SSMITH admin)
 - [ ] Test install.bat on Windows 10/11 with Docker Desktop
 - [ ] Verify Docker socket mounting works on Windows hosts
