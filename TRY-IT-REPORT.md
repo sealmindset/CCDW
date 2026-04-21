@@ -1,59 +1,50 @@
 # Claude Code Docker -- Try-It Report
-> Tested: 2026-04-16
+> Tested: 2026-04-20
 > Status: All Passing
 
 ## Summary
 
-Your app was tested automatically. Here's what happened:
+Your development environment was tested automatically. Here's what happened:
 
 | What Was Tested | Result |
 |----------------|--------|
-| Container starts up | PASS |
-| Welcome dashboard loads | PASS |
-| Web terminal (ttyd) loads | PASS |
-| VS Code (code-server) loads | PASS |
-| Health API responds | PASS |
-| Self-healing monitor running | PASS |
-| Docker socket accessible | PASS |
-| AI endpoint reachable | PASS |
+| Container starts and is healthy | PASS |
+| Welcome Dashboard loads | PASS |
+| Workshop (Business User IDE) loads | PASS |
+| Web Terminal loads | PASS |
+| VS Code in browser loads | PASS |
 
-## Services
+## Services Tested
 
 | Service | Port | Status | Notes |
 |---------|------|--------|-------|
-| Welcome Dashboard | 3000 | Healthy | 15KB page, status lights active |
-| Web Terminal (ttyd) | 7681 | Healthy | HTML terminal interface loaded |
-| VS Code (code-server) | 8080 | Healthy | Redirects to workspace (expected) |
-| Health Monitor | -- | Running | All systems operational |
+| Welcome Dashboard | 3000 | PASS | Landing page with service cards and system status |
+| Workshop | 9200 | PASS | "New Project" flow ready, shows "Connected" status |
+| Web Terminal (ttyd) | 7681 | PASS | Terminal ready with Azure AI Foundry configured |
+| VS Code (code-server) | 8080 | PASS | File explorer, Claude Code task auto-launched |
 
-## Health API (/api/health)
+## Screenshots
 
-- **Status:** healthy
-- **Message:** All systems operational
-- **Auth provider:** Azure AI Foundry (azure_cli_token)
-- **AI endpoint reachable:** Yes
-- **Docker socket:** Available
-- **Disk space:** Plenty available
-- **Recent failures (1h):** 0
+Screenshots of each interface are saved in `.try-it/screenshots/`:
+- `welcome-dashboard.png` -- Landing page with service cards
+- `welcome-dashboard-full.png` -- Full page including system status and getting started guide
+- `workshop-home.png` -- Workshop IDE home screen
+- `web-terminal.png` -- Web terminal with ready prompt
+- `code-server.png` -- VS Code in browser with file explorer
 
-## How to Access Your App
+## How to Access Your Environment
 
-- **Welcome Dashboard:** http://localhost:3000
-  Overview page with status lights, links, and getting-started guide
+- **Welcome page:** http://localhost:3000 -- Start here to see all your options
+- **Workshop:** http://localhost:9200 -- Build apps by describing your idea (no coding needed)
+- **Web Terminal:** http://localhost:7681 -- Type `claude` to start, then `/make-it` to build an app
+- **VS Code:** http://localhost:8080 -- Full IDE with file explorer, extensions, and terminal
 
-- **Web Terminal:** http://localhost:7681
-  Claude Code CLI in your browser -- type `/make-it` to build an app
-
-- **VS Code in Browser:** http://localhost:8080
-  Full IDE experience with your GitHub projects folder mounted
-
-- **Health API:** http://localhost:3000/api/health
-  JSON status endpoint for monitoring
+## Issues Found
+None -- all services are running and accessible.
 
 ## What to Do Next
-- Open http://localhost:3000 to see the welcome dashboard
-- Open http://localhost:7681 to use Claude Code in your browser
-- Open http://localhost:8080 to browse code in VS Code
-- If something doesn't look right, tell me and I'll fix it
-- When you're done exploring, just tell me "stop the app"
+- Open http://localhost:3000 in your browser to see the welcome page
+- Click **Workshop** to build an app without touching a terminal
+- Or open the **Web Terminal** to use Claude Code directly
 - To make changes, type **/resume-it**
+- To shut down, type **/wrap-it**

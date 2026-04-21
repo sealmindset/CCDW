@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.5] - 2026-04-21
+
+### Fixed
+- install.bat: Docker discovery now works when Rancher Desktop was installed under a different Windows account (e.g. SSMITH local admin)
+  - Searches PATH, current user's Rancher, Docker Desktop Program Files, then other user profiles
+  - Checks Windows named pipe (\\.\pipe\docker_engine) for engine readiness
+  - Offers two-option menu: install Rancher under own account (permanent fix) or use existing install (quick fix)
+- install.bat: Detects and warns when running as Administrator (wrong %USERPROFILE%)
+- install.bat: Reads PROJECTS_PATH from .env so volume mounts go to the right folder
+- install.bat: Workshop port 9200 now mapped (was missing from docker run)
+- install.bat: Progress counter during Docker engine wait ("Still waiting... 3 of 12")
+- install.bat: Falls back to cached image gracefully when offline (instead of forcing a local build)
+
+### Added
+- .env.example: DOCKER_PATH override for cases where docker.exe is in a non-standard location
+- .env.example: WORKSHOP_PORT setting documented
+
 ## [0.4.4] - 2026-04-17
 
 ### Added

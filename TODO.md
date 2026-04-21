@@ -14,8 +14,10 @@
 - [x] Full skill inlining: resolveSkill() sends complete /make-it content on turn 1
 
 ## High Priority
-- [ ] Test build on Windows 10/11 with Docker Desktop
-- [ ] Test build on Windows 10/11 with Rancher Desktop
+- [x] Fix install.bat for Rancher Desktop under local admin (SSMITH) account
+- [ ] Test install.bat on Windows 10/11 with Rancher Desktop (under own account)
+- [ ] Test install.bat on Windows 10/11 with Rancher Desktop (under SSMITH admin)
+- [ ] Test install.bat on Windows 10/11 with Docker Desktop
 - [ ] Verify Docker socket mounting works on Windows hosts
 
 ## High Priority (RBAC & Identity)
