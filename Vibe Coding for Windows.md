@@ -2,7 +2,7 @@
 
 ## Vibe Code Quick Start - Docker Edition (Windows)
 
-This guide walks you through everything you need to go from zero to building your first app with Claude Code -- using Docker. No WSL, no Node.js, no Linux setup. Just Docker and a browser.
+This guide walks you through everything you need to go from zero to building your first app with Claude Code -- using Docker. No Node.js, no Azure CLI, no GitHub CLI. Just Docker and a browser.
 
 > **Time estimate:** First-time setup takes about 15-20 minutes of hands-on work. Some access requests require approval and may take 1-2 business days, so start early.
 
@@ -11,7 +11,7 @@ This guide walks you through everything you need to go from zero to building you
 Here is what we need to do to get started.
 
 - [Prerequisites](#prerequisites) -- Access requests (start these first, some need approval)
-- [Install Rancher Desktop](#install-rancher-desktop) -- The only thing you install on your machine
+- [Install WSL2 and Rancher Desktop](#install-wsl2-and-rancher-desktop) -- Two installs, one reboot
 - [Launch Claude Code Docker](#launch-claude-code-docker) -- One command, then double-click
 - [First-Time Setup](#first-time-setup) -- Sign in to Azure (guided, inside your browser)
 - [Vibe Coding](#vibe-coding) -- Build your first app
@@ -40,7 +40,12 @@ The VPN connects you to Sleep Number's internal network. You'll need it to acces
 
 ### 2. Local Admin
 
-Your work computer normally prevents you from installing new software. This request gives you temporary permission to install Rancher Desktop. The permission expires automatically, so you'll need to submit a new request when it runs out.
+Your work computer normally prevents you from installing system components. You need Local Admin **once** to enable WSL2 -- a Windows feature that Rancher Desktop requires.
+
+> **What needs Local Admin and what doesn't:**
+> - **WSL2** -- needs Local Admin (it's a Windows system feature)
+> - **Rancher Desktop** -- does NOT need Local Admin (installs under your own account)
+> - **Everything else** -- no admin needed
 
 **Request Local Admin**
 
@@ -48,7 +53,7 @@ Your work computer normally prevents you from installing new software. This requ
 - Search for `Local Admin Rights`
 - Complete the form:
   - Select your system you need local admin
-  - Enter the justification as "Need to install Rancher Desktop for local development"
+  - Enter the justification as "Need to enable WSL2 for Rancher Desktop and local development"
 - Next, click "Submit"
 
 > You will receive an email with further instructions.
@@ -105,18 +110,54 @@ GitHub is where Sleep Number stores all code. Think of it like a shared drive, b
 
 ---
 
-## Install Rancher Desktop
+## Install WSL2 and Rancher Desktop
 
-This is the **only software you need to install** on your Windows machine. Everything else runs inside the container.
+Two things to install, then one reboot. After that, you never need Local Admin again.
+
+### Step 1: Install WSL2 (requires Local Admin)
+
+WSL2 (Windows Subsystem for Linux) is a Windows feature that Rancher Desktop needs to run Docker containers. You only need to do this once.
+
+1. Open **Command Prompt as Administrator**
+   - Click Start, type `cmd`
+   - Right-click **Command Prompt** and select **Run as administrator**
+   - Enter your Local Admin credentials when prompted
+2. Type this command and press Enter:
+   ```
+   wsl --install
+   ```
+3. Wait for it to finish -- it downloads and enables the WSL2 components
+4. **Restart your computer** when prompted
+
+> **Important:** You must restart after installing WSL2. Rancher Desktop will not work until after the reboot.
+
+After restarting, a Ubuntu terminal window may pop up and ask you to create a username/password. You can close this window -- you don't need Ubuntu itself, just the WSL2 engine that was installed alongside it.
+
+### Step 2: Install Rancher Desktop (no Local Admin needed)
+
+This is the only application you install. Everything else runs inside the container.
 
 Rancher Desktop is free, open-source, and provides the Docker engine that powers Claude Code Docker.
 
-1. Download Rancher Desktop from [Rancher Desktop by SUSE](https://rancherdesktop.io/)
-2. Run the installer (you'll need Local Admin privileges -- see prerequisite #2)
-3. When prompted, select **dockerd (moby)** as the container engine
-4. Wait for Rancher Desktop to finish starting up (the icon in your system tray will stop spinning)
+1. Download Rancher Desktop from [rancherdesktop.io](https://rancherdesktop.io/)
+2. Run the installer -- **install it under YOUR Windows account, not a shared admin account**
+   - If Windows asks you to choose "Install for all users" or "Install for me only", choose **"Install for me only"**
+   - No admin password is needed for this step
+3. Open Rancher Desktop from the Start menu
+4. Go to **Preferences > Container Engine** and select **dockerd**
+5. Wait for Rancher Desktop to finish starting up (the icon in your system tray will stop spinning)
+
+> **Why install under your own account?** If Rancher Desktop is installed under a shared admin account, Docker commands won't work from your account due to Windows file permissions. Installing under your own account avoids this entirely.
 
 > **Tip:** Rancher Desktop needs to be running whenever you want to use Claude Code Docker. It starts automatically with Windows, so you usually don't need to think about it.
+
+### Step 3: Reboot one more time
+
+After installing both WSL2 and Rancher Desktop, **restart your computer**. This ensures Rancher Desktop's Docker engine starts cleanly.
+
+After rebooting:
+- Rancher Desktop should start automatically (check for its icon in the system tray)
+- Wait until the icon stops spinning before proceeding
 
 ---
 
@@ -125,16 +166,18 @@ Rancher Desktop is free, open-source, and provides the Docker engine that powers
 Once Rancher Desktop is running, open a command prompt and run:
 
 ```
-git clone https://github.com/SleepNumberInc/CCDW.git "%USERPROFILE%\Documents\CCDW"
+git clone https://github.com/SleepNumberInc/CCDW.git "%USERPROFILE%\CCDW"
 ```
 
 Then open the `CCDW` folder on your computer and **double-click** `install.bat`.
 
+> **Do NOT right-click and "Run as administrator"** -- just double-click it normally. Running as admin causes files to end up in the wrong folder.
+
 That's it. The installer handles everything from there:
 
-- Checks that Rancher Desktop is running
+- Finds Docker on your machine (checks multiple locations automatically)
 - Downloads the latest Claude Code Docker image
-- Creates your projects folder (`Documents\GitHub`)
+- Creates your projects folder (`GitHub` in your user folder)
 - Starts the container
 - Creates a **"Claude Code"** shortcut on your desktop
 - Opens the dashboard in your browser
@@ -279,9 +322,19 @@ If you see "Can't reach the AI service" but your internet is working, connect to
 
 Make sure Rancher Desktop is running (check for the icon in your system tray). If it's not running, start it and wait for it to finish loading, then double-click `install.bat` again.
 
+If you just installed Rancher Desktop and it won't start, **restart your computer**. Rancher Desktop needs WSL2 to be fully initialized, which sometimes requires a reboot.
+
+### install.bat can't find Docker
+
+The installer searches many locations for Docker automatically. If it still can't find it:
+
+1. Make sure Rancher Desktop is running (system tray icon should be present)
+2. Make sure Rancher Desktop was installed under **your** Windows account, not a shared admin account
+3. If it was installed under a different account, the easiest fix is to install Rancher Desktop again under your own account from [rancherdesktop.io](https://rancherdesktop.io/)
+
 ### Need to start fresh
 
-Double-click `install.bat` again. It automatically stops the old container and starts a fresh one. Your projects in `Documents\GitHub` are preserved.
+Double-click `install.bat` again. It automatically stops the old container and starts a fresh one. Your projects in the `GitHub` folder are preserved.
 
 ---
 
@@ -289,12 +342,24 @@ Double-click `install.bat` again. It automatically stops the old container and s
 
 | | Standard Setup | Docker Edition |
 |---|---|---|
-| **Install on Windows** | Node.js, Azure CLI, GitHub CLI, Claude Code, /make-it skills | Rancher Desktop only |
+| **Install on Windows** | Node.js, Azure CLI, GitHub CLI, Claude Code, /make-it skills | WSL2 + Rancher Desktop |
 | **Setup time** | 30-60 minutes | 15-20 minutes |
 | **Terminal** | Windows PowerShell | Web browser |
 | **Updates** | Manual (`npm update`, skill updates) | Automatic (every launch) |
 | **Azure login** | Manual `az login` + pick from 37 subscriptions | Guided wizard, auto-selects subscription |
 | **Troubleshooting** | Check each tool individually | Type `doctor` |
+
+---
+
+## Quick Reference: What Needs Local Admin?
+
+| Action | Local Admin? | How Often? |
+|--------|-------------|------------|
+| Install WSL2 | Yes | Once ever |
+| Install Rancher Desktop | No | Once ever |
+| Run install.bat | No | Anytime |
+| Daily use | No | Never |
+| Updates | No | Automatic |
 
 ---
 
