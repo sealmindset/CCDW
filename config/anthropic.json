@@ -1,0 +1,16 @@
+{
+  "provider": "anthropic",
+  "display_name": "Anthropic API",
+  "api_key": "",
+  "models": {
+    "sonnet": "claude-sonnet-4-6",
+    "haiku": "claude-haiku-4-5",
+    "opus": "claude-opus-4-6"
+  },
+  "default_model": "sonnet",
+  "env_vars": {
+    "ANTHROPIC_API_KEY": "{api_key}"
+  },
+  "docker_requires": [],
+  "container_login": "none"
+}

@@ -47,6 +47,7 @@ alias doctor='/opt/claude-code-docker/scripts/doctor.sh'
 alias backup='/opt/claude-code-docker/scripts/backup.sh'
 alias restore='/opt/claude-code-docker/scripts/restore.sh'
 alias login='/opt/claude-code-docker/scripts/login-wizard.sh --force'
+alias setup='/opt/claude-code-docker/scripts/setup.sh'
 
 # ---------------------------------------------------------------------------
 # Load provider config from settings.json (generated from providers.yml)
@@ -97,22 +98,27 @@ elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
     AI_LABEL="AWS Bedrock"; AI_OK=1
 fi
 
-AZ_OK=0
+AUTH_OK=0
 if [ -n "$ANTHROPIC_API_KEY" ]; then
-    # Personal API key — no Azure anything needed
-    AZ_OK=1
+    AUTH_OK=1
 elif [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
-    # Foundry API key auth — no Azure CLI needed
-    AZ_OK=1
+    AUTH_OK=1
 elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
-    # Token-based auth — check Azure CLI login
     if az account show &>/dev/null 2>&1; then
-        AZ_OK=1
+        AUTH_OK=1
     elif [ -f /home/coder/.azure/msal_token_cache.json ]; then
         sleep 1
-        az account show &>/dev/null 2>&1 && AZ_OK=1
+        az account show &>/dev/null 2>&1 && AUTH_OK=1
+    fi
+elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
+    AWS_SSO_PROFILE="${AWS_PROFILE:-sso-bedrock}"
+    if aws sts get-caller-identity --profile "$AWS_SSO_PROFILE" &>/dev/null 2>&1; then
+        AUTH_OK=1
     fi
 fi
+
+# Backwards compat alias
+AZ_OK=$AUTH_OK
 
 GH_OK=0
 gh auth status &>/dev/null 2>&1 && GH_OK=1
@@ -181,25 +187,28 @@ else
         fi
     fi
 
-    # --- If Azure needs recovery, run wizard BEFORE showing status ---
-    # (skip entirely when using personal API key or Foundry API key auth)
-    NEEDS_AZ=0
+    # --- If auth needs recovery, run wizard BEFORE showing status ---
+    NEEDS_REAUTH=0
     if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$ANTHROPIC_FOUNDRY_API_KEY" ] && [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
-        if [ "$AZ_OK" = "1" ]; then
+        if [ "$AUTH_OK" = "1" ]; then
             AZ_WARN=$("$SCRIPTS_DIR/check-azure-token.sh" 2>/dev/null)
-            [ -n "$AZ_WARN" ] && NEEDS_AZ=1
+            [ -n "$AZ_WARN" ] && NEEDS_REAUTH=1
         else
-            NEEDS_AZ=1
+            NEEDS_REAUTH=1
         fi
+    elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ] && [ "$AUTH_OK" = "0" ]; then
+        NEEDS_REAUTH=1
     fi
 
-    if [ "$NEEDS_AZ" = "1" ]; then
+    if [ "$NEEDS_REAUTH" = "1" ]; then
         "$SCRIPTS_DIR/login-wizard.sh" --refresh
         # Re-check after wizard
-        if az account show &>/dev/null 2>&1; then
-            AZ_OK=1
-            NEEDS_AZ=0
+        if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+            az account show &>/dev/null 2>&1 && AUTH_OK=1 && NEEDS_REAUTH=0
+        elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
+            aws sts get-caller-identity --profile "${AWS_PROFILE:-sso-bedrock}" &>/dev/null 2>&1 && AUTH_OK=1 && NEEDS_REAUTH=0
         fi
+        AZ_OK=$AUTH_OK
     fi
 
     # --- Now show the status (post-recovery if wizard ran) ---
@@ -218,10 +227,16 @@ else
     elif [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
         echo -e "  ${CHECK_PASS} Auth          ${GREEN}API Key (Foundry)${NC}"
     elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
-        if [ "$AZ_OK" = "1" ]; then
+        if [ "$AUTH_OK" = "1" ]; then
             echo -e "  ${CHECK_PASS} Azure login"
         else
             echo -e "  ${CHECK_FAIL} Azure login"
+        fi
+    elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
+        if [ "$AUTH_OK" = "1" ]; then
+            echo -e "  ${CHECK_PASS} AWS SSO       ${GREEN}Active${NC}"
+        else
+            echo -e "  ${CHECK_FAIL} AWS SSO       ${RED}Not signed in${NC}"
         fi
     fi
 
@@ -233,9 +248,9 @@ else
 
     echo ""
 
-    if [ "$AI_OK" = "1" ] && [ "$AZ_OK" = "1" ]; then
+    if [ "$AI_OK" = "1" ] && [ "$AUTH_OK" = "1" ]; then
         echo -e "  ${GREEN}Ready.${NC} Type ${GREEN}claude${NC} to start, then ${GREEN}/make-it${NC} to build an app."
-    elif [ "$NEEDS_AZ" = "1" ]; then
+    elif [ "$NEEDS_REAUTH" = "1" ]; then
         echo -e "  Some items still need attention. Type ${GREEN}login${NC} to try again."
     fi
     echo ""

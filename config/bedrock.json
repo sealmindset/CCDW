@@ -1,0 +1,118 @@
+{
+  "provider": "bedrock",
+  "display_name": "AWS Bedrock",
+  "region": "us-east-1",
+  "sso_start_url": "https://d-90675b2903.awsapps.com/start",
+  "sso_region": "us-east-1",
+  "account_id": "622711945934",
+  "role_name": "bedrock-model-access",
+  "profile_name": "sso-bedrock-model-access",
+  "models": {
+    "default": "sonnet",
+    "sonnet": "us.anthropic.claude-sonnet-4-6",
+    "haiku": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "opus": "us.anthropic.claude-opus-4-6-v1"
+  },
+  "default_model": "sonnet",
+  "env_vars": {
+    "CLAUDE_CODE_USE_BEDROCK": "1",
+    "AWS_REGION": "{region}",
+    "AWS_PROFILE": "{profile_name}",
+    "ANTHROPIC_MODEL": "{models.default}",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "{models.sonnet}",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "{models.haiku}",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "{models.opus}",
+    "DISABLE_PROMPT_CACHING": "0"
+  },
+  "aws_config": {
+    "sso_session": "aws-sso",
+    "sso_start_url": "{sso_start_url}",
+    "sso_region": "{sso_region}",
+    "sso_registration_scopes": "sso:account:access",
+    "sso_account_id": "{account_id}",
+    "sso_role_name": "{role_name}"
+  },
+  "settings_json": {
+    "$schema": "https://json.schemastore.org/claude-code-settings.json",
+    "awsAuthRefresh": "aws sso login --profile {profile_name}",
+    "env": {
+      "AWS_PROFILE": "{profile_name}",
+      "CLAUDE_CODE_USE_BEDROCK": "1",
+      "ANTHROPIC_MODEL": "{models.default}",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "{models.haiku}",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "{models.sonnet}",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "{models.opus}",
+      "DISABLE_PROMPT_CACHING": "0"
+    },
+    "permissions": {
+      "deny": [
+        "Read(~/.aws/**)",
+        "Read(./.env)",
+        "Read(./.env.*)",
+        "Read(./secrets/**)"
+      ],
+      "ask": ["WebFetch", "Bash(curl:*)"]
+    }
+  },
+  "prereqs": {
+    "host": [
+      {
+        "id": "aws-cli-v2",
+        "label": "AWS CLI v2",
+        "check": "aws --version",
+        "expect": "aws-cli/2",
+        "required": true,
+        "fail_message": "AWS CLI v2 is required. Install from: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+      },
+      {
+        "id": "okta-group",
+        "label": "Okta group: aws-bedrock-model-access",
+        "check": "manual",
+        "required": true,
+        "fail_message": "You must be in the Okta group 'aws-bedrock-model-access'. If not, create an EMB ticket requesting access."
+      },
+      {
+        "id": "internet",
+        "label": "Internet connectivity",
+        "check": "curl -sf --connect-timeout 5 https://aws.amazon.com",
+        "required": true,
+        "fail_message": "No internet connection. Check your network."
+      },
+      {
+        "id": "aws-sso-reachable",
+        "label": "AWS SSO portal reachable",
+        "check": "curl -sf --connect-timeout 5 https://d-90675b2903.awsapps.com",
+        "required": true,
+        "fail_message": "Cannot reach AWS SSO portal. Check your network connection."
+      }
+    ],
+    "container": [
+      {
+        "id": "aws-cli-v2",
+        "label": "AWS CLI v2",
+        "check": "aws --version",
+        "expect": "aws-cli/2"
+      },
+      {
+        "id": "aws-sso-profile",
+        "label": "AWS SSO profile configured",
+        "check": "grep -q 'profile {profile_name}' ~/.aws/config",
+        "fail_message": "AWS SSO profile '{profile_name}' not found in ~/.aws/config. Re-run the installer with --ai=bedrock."
+      },
+      {
+        "id": "aws-sso-session",
+        "label": "AWS SSO session active",
+        "check": "aws sts get-caller-identity --profile {profile_name}",
+        "fail_message": "AWS SSO session expired. Run: aws sso login --profile {profile_name}"
+      },
+      {
+        "id": "bedrock-access",
+        "label": "Bedrock API accessible",
+        "check": "aws bedrock list-inference-profiles --profile {profile_name} --region {region}",
+        "fail_message": "Cannot access Bedrock. Verify you are in the 'aws-bedrock-model-access' Okta group."
+      }
+    ]
+  },
+  "docker_requires": ["aws-cli"],
+  "container_login": "aws-sso"
+}

@@ -84,6 +84,11 @@ RUN apk add --no-cache py3-pip \
     && pip3 install --break-system-packages azure-cli pyyaml
 
 # ---------------------------------------------------------------------------
+# Install AWS CLI v2 (for Bedrock SSO auth)
+# ---------------------------------------------------------------------------
+RUN apk add --no-cache aws-cli
+
+# ---------------------------------------------------------------------------
 # Create non-root user
 # ---------------------------------------------------------------------------
 RUN deluser node 2>/dev/null; delgroup node 2>/dev/null; \

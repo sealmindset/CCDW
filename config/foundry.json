@@ -1,0 +1,103 @@
+{
+  "provider": "foundry",
+  "display_name": "Azure AI Foundry",
+  "endpoint": "https://snapistg-scus.azure.sleepnumber.com/anthropic",
+  "auth_mode": "sso",
+  "api_key": "",
+  "token_resource": "https://cognitiveservices.azure.com",
+  "subscription_id": "a8da1709-ccc3-4356-b3b7-6660af86e979",
+  "subscription_name": "sn-openai-dev-01",
+  "models": {
+    "sonnet": "cogdep-aifoundry-dev-eus2-claude-sonnet-4-5",
+    "haiku": "cogdep-aifoundry-dev-eus2-claude-haiku-4-5",
+    "opus": "cogdep-aifoundry-dev-eus2-claude-opus-4-6"
+  },
+  "default_model": "opus",
+  "env_vars": {
+    "CLAUDE_CODE_USE_FOUNDRY": "1",
+    "ANTHROPIC_FOUNDRY_BASE_URL": "{endpoint}",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "{models.sonnet}",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "{models.haiku}",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "{models.opus}"
+  },
+  "env_vars_optional": {
+    "ANTHROPIC_FOUNDRY_API_KEY": "{api_key}"
+  },
+  "settings_json": {
+    "apiKeyHelper": "/home/coder/.claude/get-claude-token.sh",
+    "env": {
+      "CLAUDE_CODE_USE_FOUNDRY": "1",
+      "ANTHROPIC_FOUNDRY_BASE_URL": "{endpoint}",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "{models.sonnet}",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "{models.haiku}",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "{models.opus}"
+    }
+  },
+  "prereqs": {
+    "host": [
+      {
+        "id": "vpn",
+        "label": "Sleep Number VPN connected",
+        "check": "curl -sf --connect-timeout 8 https://snapistg-scus.azure.sleepnumber.com",
+        "required": true,
+        "fail_message": "Cannot reach the AI Foundry endpoint. Connect to the Sleep Number VPN (Cisco AnyConnect) first.",
+        "retry": true
+      },
+      {
+        "id": "azure-subscription",
+        "label": "Access to Azure subscription: sn-openai-dev-01",
+        "check": "manual",
+        "required": true,
+        "fail_message": "You need access to the 'sn-openai-dev-01' Azure subscription. Contact the AI CoE team or your manager to request access."
+      },
+      {
+        "id": "internet",
+        "label": "Internet connectivity",
+        "check": "curl -sf --connect-timeout 5 https://login.microsoftonline.com",
+        "required": true,
+        "fail_message": "No internet connection. Check your network."
+      },
+      {
+        "id": "zscaler-note",
+        "label": "Zscaler DevOps group (for Docker builds)",
+        "check": "info",
+        "required": false,
+        "fail_message": "If Docker image pulls fail with TLS errors, temporarily disable Zscaler (ZscalerPRD_DevopsZTunnel_AppC Okta group required)."
+      }
+    ],
+    "container": [
+      {
+        "id": "azure-cli",
+        "label": "Azure CLI",
+        "check": "az --version",
+        "expect": "azure-cli"
+      },
+      {
+        "id": "azure-login",
+        "label": "Azure AD signed in",
+        "check": "az account show",
+        "fail_message": "Not signed in to Azure. Run: az login --use-device-code"
+      },
+      {
+        "id": "azure-subscription",
+        "label": "Correct Azure subscription selected",
+        "check": "az account show --query id -o tsv | grep -q a8da1709-ccc3-4356-b3b7-6660af86e979",
+        "fail_message": "Wrong subscription. Run: az account set --subscription a8da1709-ccc3-4356-b3b7-6660af86e979"
+      },
+      {
+        "id": "azure-token",
+        "label": "Azure token for Cognitive Services",
+        "check": "az account get-access-token --resource https://cognitiveservices.azure.com --query accessToken -o tsv",
+        "fail_message": "Cannot get Azure token. Run: login (to re-authenticate)"
+      },
+      {
+        "id": "endpoint-reachable",
+        "label": "AI Foundry endpoint reachable",
+        "check": "curl -sf --connect-timeout 8 https://snapistg-scus.azure.sleepnumber.com/anthropic",
+        "fail_message": "Cannot reach AI Foundry. Make sure VPN is connected on the host machine."
+      }
+    ]
+  },
+  "docker_requires": ["azure-cli"],
+  "container_login": "azure-device-code"
+}

@@ -31,6 +31,8 @@ services:
       # Mount host Azure CLI credentials (for token-based auth)
       # macOS/Linux: HOME is always set. Windows: set HOME=%USERPROFILE% in .env
       - ${HOME:-.}/.azure:/home/coder/.azure
+      # Mount host AWS config (for Bedrock SSO)
+      - ${HOME:-.}/.aws:/home/coder/.aws
     env_file:
       - path: .env
         required: false

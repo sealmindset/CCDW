@@ -13,6 +13,32 @@
 - [x] Auto-continuation: builds now chain turns via --resume so code gets written
 - [x] Full skill inlining: resolveSkill() sends complete /make-it content on turn 1
 
+## High Priority (Setup Module)
+- [x] Build providers.js backend module (status detection, config writing, connection testing, auth flows)
+- [x] Add provider API routes to workshop/server.js
+- [x] Build setup.html + setup.js + setup.css frontend wizard
+- [x] Integrate setup into Workshop navigation (auth banner, gear icon, setup overlay)
+- [x] Integrate setup into Welcome Dashboard (setup card, modal with iframe)
+- [x] Redesign Setup Module as host-side pre-start (writes .env before docker compose up)
+- [x] Create setup/server.js (zero-dependency, self-terminating)
+- [x] Create setup/providers.js (.env reader/writer + connection testing)
+- [x] Create setup/public/ standalone wizard (index.html, setup.js, setup.css)
+- [x] Integrate into install.bat (web wizard + CLI fallback)
+- [x] Integrate into install.command (macOS)
+- [x] Add AWS config volume mount to docker-compose.yml
+- [x] Strip Workshop to read-only provider status
+- [x] Update Welcome Dashboard to read-only provider display
+- [x] Per-provider config JSON files (foundry.json, bedrock.json, anthropic.json + templates)
+- [x] Refactor install scripts: --ai=foundry|bedrock|anthropic argument
+- [x] Add AWS CLI v2 to Docker image
+- [x] Provider-aware login-wizard.sh (Azure device-code + AWS SSO)
+- [x] Bedrock auth check in shell-init.sh
+- [ ] Test install.bat --ai=foundry on Windows
+- [ ] Test install.bat --ai=bedrock on Windows
+- [ ] Test install.command --ai=bedrock on macOS
+- [ ] Test Bedrock aws sso login inside container with real AWS account
+- [ ] Clean up old workshop setup files (setup.html no longer primary)
+
 ## High Priority
 - [x] Fix install.bat for Rancher Desktop under local admin (SSMITH) account
 - [x] Test install.bat on Windows 10/11 with Rancher Desktop (under own account)

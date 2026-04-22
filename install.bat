@@ -2,7 +2,11 @@
 setlocal EnableDelayedExpansion
 REM =============================================================================
 REM Claude Code Docker - Windows One-Click Installer
-REM Double-click this file to install and start Claude Code Docker.
+REM Usage:
+REM   install.bat --ai=foundry     Azure AI Foundry (default)
+REM   install.bat --ai=bedrock     AWS Bedrock
+REM   install.bat --ai=anthropic   Anthropic API key
+REM   install.bat                  Interactive prompt or auto-detect
 REM =============================================================================
 
 title Claude Code Docker - Installer
@@ -14,9 +18,41 @@ echo ========================================
 echo.
 
 REM ---------------------------------------------------------------------------
+REM Parse --ai= argument
+REM ---------------------------------------------------------------------------
+set "AI_PROVIDER="
+for %%A in (%*) do (
+    set "ARG=%%A"
+    if "!ARG:~0,5!"=="--ai=" set "AI_PROVIDER=!ARG:~5!"
+)
+
+REM Normalize provider name
+if /i "!AI_PROVIDER!"=="foundry"         set "AI_PROVIDER=foundry"
+if /i "!AI_PROVIDER!"=="azure-foundry"   set "AI_PROVIDER=foundry"
+if /i "!AI_PROVIDER!"=="azure"           set "AI_PROVIDER=foundry"
+if /i "!AI_PROVIDER!"=="bedrock"         set "AI_PROVIDER=bedrock"
+if /i "!AI_PROVIDER!"=="aws-bedrock"     set "AI_PROVIDER=bedrock"
+if /i "!AI_PROVIDER!"=="aws"             set "AI_PROVIDER=bedrock"
+if /i "!AI_PROVIDER!"=="anthropic"       set "AI_PROVIDER=anthropic"
+if /i "!AI_PROVIDER!"=="api-key"         set "AI_PROVIDER=anthropic"
+if /i "!AI_PROVIDER!"=="apikey"          set "AI_PROVIDER=anthropic"
+
+if defined AI_PROVIDER (
+    if /i "!AI_PROVIDER!" neq "foundry" if /i "!AI_PROVIDER!" neq "bedrock" if /i "!AI_PROVIDER!" neq "anthropic" (
+        echo [ERROR] Unknown provider: !AI_PROVIDER!
+        echo.
+        echo   Valid options:
+        echo     --ai=foundry     Azure AI Foundry
+        echo     --ai=bedrock     AWS Bedrock
+        echo     --ai=anthropic   Anthropic API key
+        echo.
+        pause
+        exit /b 1
+    )
+)
+
+REM ---------------------------------------------------------------------------
 REM Guard: Detect elevated prompt and warn the user
-REM Running elevated changes %USERPROFILE% to the admin account's folder,
-REM which breaks volume mounts, shortcuts, and project paths.
 REM ---------------------------------------------------------------------------
 net session >nul 2>&1
 if !ERRORLEVEL! neq 0 goto :not_admin
@@ -41,8 +77,6 @@ echo.
 
 REM ---------------------------------------------------------------------------
 REM Step 1: Find the Docker CLI
-REM We search many locations because Rancher Desktop installs per-user and
-REM may not be on the current user's PATH if IT used a shared admin account.
 REM ---------------------------------------------------------------------------
 set "DOCKER_CMD="
 set "DOCKER_SOURCE="
@@ -107,8 +141,6 @@ for /f "delims=" %%P in ('powershell -NoProfile -Command "foreach ($loc in @('HK
 )
 
 REM --- 1h. Scan other user profiles for Rancher Desktop ---
-REM This may fail on locked-down machines where profile folders are not
-REM readable by other users. That is expected -- we fall through to 1i.
 for /d %%D in (C:\Users\*) do (
     if exist "%%D\.rd\bin\docker.exe" (
         if /i "%%D" neq "%USERPROFILE%" (
@@ -134,9 +166,7 @@ for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0.env") do (
     )
 )
 
-REM --- 1j. Docker daemon pipe exists but we can't find docker.exe ---
-REM If the pipe is active, Rancher Desktop IS running -- we just can't
-REM reach the binary due to profile permissions. Tell the admin what to do.
+REM --- 1j. Docker pipe exists but no docker.exe ---
 :check_pipe_hint
 set "PIPE_HINT=0"
 powershell -NoProfile -Command "if (Test-Path \\.\pipe\docker_engine) { exit 0 } else { exit 1 }" >nul 2>nul
@@ -205,7 +235,6 @@ echo.
 pause
 exit /b 1
 
-REM --- Found docker under another user's profile ---
 :found_other_user
 echo [INFO] Rancher Desktop is installed under the !FOUND_OTHER_USER! account.
 echo        That's OK -- you have two options:
@@ -248,8 +277,6 @@ echo [OK] Found Docker via !DOCKER_SOURCE!.
 REM ---------------------------------------------------------------------------
 REM Step 2: Wait for the Docker engine to be ready
 REM ---------------------------------------------------------------------------
-
-REM Quick pipe check -- tells us if Docker daemon is listening
 set "PIPE_OK=0"
 powershell -NoProfile -Command "if (Test-Path \\.\pipe\docker_engine) { exit 0 } else { exit 1 }" >nul 2>nul
 if !ERRORLEVEL! equ 0 set "PIPE_OK=1"
@@ -278,9 +305,6 @@ set /a DOCKER_WAIT+=1
 echo          Still waiting... !DOCKER_WAIT! of 12
 goto :docker_retry
 
-REM ---------------------------------------------------------------------------
-REM Engine failed -- show context-aware error message
-REM ---------------------------------------------------------------------------
 :engine_fail
 echo.
 echo [ERROR] The Docker engine did not start after 60 seconds.
@@ -321,10 +345,6 @@ echo       1. Open Docker Desktop from the Start menu
 echo       2. Wait for it to say "running" in the system tray
 echo       3. Double-click install.bat again
 echo.
-echo   TIP: If Rancher Desktop says "running" but this still fails,
-echo        check that the Container Engine is set to dockerd, NOT
-echo        containerd. Go to Preferences, Container Engine, dockerd.
-echo.
 pause
 exit /b 1
 
@@ -333,11 +353,9 @@ echo [OK] Docker engine is running.
 
 REM ---------------------------------------------------------------------------
 REM Create required folders
-REM Default to %USERPROFILE%\GitHub to avoid OneDrive Documents redirection
 REM ---------------------------------------------------------------------------
 set "PROJECTS_DIR="
 
-REM Check .env for a custom PROJECTS_PATH
 if not exist "%~dp0.env" goto :default_projects_dir
 for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0.env") do (
     if /i "%%A"=="PROJECTS_PATH" set "PROJECTS_DIR=%%B"
@@ -345,11 +363,9 @@ for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0.env") do (
 
 :default_projects_dir
 if not defined PROJECTS_DIR set "PROJECTS_DIR=%USERPROFILE%\GitHub"
-
-REM Trim any surrounding quotes
 set "PROJECTS_DIR=!PROJECTS_DIR:"=!"
-
 set "AZURE_DIR=%USERPROFILE%\.azure"
+set "AWS_DIR=%USERPROFILE%\.aws"
 
 if not exist "!PROJECTS_DIR!" mkdir "!PROJECTS_DIR!" 2>nul
 if not exist "!PROJECTS_DIR!" goto :projects_dir_fail
@@ -368,6 +384,7 @@ exit /b 1
 
 :projects_dir_ok
 if not exist "!AZURE_DIR!" mkdir "!AZURE_DIR!" 2>nul
+if not exist "!AWS_DIR!" mkdir "!AWS_DIR!" 2>nul
 
 REM ---------------------------------------------------------------------------
 REM Create .env from template if it doesn't exist
@@ -377,9 +394,261 @@ if exist "!ENV_FILE!" goto :env_exists
 if exist "%~dp0.env.example" (
     echo [...]  Creating .env from template...
     copy "%~dp0.env.example" "!ENV_FILE!" >nul
-    echo [OK] Created .env -- edit it to add your API key if needed.
+    echo [OK] Created .env
 )
 :env_exists
+
+REM ---------------------------------------------------------------------------
+REM AI Provider Setup
+REM ---------------------------------------------------------------------------
+set "HAS_PROVIDER=0"
+if exist "!ENV_FILE!" (
+    findstr /i /b "ANTHROPIC_API_KEY=" "!ENV_FILE!" >nul 2>nul && set "HAS_PROVIDER=1"
+    findstr /i /b "ANTHROPIC_FOUNDRY_BASE_URL=" "!ENV_FILE!" >nul 2>nul && set "HAS_PROVIDER=1"
+    findstr /i /b "CLAUDE_CODE_USE_BEDROCK=1" "!ENV_FILE!" >nul 2>nul && set "HAS_PROVIDER=1"
+)
+
+if "!HAS_PROVIDER!"=="1" if not defined AI_PROVIDER (
+    echo [OK] AI provider already configured in .env
+    goto :skip_setup
+)
+
+REM --- If no --ai= argument, prompt interactively ---
+if not defined AI_PROVIDER (
+    echo.
+    echo ========================================
+    echo   Choose your AI provider:
+    echo ========================================
+    echo.
+    echo     1. Azure AI Foundry  ^(Claude via Azure^)
+    echo     2. AWS Bedrock       ^(Claude via AWS^)
+    echo     3. Anthropic API     ^(direct API key^)
+    echo     4. Skip for now      ^(edit .env manually^)
+    echo.
+    choice /C 1234 /M "Enter choice"
+    if !ERRORLEVEL! equ 4 goto :skip_setup
+    if !ERRORLEVEL! equ 3 set "AI_PROVIDER=anthropic"
+    if !ERRORLEVEL! equ 2 set "AI_PROVIDER=bedrock"
+    if !ERRORLEVEL! equ 1 set "AI_PROVIDER=foundry"
+)
+
+if not defined AI_PROVIDER goto :skip_setup
+
+set "CONFIG_FILE=%~dp0config\!AI_PROVIDER!.json"
+if not exist "!CONFIG_FILE!" (
+    echo [ERROR] Config file not found: !CONFIG_FILE!
+    pause
+    exit /b 1
+)
+
+REM --- Run provider-specific preflight checks ---
+echo.
+echo ========================================
+echo   Preflight Checks: !AI_PROVIDER!
+echo ========================================
+echo.
+powershell -NoProfile -Command ^
+    "$cfg = Get-Content '!CONFIG_FILE!' | ConvertFrom-Json; " ^
+    "$prereqs = $cfg.prereqs.host; " ^
+    "if (-not $prereqs) { exit 0 } " ^
+    "$failCount = 0; " ^
+    "foreach ($p in $prereqs) { " ^
+    "  $label = $p.label; " ^
+    "  $check = $p.check; " ^
+    "  $required = [bool]$p.required; " ^
+    "  $failMsg = $p.fail_message; " ^
+    "  if ($check -eq 'manual') { " ^
+    "    Write-Host ('  ? ' + $label + ' (verify manually)') -ForegroundColor Yellow; " ^
+    "    if ($failMsg) { Write-Host ('    ' + $failMsg) -ForegroundColor Yellow } " ^
+    "    continue " ^
+    "  } " ^
+    "  if ($check -eq 'info') { " ^
+    "    Write-Host ('  i ' + $label) -ForegroundColor Cyan; " ^
+    "    if ($failMsg) { Write-Host ('    ' + $failMsg) -ForegroundColor DarkGray } " ^
+    "    continue " ^
+    "  } " ^
+    "  try { " ^
+    "    $result = cmd /c $check 2>&1; " ^
+    "    $expect = $p.expect; " ^
+    "    if ($LASTEXITCODE -eq 0 -and (-not $expect -or ($result -join ' ') -match $expect)) { " ^
+    "      Write-Host ('  OK ' + $label) -ForegroundColor Green " ^
+    "    } else { " ^
+    "      Write-Host ('  X  ' + $label) -ForegroundColor Red; " ^
+    "      if ($failMsg) { Write-Host ('    ' + $failMsg) -ForegroundColor Yellow } " ^
+    "      if ($required) { $failCount++ } " ^
+    "    } " ^
+    "  } catch { " ^
+    "    Write-Host ('  X  ' + $label) -ForegroundColor Red; " ^
+    "    if ($failMsg) { Write-Host ('    ' + $failMsg) -ForegroundColor Yellow } " ^
+    "    if ($required) { $failCount++ } " ^
+    "  } " ^
+    "} " ^
+    "if ($failCount -gt 0) { exit 1 } else { exit 0 }"
+if !ERRORLEVEL! neq 0 (
+    echo.
+    echo [ERROR] Some required preflight checks failed.
+    echo         Fix the items above and run the installer again.
+    echo.
+    pause
+    exit /b 1
+)
+echo.
+echo [OK] Preflight checks passed.
+
+REM ---------------------------------------------------------------------------
+REM Prompt for missing values per provider (matches install.command behavior)
+REM ---------------------------------------------------------------------------
+if "!AI_PROVIDER!"=="foundry" (
+    powershell -NoProfile -Command ^
+        "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
+        "if (-not $cfg.endpoint) { " ^
+        "  $ep = Read-Host '  Foundry endpoint URL'; " ^
+        "  if ($ep) { $cfg.endpoint = $ep; $cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'; Write-Host '  [OK] Endpoint saved' } " ^
+        "} " ^
+        "if ($cfg.auth_mode -eq 'apikey' -and -not $cfg.api_key) { " ^
+        "  $key = Read-Host '  API key' -AsSecureString; " ^
+        "  $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($key)); " ^
+        "  if ($plain) { $cfg.api_key = $plain; $cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'; Write-Host '  [OK] API key saved' } " ^
+        "} elseif ($cfg.auth_mode -ne 'apikey') { " ^
+        "  Write-Host '  Note: Azure SSO sign-in will happen after the container starts.' -ForegroundColor Cyan " ^
+        "}"
+)
+
+if "!AI_PROVIDER!"=="bedrock" (
+    powershell -NoProfile -Command ^
+        "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
+        "if (-not $cfg.sso_start_url) { " ^
+        "  $sso = Read-Host '  AWS SSO Start URL (https://d-xxx.awsapps.com/start)'; " ^
+        "  $acct = Read-Host '  AWS Account ID'; " ^
+        "  $role = Read-Host '  SSO Role Name'; " ^
+        "  $rgn = Read-Host '  Bedrock Region [us-east-1]'; " ^
+        "  if (-not $rgn) { $rgn = 'us-east-1' } " ^
+        "  $cfg.sso_start_url = $sso; $cfg.account_id = $acct; $cfg.role_name = $role; " ^
+        "  $cfg.region = $rgn; $cfg.sso_region = $rgn; " ^
+        "  $cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'; " ^
+        "  Write-Host '  [OK] Bedrock SSO config saved' " ^
+        "} " ^
+        "Write-Host '  Note: AWS SSO sign-in will happen after the container starts.' -ForegroundColor Cyan"
+)
+
+if "!AI_PROVIDER!"=="anthropic" (
+    powershell -NoProfile -Command ^
+        "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
+        "if (-not $cfg.api_key) { " ^
+        "  $key = Read-Host '  Anthropic API key (sk-ant-...)' -AsSecureString; " ^
+        "  $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($key)); " ^
+        "  if ($plain) { $cfg.api_key = $plain; $cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'; Write-Host '  [OK] API key saved' } " ^
+        "}"
+)
+
+REM ---------------------------------------------------------------------------
+REM Configure provider from config JSON using PowerShell
+REM ---------------------------------------------------------------------------
+echo.
+echo [...]  Configuring AI provider from config\!AI_PROVIDER!.json...
+
+REM Use PowerShell to read config JSON, resolve templates, and write .env
+powershell -NoProfile -Command ^
+    "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
+    "$envPath = '!ENV_FILE!'; " ^
+    "" ^
+    "function Resolve-Template($val, $cfg) { " ^
+    "  if (-not $val) { return '' } " ^
+    "  [regex]::Replace([string]$val, '\{([^}]+)\}', { " ^
+    "    param($m) " ^
+    "    $keys = $m.Groups[1].Value -split '\.' ; " ^
+    "    $v = $cfg; " ^
+    "    foreach ($k in $keys) { " ^
+    "      if ($v.PSObject.Properties[$k]) { $v = $v.$k } else { return '' } " ^
+    "    }; " ^
+    "    return [string]$v " ^
+    "  }) " ^
+    "} " ^
+    "" ^
+    "$lines = @(); " ^
+    "if (Test-Path $envPath) { $lines = Get-Content $envPath } " ^
+    "" ^
+    "$commentKeys = @('ANTHROPIC_API_KEY','CLAUDE_CODE_USE_FOUNDRY','ANTHROPIC_FOUNDRY_BASE_URL'," ^
+    "  'ANTHROPIC_FOUNDRY_API_KEY','CLAUDE_CODE_USE_BEDROCK','AWS_PROFILE','AWS_REGION'," ^
+    "  'ANTHROPIC_MODEL','ANTHROPIC_DEFAULT_SONNET_MODEL','ANTHROPIC_DEFAULT_HAIKU_MODEL'," ^
+    "  'ANTHROPIC_DEFAULT_OPUS_MODEL','DISABLE_PROMPT_CACHING'); " ^
+    "" ^
+    "for ($i = 0; $i -lt $lines.Count; $i++) { " ^
+    "  $t = $lines[$i].Trim(); " ^
+    "  if ($t -and -not $t.StartsWith('#')) { " ^
+    "    $eq = $t.IndexOf('='); " ^
+    "    if ($eq -gt 0) { " ^
+    "      $k = $t.Substring(0, $eq).Trim(); " ^
+    "      if ($commentKeys -contains $k) { $lines[$i] = '# ' + $lines[$i] } " ^
+    "    } " ^
+    "  } " ^
+    "} " ^
+    "" ^
+    "$allVars = @{}; " ^
+    "if ($cfg.env_vars) { " ^
+    "  $cfg.env_vars.PSObject.Properties | ForEach-Object { $allVars[$_.Name] = $_.Value } " ^
+    "} " ^
+    "if ($cfg.env_vars_optional) { " ^
+    "  $cfg.env_vars_optional.PSObject.Properties | ForEach-Object { $allVars[$_.Name] = $_.Value } " ^
+    "} " ^
+    "" ^
+    "foreach ($entry in $allVars.GetEnumerator()) { " ^
+    "  $key = $entry.Key; " ^
+    "  $val = Resolve-Template $entry.Value $cfg; " ^
+    "  if (-not $val -and $cfg.env_vars_optional -and $cfg.env_vars_optional.PSObject.Properties[$key]) { continue } " ^
+    "  $found = $false; " ^
+    "  for ($i = 0; $i -lt $lines.Count; $i++) { " ^
+    "    $raw = $lines[$i] -replace '^#+\s*',''; " ^
+    "    $eq = $raw.IndexOf('='); " ^
+    "    if ($eq -gt 0 -and $raw.Substring(0,$eq).Trim() -eq $key) { " ^
+    "      $lines[$i] = $key + '=' + $val; " ^
+    "      $found = $true; break " ^
+    "    } " ^
+    "  } " ^
+    "  if (-not $found) { $lines += ($key + '=' + $val) } " ^
+    "} " ^
+    "" ^
+    "$lines -join \"`r`n\" | Set-Content $envPath -NoNewline; " ^
+    "Write-Host ('[OK] ' + $cfg.display_name + ' configured in .env')"
+
+REM For Bedrock, also write AWS config
+if "!AI_PROVIDER!"=="bedrock" (
+    powershell -NoProfile -Command ^
+        "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
+        "if (-not $cfg.sso_start_url -or -not $cfg.account_id -or -not $cfg.role_name) { " ^
+        "  Write-Host '[INFO] Bedrock SSO not fully configured -- edit config\bedrock.json'; exit 0 " ^
+        "} " ^
+        "$awsDir = Join-Path $env:USERPROFILE '.aws'; " ^
+        "if (!(Test-Path $awsDir)) { New-Item $awsDir -ItemType Directory | Out-Null } " ^
+        "$cfgPath = Join-Path $awsDir 'config'; " ^
+        "$profile = if ($cfg.profile_name) { $cfg.profile_name } else { 'sso-bedrock' }; " ^
+        "$session = 'aws-sso'; " ^
+        "$existing = ''; if (Test-Path $cfgPath) { $existing = Get-Content $cfgPath -Raw } " ^
+        "$out = @(); $skip = $false; " ^
+        "foreach ($line in $existing -split '`n') { " ^
+        "  if ($line -match ('^\[(sso-session\s+' + [regex]::Escape($session) + '|profile\s+' + [regex]::Escape($profile) + ')\]')) { $skip = $true } " ^
+        "  elseif ($line -match '^\[') { $skip = $false } " ^
+        "  if (!$skip) { $out += $line } " ^
+        "} " ^
+        "$ssoRegion = if ($cfg.sso_region) { $cfg.sso_region } else { 'us-east-1' }; " ^
+        "$region = if ($cfg.region) { $cfg.region } else { 'us-east-1' }; " ^
+        "$out += ''; " ^
+        "$out += \"[sso-session $session]\"; " ^
+        "$out += \"sso_start_url = $($cfg.sso_start_url)\"; " ^
+        "$out += \"sso_region = $ssoRegion\"; " ^
+        "$out += 'sso_registration_scopes = sso:account:access'; " ^
+        "$out += ''; " ^
+        "$out += \"[profile $profile]\"; " ^
+        "$out += \"sso_session = $session\"; " ^
+        "$out += \"sso_account_id = $($cfg.account_id)\"; " ^
+        "$out += \"sso_role_name = $($cfg.role_name)\"; " ^
+        "$out += \"region = $region\"; " ^
+        "$out += 'output = json'; " ^
+        "$out -join \"`n\" | Set-Content $cfgPath -NoNewline; " ^
+        "Write-Host \"[OK] AWS config written to $cfgPath\""
+)
+
+:skip_setup
 
 REM ---------------------------------------------------------------------------
 REM Auto-update: pull latest image
@@ -389,14 +658,12 @@ echo [...]  Checking for updates...
 docker pull ghcr.io/sealmindset/claude-code-docker:latest >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :image_ready
 
-REM Pull failed -- check for a cached image
 docker image inspect ghcr.io/sealmindset/claude-code-docker:latest >nul 2>nul
 if !ERRORLEVEL! equ 0 (
     echo [OK] Could not check for updates, using cached image.
     goto :image_ready
 )
 
-REM No cached image either -- must build locally
 echo [...]  No cached image. Building locally -- this may take a few minutes...
 docker build -t ghcr.io/sealmindset/claude-code-docker:latest "%~dp0."
 if !ERRORLEVEL! neq 0 (
@@ -424,11 +691,11 @@ echo [...]  Starting Claude Code Docker...
 if not exist "!ENV_FILE!" goto :run_without_env
 
 echo [OK] Loading environment from .env
-docker run -d --name claude-code --restart unless-stopped --group-add 0 --env-file "!ENV_FILE!" -p 3000:3000 -p 7681:7681 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents/GitHub" -v "!AZURE_DIR!:/home/coder/.azure" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest
+docker run -d --name claude-code --restart unless-stopped --group-add 0 --env-file "!ENV_FILE!" -p 3000:3000 -p 7681:7681 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents/GitHub" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest
 goto :check_run_result
 
 :run_without_env
-docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:3000 -p 7681:7681 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents/GitHub" -v "!AZURE_DIR!:/home/coder/.azure" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest
+docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:3000 -p 7681:7681 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents/GitHub" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest
 
 :check_run_result
 if !ERRORLEVEL! equ 0 goto :run_ok
@@ -440,19 +707,12 @@ echo   Common fixes:
 echo     - Make sure ports 3000, 7681, 8080, 9200 are not in use
 echo     - Restart Rancher Desktop or Docker Desktop and try again
 echo.
-echo   Port conflict? Add these to .env with different numbers:
-echo     WELCOME_PORT=3001
-echo     TTYD_PORT=7682
-echo     CODE_SERVER_PORT=8081
-echo.
 pause
 exit /b 1
 
 :run_ok
-REM Give the container a moment to start or crash
 ping -n 4 127.0.0.1 >nul
 
-REM Verify the container is still running
 for /f %%s in ('docker inspect -f "{{.State.Running}}" claude-code 2^>nul') do set RUNNING=%%s
 if /i "!RUNNING!"=="true" goto :container_ok
 
@@ -463,7 +723,6 @@ echo --- Recent logs ---
 docker logs --tail 30 claude-code 2>&1
 echo --- End of logs ---
 echo.
-echo   This usually means something inside the container hit an error.
 echo   Share these logs with the AI CoE team for help.
 echo.
 pause
@@ -473,7 +732,7 @@ exit /b 1
 echo [OK] Claude Code Docker is running!
 
 REM ---------------------------------------------------------------------------
-REM Wait for the dashboard to be ready, then open browser
+REM Wait for dashboard
 REM ---------------------------------------------------------------------------
 echo.
 echo [...]  Waiting for dashboard to start...
@@ -505,7 +764,7 @@ start http://localhost:3000
 
 :shortcuts
 REM ---------------------------------------------------------------------------
-REM Create desktop shortcut
+REM Desktop shortcut
 REM ---------------------------------------------------------------------------
 echo.
 echo [...]  Creating desktop shortcut...

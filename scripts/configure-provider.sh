@@ -173,16 +173,38 @@ print(json.dumps(settings, indent=2))
 
     bedrock)
         REGION="${AWS_REGION:-$(read_yaml "providers.bedrock.region")}"
+        PROFILE="${AWS_PROFILE:-sso-bedrock-model-access}"
+        MODEL_SONNET="${ANTHROPIC_DEFAULT_SONNET_MODEL:-us.anthropic.claude-sonnet-4-6}"
+        MODEL_HAIKU="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-us.anthropic.claude-haiku-4-5-20251001-v1:0}"
+        MODEL_OPUS="${ANTHROPIC_DEFAULT_OPUS_MODEL:-us.anthropic.claude-opus-4-6-v1}"
+        MODEL_DEFAULT="${ANTHROPIC_MODEL:-sonnet}"
 
         export CLAUDE_CODE_USE_BEDROCK=1
         export AWS_REGION="$REGION"
+        export AWS_PROFILE="$PROFILE"
 
         python3 -c "
 import json
 settings = {
+    '\$schema': 'https://json.schemastore.org/claude-code-settings.json',
+    'awsAuthRefresh': 'aws sso login --profile ${PROFILE}',
     'env': {
+        'AWS_PROFILE': '${PROFILE}',
         'CLAUDE_CODE_USE_BEDROCK': '1',
-        'AWS_REGION': '${REGION}'
+        'ANTHROPIC_MODEL': '${MODEL_DEFAULT}',
+        'ANTHROPIC_DEFAULT_HAIKU_MODEL': '${MODEL_HAIKU}',
+        'ANTHROPIC_DEFAULT_SONNET_MODEL': '${MODEL_SONNET}',
+        'ANTHROPIC_DEFAULT_OPUS_MODEL': '${MODEL_OPUS}',
+        'DISABLE_PROMPT_CACHING': '0'
+    },
+    'permissions': {
+        'deny': [
+            'Read(~/.aws/**)',
+            'Read(./.env)',
+            'Read(./.env.*)',
+            'Read(./secrets/**)'
+        ],
+        'ask': ['WebFetch', 'Bash(curl:*)']
     }
 }
 if '${SKIP_DANGEROUS}' == 'True':
