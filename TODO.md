@@ -37,7 +37,7 @@
 - [ ] Test install.bat --ai=bedrock on Windows
 - [ ] Test install.command --ai=bedrock on macOS
 - [ ] Test Bedrock aws sso login inside container with real AWS account
-- [ ] Clean up old workshop setup files (setup.html no longer primary)
+- [x] Clean up old workshop setup files (setup.html no longer primary)
 
 ## High Priority
 - [x] Fix install.bat for Rancher Desktop under local admin (SSMITH) account

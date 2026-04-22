@@ -49,7 +49,7 @@
           <strong>AI provider not configured.</strong>
           <span class="auth-banner-detail">Set up your AI provider to start building.</span>
         </div>
-        <a class="auth-banner-link" id="authSetupLink" href="/setup.html" target="_blank">Open Setup</a>
+        <a class="auth-banner-link" id="authSetupLink" href="#" title="Re-run the installer to configure">How to fix</a>
       </div>
     </div>
 
@@ -320,16 +320,21 @@
     </div>
   </div>
 
-  <!-- Setup wizard overlay (embeds /setup.html) -->
+  <!-- Setup info overlay (provider config happens host-side via installer) -->
   <div class="setup-overlay hidden" id="setupOverlay">
-    <div class="setup-wizard" style="max-width:760px;height:80vh;display:flex;flex-direction:column;padding:0;">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-md) var(--space-lg);border-bottom:1px solid var(--border);flex-shrink:0;">
-        <h2 style="margin:0;font-size:1.05rem;">AI Provider Setup</h2>
-        <div style="display:flex;gap:var(--space-sm);">
-          <button class="btn-primary btn-sm" id="btnSetupRecheck">Done</button>
-        </div>
+    <div class="setup-wizard" style="max-width:480px;padding:var(--space-xl);">
+      <h2 style="margin:0 0 0.75rem 0;font-size:1.1rem;">AI Provider Not Configured</h2>
+      <p style="margin:0 0 1rem 0;color:var(--text-muted);font-size:0.9rem;line-height:1.5;">
+        Your AI provider is set up when you run the installer. To configure or change it:
+      </p>
+      <ol style="margin:0 0 1.5rem 1.25rem;color:var(--text-secondary);font-size:0.9rem;line-height:1.8;">
+        <li>Stop this container</li>
+        <li>Re-run <code style="background:var(--bg-tertiary);padding:0.1rem 0.4rem;border-radius:4px;">install.command</code> (macOS) or <code style="background:var(--bg-tertiary);padding:0.1rem 0.4rem;border-radius:4px;">install.bat</code> (Windows)</li>
+        <li>Choose your AI provider when prompted</li>
+      </ol>
+      <div style="display:flex;justify-content:flex-end;">
+        <button class="btn-primary btn-sm" id="btnSetupRecheck">Got it</button>
       </div>
-      <iframe id="setupIframe" src="/setup.html" style="flex:1;border:none;width:100%;background:var(--bg-primary);"></iframe>
     </div>
   </div>
 

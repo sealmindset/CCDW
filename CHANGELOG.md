@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.1] - 2026-04-22
+
+### Removed
+- Workshop setup wizard files (setup.html, setup.js, setup.css) -- provider config now happens host-side via installer
+- Dead code: renderSetupChecks(), renderSetupSteps(), iframe postMessage listener from app.js
+
+### Changed
+- Workshop setup overlay replaced with plain-language "re-run the installer" instructions
+- Auth banner "Open Setup" link replaced with "How to fix" that shows the info overlay
+
 ## [0.5.0] - 2026-04-22
 
 ### Added

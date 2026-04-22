@@ -574,7 +574,7 @@
       }
     });
 
-    // Auth banner setup link
+    // Auth banner "How to fix" link
     document.getElementById('authSetupLink').addEventListener('click', (e) => {
       e.preventDefault();
       document.getElementById('setupOverlay').classList.remove('hidden');
@@ -792,15 +792,8 @@
       }
 
       if (!data.ready) {
-        // Show setup wizard for failing steps
-        const overlay = document.getElementById('setupOverlay');
-        const checksEl = document.getElementById('setupChecks');
-        const stepsEl = document.getElementById('setupSteps');
-
-        renderSetupChecks(data, checksEl);
-        renderSetupSteps(data.steps, stepsEl);
-        overlay.classList.remove('hidden');
-        bootstrapLog('Environment not ready -- showing setup wizard', 'warn');
+        document.getElementById('setupOverlay').classList.remove('hidden');
+        bootstrapLog('Environment not ready -- re-run the installer to configure', 'warn');
         return false;
       }
 
@@ -813,32 +806,6 @@
       bootstrapLog('Failed to reach /api/preflight: ' + e.message, 'err');
       return false;
     }
-  }
-
-  function renderSetupChecks(data, checksEl) {
-    const order = ['network', 'auth', 'cli'];
-    checksEl.innerHTML = order.map(key => {
-      const check = data.checks[key];
-      if (!check) return '';
-      return `<div class="setup-check">
-        <div class="setup-check-icon ${check.pass ? 'pass' : 'fail'}">${check.pass ? '\u2713' : '\u2717'}</div>
-        <span class="setup-check-label">${check.label}</span>
-        <span class="setup-check-detail">${check.detail}</span>
-      </div>`;
-    }).join('');
-  }
-
-  function renderSetupSteps(steps, stepsEl) {
-    if (!steps || steps.length === 0) {
-      stepsEl.classList.add('hidden');
-      return;
-    }
-    stepsEl.classList.remove('hidden');
-    stepsEl.innerHTML = '<div style="font-size:0.8rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">What to do</div>' +
-      steps.map((step, i) => `<div class="setup-step">
-        <span class="setup-step-num">${i + 1}.</span>
-        <span>${step.instruction}</span>
-      </div>`).join('');
   }
 
   function setupBootstrapPanel() {
@@ -867,13 +834,6 @@
       await checkAuth();
       const ready = await runPreflightCheck();
       if (ready) startNewProject();
-    });
-
-    // Listen for provider changes from setup iframe
-    window.addEventListener('message', async (e) => {
-      if (e.data && e.data.type === 'provider-setup-changed') {
-        await checkAuth();
-      }
     });
 
     // Initial render
