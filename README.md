@@ -39,17 +39,20 @@ A ready-to-run container that packages Claude Code CLI, a web-based terminal, VS
 
 ### Option 1: One-Click Install (Recommended)
 
-The fastest way to get started -- no terminal needed:
+The fastest way to get started:
 
-- **Windows:** Double-click `install.bat`
-- **macOS:** Double-click `install.command`
+- **Windows:** Double-click `install.bat` or run `install.bat --ai=foundry`
+- **macOS:** Double-click `install.command` or run `./install.command --ai=foundry`
+
+Replace `foundry` with `bedrock` or `anthropic` for other providers. Double-clicking presents an interactive menu.
 
 The installer will:
-1. Check that Docker is running
-2. Download (or update) the latest image
-3. Start the container
-4. Create a "Claude Code" shortcut on your desktop
-5. Open the dashboard in your browser
+1. Run preflight checks (VPN, CLI tools, access)
+2. Configure your AI provider (writes `.env` and credential files)
+3. Download (or update) the latest Docker image
+4. Start the container
+5. Create a "Claude Code" shortcut on your desktop
+6. Open the dashboard in your browser
 
 ### Option 2: Pull from Registry
 
@@ -120,30 +123,67 @@ docker compose up -d
 
 ## AI Provider Setup
 
-### Anthropic API Key (Personal)
+### Option A: Installer-Driven Setup (Recommended)
 
-Set in `.env`:
+The installer configures your AI provider automatically from pre-built JSON configs:
+
+```bash
+# macOS
+./install.command --ai=foundry      # Azure AI Foundry
+./install.command --ai=bedrock      # AWS Bedrock
+./install.command --ai=anthropic    # Anthropic API key
+
+# Windows
+install.bat --ai=foundry
+install.bat --ai=bedrock
+install.bat --ai=anthropic
+```
+
+If you omit `--ai=`, an interactive menu appears. The installer runs preflight checks (VPN, CLI tools, access), prompts for any missing values, and writes `.env` for you.
+
+Provider configs live in `config/<provider>.json`. Organizations fork the repo and fill in their own endpoints, model names, and SSO URLs. See `config/*.template.json` for blank starting points.
+
+### Option B: Manual .env Setup
+
+If you prefer to edit `.env` directly:
+
+**Anthropic API Key (Personal):**
 ```env
 ANTHROPIC_API_KEY=sk-ant-your-key-here
 ```
 
-### Azure AI Foundry
-
-Set in `.env`:
+**Azure AI Foundry:**
 ```env
-ANTHROPIC_BASE_URL=https://your-resource.services.ai.azure.com
-ANTHROPIC_API_KEY=your-azure-api-key
+CLAUDE_CODE_USE_FOUNDRY=1
+ANTHROPIC_FOUNDRY_BASE_URL=https://your-resource.services.ai.azure.com/anthropic
+ANTHROPIC_DEFAULT_SONNET_MODEL=your-sonnet-deployment-name
+ANTHROPIC_DEFAULT_HAIKU_MODEL=your-haiku-deployment-name
+ANTHROPIC_DEFAULT_OPUS_MODEL=your-opus-deployment-name
 ```
 
-### AWS Bedrock
-
-Set in `.env`:
+**AWS Bedrock:**
 ```env
 CLAUDE_CODE_USE_BEDROCK=1
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
 AWS_REGION=us-east-1
+AWS_PROFILE=sso-bedrock-model-access
+ANTHROPIC_MODEL=sonnet
+ANTHROPIC_DEFAULT_SONNET_MODEL=us.anthropic.claude-sonnet-4-6
+ANTHROPIC_DEFAULT_HAIKU_MODEL=us.anthropic.claude-haiku-4-5-20251001-v1:0
+ANTHROPIC_DEFAULT_OPUS_MODEL=us.anthropic.claude-opus-4-6-v1
+DISABLE_PROMPT_CACHING=0
 ```
+
+For Bedrock, you also need `~/.aws/config` with an SSO profile. The installer creates this automatically when using `--ai=bedrock`.
+
+### Authentication Inside the Container
+
+After the container starts, your first terminal session runs a login wizard:
+
+- **Azure AI Foundry (SSO):** `az login --use-device-code` -- visit a URL and enter a code
+- **AWS Bedrock (SSO):** `aws sso login --profile <name>` -- authorize in your browser
+- **Anthropic API Key:** No login needed -- the key is read from the environment
+
+To re-authenticate later, type `login` in the terminal.
 
 ## Building Apps with /make-it
 
@@ -172,30 +212,35 @@ Apps you build are saved in the projects folder, which is shared with your host 
 
 ```
 claude-code-docker/
-  install.bat             # Windows one-click installer
-  install.command          # macOS one-click installer
-  Dockerfile              # Container image definition
-  docker-compose.yml      # Orchestration with volumes and ports
-  .env.example            # Environment variable template
+  install.bat              # Windows installer (--ai=foundry|bedrock|anthropic)
+  install.command           # macOS installer (--ai=foundry|bedrock|anthropic)
+  Dockerfile               # Container image (Alpine + Claude Code + Azure CLI + AWS CLI)
+  docker-compose.yml       # Orchestration with volumes and ports
+  .env.example             # Environment variable template
+  config/
+    foundry.json           # Azure AI Foundry config (org-specific)
+    foundry.template.json  # Blank Foundry template with field descriptions
+    bedrock.json           # AWS Bedrock config (org-specific)
+    bedrock.template.json  # Blank Bedrock template with field descriptions
+    anthropic.json         # Anthropic API config
+    anthropic.template.json# Blank Anthropic template
   welcome/
-    index.html            # Dashboard landing page
+    index.html             # Dashboard landing page
   scripts/
-    entrypoint.sh         # Container startup (all services)
-    shell-init.sh         # Shell session initialization + walkthrough
-    setup-wizard.sh       # Interactive AI provider setup
-    welcome-server.sh     # Dashboard web server (Node.js)
-    watchdog.sh           # Auto-restarts crashed services
-    token-monitor.sh      # Azure token expiry background monitor
-    check-azure-token.sh  # Azure token health check
-    claude-wrapper.sh     # Friendly error wrapper with VPN detection
-    doctor.sh             # Connection troubleshooter
-    backup.sh             # Settings backup
-    restore.sh            # Settings restore
-    auto-update.sh        # Skill auto-update on startup
-    first-run.sh          # Host-side first-run setup
-    healthcheck.sh        # Container health verification
+    entrypoint.sh          # Container startup (all services)
+    configure-provider.sh  # Generates settings.json from env vars
+    login-wizard.sh        # Azure device-code / AWS SSO login flow
+    shell-init.sh          # Shell session init + auth check + walkthrough
+    welcome-server.sh      # Dashboard web server
+    health-monitor.sh      # Self-healing watchdog
+    claude-wrapper.sh      # Friendly error wrapper with VPN detection
+    doctor.sh              # Connection troubleshooter
+    backup.sh              # Settings backup
+    restore.sh             # Settings restore
+    auto-update.sh         # Skill auto-update on startup
+    healthcheck.sh         # Container health verification
   .github/workflows/
-    publish.yml           # CI/CD: build and push to ghcr.io on tag
+    publish.yml            # CI/CD: build and push to ghcr.io on tag
 ```
 
 ## Persistence
