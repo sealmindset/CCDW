@@ -47,9 +47,9 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <div>
           <strong>AI provider not configured.</strong>
-          <span class="auth-banner-detail">Open the Web Terminal and run "claude" to set up your API key.</span>
+          <span class="auth-banner-detail">Set up your AI provider to start building.</span>
         </div>
-        <a class="auth-banner-link" id="authTerminalLink" href="#">Open Terminal</a>
+        <a class="auth-banner-link" id="authSetupLink" href="/setup.html" target="_blank">Open Setup</a>
       </div>
     </div>
 
@@ -320,24 +320,16 @@
     </div>
   </div>
 
-  <!-- Setup wizard overlay (preflight checks) -->
+  <!-- Setup wizard overlay (embeds /setup.html) -->
   <div class="setup-overlay hidden" id="setupOverlay">
-    <div class="setup-wizard">
-      <h2>Let's get you set up</h2>
-      <p>A few things need to be ready before we can start building.</p>
-      <div class="setup-checks" id="setupChecks">
-        <!-- Populated by JS -->
+    <div class="setup-wizard" style="max-width:760px;height:80vh;display:flex;flex-direction:column;padding:0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-md) var(--space-lg);border-bottom:1px solid var(--border);flex-shrink:0;">
+        <h2 style="margin:0;font-size:1.05rem;">AI Provider Setup</h2>
+        <div style="display:flex;gap:var(--space-sm);">
+          <button class="btn-primary btn-sm" id="btnSetupRecheck">Done</button>
+        </div>
       </div>
-      <div class="setup-steps hidden" id="setupSteps">
-        <!-- Populated by JS with instructions for failing checks -->
-      </div>
-      <div class="setup-actions">
-        <button class="btn-secondary" id="btnSetupTerminal">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-          Open Terminal
-        </button>
-        <button class="btn-primary" id="btnSetupRecheck">Check Again</button>
-      </div>
+      <iframe id="setupIframe" src="/setup.html" style="flex:1;border:none;width:100%;background:var(--bg-primary);"></iframe>
     </div>
   </div>
 

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Code Docker - AI Provider Setup</title>
+  <link rel="stylesheet" href="/setup.css">
+</head>
+<body>
+  <div class="setup-page" id="setupPage">
+    <div class="setup-container">
+
+      <div class="setup-header">
+        <h1>AI Provider Setup</h1>
+        <p>Configure the AI services that power Claude Code and your apps before starting the container.</p>
+      </div>
+
+      <div class="status-summary" id="statusSummary"></div>
+
+      <!-- Claude Code Provider (pick one) -->
+      <div class="setup-section">
+        <div class="setup-section-header">
+          <h2>Claude Code Provider</h2>
+          <span class="setup-section-badge" id="badgeClaudeCode">pick one</span>
+        </div>
+        <div class="setup-section-desc">This powers the Claude Code CLI. Choose one provider.</div>
+        <div class="provider-grid" id="gridClaudeCode"></div>
+      </div>
+
+      <!-- App Development Providers (optional, any combo) -->
+      <div class="setup-section">
+        <div class="setup-section-header">
+          <h2>App Development Providers</h2>
+          <span class="setup-section-badge" id="badgeAppDev">optional</span>
+        </div>
+        <div class="setup-section-desc">Credentials for AI features in apps built with /make-it. You can configure multiple.</div>
+        <div class="provider-grid" id="gridAppDev"></div>
+      </div>
+
+      <!-- Finish / Skip -->
+      <div class="setup-finish">
+        <button class="btn-secondary" id="btnSkip">Skip for now</button>
+        <button class="btn-primary" id="btnFinish" style="display:none">Start Claude Code Docker</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Config Panel (slide-in from right) -->
+  <div class="config-panel-backdrop" id="configBackdrop"></div>
+  <div class="config-panel" id="configPanel">
+    <div class="config-panel-header">
+      <h3 id="configTitle"></h3>
+      <button class="btn-icon-close" id="btnCloseConfig" title="Close">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="config-steps" id="configSteps"></div>
+    <div class="config-panel-body" id="configBody"></div>
+    <div class="config-panel-footer" id="configFooter"></div>
+  </div>
+
+  <script src="/setup.js"></script>
+</body>
+</html>

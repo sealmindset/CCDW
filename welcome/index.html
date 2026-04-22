@@ -244,6 +244,19 @@
         </a>
     </div>
 
+    <div class="cards" style="margin-top: -0.5rem;">
+        <div class="card" style="min-width:280px;max-width:900px;flex:none;width:calc(100% - 2rem);max-width:900px;border-color:#334155;cursor:default;">
+            <div style="display:flex;align-items:center;gap:1rem;">
+                <div class="card-icon" style="margin-bottom:0;">&#9881;</div>
+                <div>
+                    <h2 style="font-size:1.1rem;">AI Provider</h2>
+                    <p style="font-size:0.85rem;" id="setup-detail">Configured during installation. To change, re-run the installer.</p>
+                </div>
+                <span class="port" id="setup-badge" style="margin-left:auto;margin-top:0;">checking...</span>
+            </div>
+        </div>
+    </div>
+
     <div class="status-section">
         <h3>System Status</h3>
         <div class="status-grid">
@@ -336,6 +349,8 @@
         document.getElementById('terminal-link').href = 'http://' + host + ':7681';
         document.getElementById('vscode-link').href = 'http://' + host + ':8080';
 
+        const setupBadge = document.getElementById('setup-badge');
+
         // Format helpers for usage stats
         function formatTokens(n) {
             if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -397,12 +412,18 @@
                     if (data.ai_provider === 'none') {
                         aiDot.className = 'status-dot yellow';
                         aiStatus.textContent = 'Not configured';
+                        setupBadge.textContent = 'not configured';
+                        setupBadge.style.color = '#facc15';
                     } else if (data.ai_status === 'ok') {
                         aiDot.className = 'status-dot green';
                         aiStatus.textContent = data.ai_provider;
+                        setupBadge.textContent = data.ai_provider;
+                        setupBadge.style.color = '#4ade80';
                     } else {
                         aiDot.className = 'status-dot red';
                         aiStatus.textContent = data.ai_provider + ' - ' + data.ai_status;
+                        setupBadge.textContent = data.ai_provider;
+                        setupBadge.style.color = '#f87171';
                     }
                 }
             } catch (e) {

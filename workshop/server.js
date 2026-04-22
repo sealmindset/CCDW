@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const { spawn, execSync } = require('child_process');
+const providers = require('./providers');
 
 // Crash guard -- log what kills the process
 process.on('uncaughtException', (err) => {
@@ -156,6 +157,29 @@ function detectAuthStatus() {
 }
 
 // ---------------------------------------------------------------------------
+// JSON Body Parsing + Error Helpers
+// ---------------------------------------------------------------------------
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', chunk => { data += chunk; });
+    req.on('end', () => {
+      try {
+        resolve(data ? JSON.parse(data) : {});
+      } catch {
+        reject(new Error('Invalid JSON body'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function jsonError(res, status, message) {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: message }));
+}
+
+// ---------------------------------------------------------------------------
 // HTTP Server
 // ---------------------------------------------------------------------------
 const server = http.createServer((req, res) => {
@@ -194,6 +218,28 @@ const server = http.createServer((req, res) => {
     projectStatus(projectName, res);
     return;
   }
+
+  // -----------------------------------------------------------------------
+  // Provider Setup API
+  // -----------------------------------------------------------------------
+
+  // GET /api/providers -- current status of all providers
+  if (url.pathname === '/api/providers' && req.method === 'GET') {
+    const status = providers.getProviderStatus();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(status));
+    return;
+  }
+
+  // GET /api/providers/definitions -- all provider definitions (fields, models, prereqs)
+  if (url.pathname === '/api/providers/definitions' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(providers.getDefinitions()));
+    return;
+  }
+
+  // Provider write routes removed — configuration happens host-side via setup/server.js
+  // before `docker compose up`. The Workshop only exposes read-only status above.
 
   // Serve static files from public/
   serveStatic(url.pathname, res);

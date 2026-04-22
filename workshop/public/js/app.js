@@ -574,10 +574,10 @@
       }
     });
 
-    // Auth banner terminal link
-    document.getElementById('authTerminalLink').addEventListener('click', (e) => {
+    // Auth banner setup link
+    document.getElementById('authSetupLink').addEventListener('click', (e) => {
       e.preventDefault();
-      window.open(`http://${window.location.hostname}:7681`, '_blank');
+      document.getElementById('setupOverlay').classList.remove('hidden');
     });
 
     // Walkthrough
@@ -862,14 +862,17 @@
     });
 
     // Setup wizard buttons
-    document.getElementById('btnSetupTerminal').addEventListener('click', () => {
-      window.open(`http://${window.location.hostname}:7681`, '_blank');
-    });
     document.getElementById('btnSetupRecheck').addEventListener('click', async () => {
+      document.getElementById('setupOverlay').classList.add('hidden');
+      await checkAuth();
       const ready = await runPreflightCheck();
-      if (ready) {
-        document.getElementById('setupOverlay').classList.add('hidden');
-        startNewProject();
+      if (ready) startNewProject();
+    });
+
+    // Listen for provider changes from setup iframe
+    window.addEventListener('message', async (e) => {
+      if (e.data && e.data.type === 'provider-setup-changed') {
+        await checkAuth();
       }
     });
 

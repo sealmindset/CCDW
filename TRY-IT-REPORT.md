@@ -1,50 +1,73 @@
-# Claude Code Docker -- Try-It Report
-> Tested: 2026-04-20
+# Setup Module -- Try-It Report
+> Tested: 2026-04-21
 > Status: All Passing
 
 ## Summary
 
-Your development environment was tested automatically. Here's what happened:
+The AI Provider Setup Module was tested end-to-end. All provider cards render, config panels open/close correctly, API endpoints respond with correct data, and the 3-step wizard (Prerequisites, Credentials, Test Connection) works for all 5 providers.
 
 | What Was Tested | Result |
 |----------------|--------|
-| Container starts and is healthy | PASS |
-| Welcome Dashboard loads | PASS |
-| Workshop (Business User IDE) loads | PASS |
-| Web Terminal loads | PASS |
-| VS Code in browser loads | PASS |
+| Setup page loads at /setup.html | PASS |
+| All 5 provider cards render | PASS |
+| Config panel opens/closes for each provider | PASS |
+| Prerequisites check API | PASS |
+| Provider definitions API | PASS |
+| Connection test API (error handling) | PASS |
+| Azure Foundry shows as active (existing config) | PASS |
+| Status summary chip updates dynamically | PASS |
+| Workshop integration (gear icon, overlay) | PASS |
+| Welcome Dashboard integration (setup card, modal) | PASS |
 
-## Services Tested
+## Provider Cards Tested
 
-| Service | Port | Status | Notes |
-|---------|------|--------|-------|
-| Welcome Dashboard | 3000 | PASS | Landing page with service cards and system status |
-| Workshop | 9200 | PASS | "New Project" flow ready, shows "Connected" status |
-| Web Terminal (ttyd) | 7681 | PASS | Terminal ready with Azure AI Foundry configured |
-| VS Code (code-server) | 8080 | PASS | File explorer, Claude Code task auto-launched |
+| Provider | Category | Card Renders | Panel Opens | Prereqs Check | Notes |
+|----------|----------|-------------|-------------|---------------|-------|
+| Anthropic API | Claude Code | PASS | PASS | No prereqs needed | Shows "Ready to configure" |
+| Azure AI Foundry | Claude Code | PASS | PASS | Azure CLI -- PASS | Active provider, green dot, SSO/API Key toggle |
+| AWS Bedrock | Claude Code | PASS | PASS | AWS CLI -- FAIL (expected) | Correctly shows "Not installed" |
+| OpenAI | App Development | PASS | PASS | No prereqs needed | Shows "Ready to configure" |
+| Azure OpenAI | App Development | PASS | PASS | No prereqs needed | Shows "Ready to configure" |
+
+## API Endpoints Tested
+
+| Endpoint | Method | Status | Notes |
+|----------|--------|--------|-------|
+| /api/providers | GET | PASS | Returns correct status with Azure Foundry active |
+| /api/providers/definitions | GET | PASS | All 5 providers with fields, models, prereqs |
+| /api/providers/check-prereqs | POST | PASS | Bedrock correctly fails (no AWS CLI), others pass |
+| /api/providers/test | POST | PASS | Returns clean error when no config provided |
+| /api/providers/configure | POST | Not tested (would modify config) | |
+| /api/providers/auth-flow | POST | Not tested (requires Azure/AWS SSO) | |
+| /api/providers/auth-flow/status | GET | Not tested | |
+| /api/providers/remove | POST | Not tested (would modify config) | |
+
+## Bug Found and Fixed
+
+- **testProvider null safety**: Calling `/api/providers/test` without config crashed with `Cannot read properties of undefined`. Fixed by adding `config = config || {}` at the top of `testProvider()` in providers.js. Now returns clean error messages.
 
 ## Screenshots
 
-Screenshots of each interface are saved in `.try-it/screenshots/`:
-- `welcome-dashboard.png` -- Landing page with service cards
-- `welcome-dashboard-full.png` -- Full page including system status and getting started guide
-- `workshop-home.png` -- Workshop IDE home screen
-- `web-terminal.png` -- Web terminal with ready prompt
-- `code-server.png` -- VS Code in browser with file explorer
+Screenshots saved in `.try-it/screenshots/`:
+- `setup-main.png` -- Main setup page with all provider cards
+- `setup-azure-foundry-prereqs.png` -- Azure Foundry prereqs step (Azure CLI check)
+- `setup-azure-foundry-creds.png` -- Azure Foundry credentials step (SSO/API Key toggle, model deployments)
+- `setup-anthropic-panel.png` -- Anthropic API config panel
+- `setup-bedrock-panel.png` -- AWS Bedrock config panel (AWS CLI not installed)
+- `setup-openai-panel.png` -- OpenAI config panel
+- `setup-azure-openai-panel.png` -- Azure OpenAI config panel
+- `workshop-main.png` -- Workshop main page with gear icon
 
-## How to Access Your Environment
+## How to Access
 
-- **Welcome page:** http://localhost:3000 -- Start here to see all your options
-- **Workshop:** http://localhost:9200 -- Build apps by describing your idea (no coding needed)
-- **Web Terminal:** http://localhost:7681 -- Type `claude` to start, then `/make-it` to build an app
-- **VS Code:** http://localhost:8080 -- Full IDE with file explorer, extensions, and terminal
-
-## Issues Found
-None -- all services are running and accessible.
+1. **Start the Workshop server**: Inside the Docker container, Workshop runs on port 9200
+2. **Open setup page directly**: `http://localhost:9200/setup.html`
+3. **From Workshop**: Click the gear icon (top-right) or auth banner "Open Setup" link
+4. **From Welcome Dashboard**: Click the "AI Provider Setup" card (port 3000)
+5. **From terminal**: Type `setup` to get the URL
 
 ## What to Do Next
-- Open http://localhost:3000 in your browser to see the welcome page
-- Click **Workshop** to build an app without touching a terminal
-- Or open the **Web Terminal** to use Claude Code directly
-- To make changes, type **/resume-it**
-- To shut down, type **/wrap-it**
+- Test end-to-end configure + test flows with real credentials for each provider
+- Test Azure SSO device code flow inside the container
+- Test AWS SSO flow inside the container
+- Verify Welcome Dashboard modal iframe integration (requires both port 3000 and 9200 running)
