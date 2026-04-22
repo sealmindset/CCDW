@@ -204,6 +204,14 @@ sh_check_internet() {
     curl -s --connect-timeout 5 -o /dev/null https://www.google.com 2>/dev/null
 }
 
+sh_check_ssl_proxy() {
+    local rc
+    curl -s --connect-timeout 5 -o /dev/null https://www.google.com 2>/dev/null
+    rc=$?
+    # curl exit 35=SSL connect error, 51=bad peer cert, 60=CA not trusted
+    [ "$rc" -eq 35 ] || [ "$rc" -eq 51 ] || [ "$rc" -eq 60 ]
+}
+
 sh_check_disk() {
     local avail_kb
     avail_kb=$(df -k /home/coder 2>/dev/null | tail -1 | awk '{print $4}')
@@ -289,6 +297,10 @@ sh_classify() {
     fi
 
     if ! sh_check_internet; then
+        if sh_check_ssl_proxy; then
+            echo "ssl_proxy"
+            return
+        fi
         echo "internet_down"
         return
     fi
@@ -557,8 +569,8 @@ sh_remediate() {
             return 1
             ;;
         *)
-            # Not auto-fixable: dns_failure, internet_down, vpn_down,
-            # endpoint_unreachable, api_key_invalid, docker_socket_lost
+            # Not auto-fixable: dns_failure, internet_down, ssl_proxy,
+            # vpn_down, endpoint_unreachable, api_key_invalid, docker_socket_lost
             sh_telemetry_log "$failure_type" "none" "fail" "user_action_required"
             return 1
             ;;
@@ -577,6 +589,9 @@ sh_failure_message() {
             ;;
         internet_down)
             echo "No internet connectivity. Check network or VPN."
+            ;;
+        ssl_proxy)
+            echo "SSL inspection proxy detected (Zscaler, Netskope, etc.). HTTPS connections are being intercepted. Pause or disable the content filter to allow downloads and extension installs."
             ;;
         disk_full)
             echo "Disk space critically low (< 512MB free)."

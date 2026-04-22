@@ -175,6 +175,85 @@
             font-size: 0.9rem;
         }
 
+        .auth-notify {
+            display: none;
+            justify-content: center;
+            width: 100%;
+            padding: 0 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .auth-notify-inner {
+            background: linear-gradient(135deg, #312e81, #1e1b4b);
+            border: 1px solid #4338ca;
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            max-width: 900px;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .auth-notify-icon { font-size: 1.5rem; }
+        .auth-notify-text { flex: 1; min-width: 200px; }
+        .auth-notify-text strong { color: #e0e7ff; display: block; margin-bottom: 0.25rem; }
+        .auth-notify-text span { color: #a5b4fc; font-size: 0.9rem; }
+        .auth-notify-code {
+            background: #1e1b4b;
+            border: 2px solid #6366f1;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            font-family: monospace;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #a78bfa;
+            letter-spacing: 0.1em;
+        }
+        .auth-notify-btn {
+            background: #6366f1;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+        .auth-notify-btn:hover { background: #4f46e5; }
+
+        .ssl-notice {
+            display: none;
+            justify-content: center;
+            width: 100%;
+            padding: 0 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .ssl-notice-inner {
+            background: linear-gradient(135deg, #78350f, #451a03);
+            border: 1px solid #b45309;
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            max-width: 900px;
+            width: 100%;
+        }
+        .ssl-notice-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .ssl-notice-header strong { color: #fde68a; font-size: 1rem; }
+        .ssl-notice p { color: #fcd34d; font-size: 0.9rem; line-height: 1.6; margin: 0.4rem 0; }
+        .ssl-notice .ssl-steps { color: #fed7aa; font-size: 0.85rem; margin-top: 0.75rem; padding-left: 1.25rem; }
+        .ssl-notice .ssl-steps li { margin: 0.35rem 0; }
+        .ssl-notice code {
+            background: rgba(0,0,0,0.3);
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #fde68a;
+        }
+
         .usage-section {
             max-width: 900px;
             width: 100%;
@@ -223,6 +302,36 @@
         <p>Your AI-powered development environment is ready</p>
     </div>
 
+    <!-- Auth notification (auto-shown when login wizard needs the browser) -->
+    <div class="auth-notify" id="authNotify">
+        <div class="auth-notify-inner">
+            <div class="auth-notify-icon">&#128273;</div>
+            <div class="auth-notify-text">
+                <strong>Sign-in required</strong>
+                <span id="authNotifyDetail">Enter the code at the sign-in page</span>
+            </div>
+            <div class="auth-notify-code" id="authNotifyCode">---</div>
+            <a class="auth-notify-btn" id="authNotifyLink" href="#" target="_blank">Open Sign-in Page</a>
+        </div>
+    </div>
+
+    <!-- SSL proxy / content filter notice (auto-shown when health detects SSL interception) -->
+    <div class="ssl-notice" id="sslNotice">
+        <div class="ssl-notice-inner">
+            <div class="ssl-notice-header">
+                <span style="font-size:1.5rem;">&#9888;</span>
+                <strong>Content filter is blocking secure connections</strong>
+            </div>
+            <p>A network security tool (Zscaler, Netskope, GlobalProtect, or similar) is intercepting HTTPS traffic. This prevents VS Code extensions, AI connections, and software downloads from working.</p>
+            <ol class="ssl-steps">
+                <li>Find the security app in your <strong>menu bar</strong> or <strong>system tray</strong></li>
+                <li>Choose <strong>Disable</strong> or <strong>Pause</strong> and pick the longest time option</li>
+                <li>This page will update automatically when the connection is restored</li>
+                <li>Re-enable the security tool when you are done installing or downloading</li>
+            </ol>
+        </div>
+    </div>
+
     <div class="cards">
         <a class="card" href="" id="workshop-link" style="border-color: #a78bfa;">
             <div class="card-icon">&#9881;</div>
@@ -245,14 +354,30 @@
     </div>
 
     <div class="cards" style="margin-top: -0.5rem;">
-        <div class="card" style="min-width:280px;max-width:900px;flex:none;width:calc(100% - 2rem);max-width:900px;border-color:#334155;cursor:default;">
+        <div class="card" id="providerCard" style="min-width:280px;max-width:900px;flex:none;width:calc(100% - 2rem);border-color:#334155;cursor:default;">
             <div style="display:flex;align-items:center;gap:1rem;">
                 <div class="card-icon" style="margin-bottom:0;">&#9881;</div>
-                <div>
+                <div style="flex:1;">
                     <h2 style="font-size:1.1rem;">AI Provider</h2>
                     <p style="font-size:0.85rem;" id="setup-detail">Configured during installation. To change, re-run the installer.</p>
                 </div>
                 <span class="port" id="setup-badge" style="margin-left:auto;margin-top:0;">checking...</span>
+            </div>
+            <div id="signinSection" style="display:none;margin-top:1rem;padding-top:1rem;border-top:1px solid #334155;">
+                <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                    <button id="btnSignIn" style="background:#6366f1;color:white;border:none;padding:0.5rem 1.25rem;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.9rem;">Sign in</button>
+                    <span id="signinHint" style="color:#94a3b8;font-size:0.85rem;"></span>
+                </div>
+                <div id="signinFlow" style="display:none;margin-top:1rem;">
+                    <p id="signinInstructions" style="color:#94a3b8;font-size:0.85rem;margin-bottom:0.75rem;"></p>
+                    <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+                        <span id="signinCode" style="display:none;background:#1e1b4b;border:2px solid #6366f1;border-radius:8px;padding:0.5rem 1rem;font-family:monospace;font-size:1.25rem;font-weight:700;color:#a78bfa;letter-spacing:0.1em;"></span>
+                        <a id="signinLink" href="#" target="_blank" style="display:none;background:#6366f1;color:white;padding:0.4rem 1rem;border-radius:6px;font-weight:600;text-decoration:none;font-size:0.85rem;">Open sign-in page</a>
+                    </div>
+                    <div id="signinWaiting" style="display:none;margin-top:0.75rem;color:#94a3b8;font-size:0.85rem;">
+                        <span style="display:inline-block;animation:pulse 1.5s infinite;">&#9679;</span> Waiting for you to complete sign-in...
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -451,10 +576,176 @@
             } catch (e) {}
         }
 
+        async function checkSslProxy() {
+            try {
+                var resp = await fetch('/api/health');
+                if (!resp.ok) return;
+                var data = await resp.json();
+                var notice = document.getElementById('sslNotice');
+                if (data.ssl_proxy || data.failure_type === 'ssl_proxy') {
+                    notice.style.display = 'flex';
+                } else {
+                    notice.style.display = 'none';
+                }
+            } catch (e) {}
+        }
+
         checkAll();
         checkUsage();
+        checkSslProxy();
         setInterval(checkAll, 30000);
         setInterval(checkUsage, 30000);
+        setInterval(checkSslProxy, 30000);
+
+        // Auth-pending polling: auto-open login page when the login wizard requests it
+        let authAutoOpened = false;
+        async function checkAuthPending() {
+            try {
+                const resp = await fetch('/auth/pending');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const banner = document.getElementById('authNotify');
+                if (!data.pending) {
+                    banner.style.display = 'none';
+                    authAutoOpened = false;
+                    return;
+                }
+                document.getElementById('authNotifyCode').textContent = data.code || '---';
+                document.getElementById('authNotifyLink').href = data.url;
+                const provider = data.provider === 'azure' ? 'Microsoft' : 'AWS';
+                document.getElementById('authNotifyDetail').textContent =
+                    'Enter the code at the ' + provider + ' sign-in page';
+                banner.style.display = 'flex';
+                if (!authAutoOpened) {
+                    authAutoOpened = true;
+                    window.open(data.url, '_blank');
+                }
+            } catch(e) {}
+        }
+        setInterval(checkAuthPending, 3000);
+        checkAuthPending();
+
+        // Provider-aware sign-in from the dashboard
+        let signinPolling = null;
+
+        async function checkSigninNeeded() {
+            try {
+                const resp = await fetch('/api/status');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const section = document.getElementById('signinSection');
+                const btn = document.getElementById('btnSignIn');
+                const hint = document.getElementById('signinHint');
+
+                if (data.ai_provider === 'none' || data.ai_status === 'ok') {
+                    section.style.display = 'none';
+                    return;
+                }
+                if (data.ai_provider === 'Anthropic API') {
+                    section.style.display = 'none';
+                    return;
+                }
+
+                const isAzure = data.ai_provider.includes('Azure') || data.ai_provider.includes('Foundry');
+                if (isAzure) {
+                    btn.textContent = 'Sign in to Azure';
+                    btn.style.display = '';
+                    hint.textContent = 'Uses device-code login -- the sign-in page opens automatically';
+                } else {
+                    btn.style.display = 'none';
+                    hint.innerHTML = 'Open the <a href="http://' + window.location.hostname + ':7681" style="color:#818cf8;">Web Terminal</a> to sign in to AWS SSO';
+                }
+                section.style.display = '';
+            } catch(e) {}
+        }
+
+        document.getElementById('btnSignIn').addEventListener('click', async function() {
+            var btn = document.getElementById('btnSignIn');
+            var flow = document.getElementById('signinFlow');
+            var instructions = document.getElementById('signinInstructions');
+            var codeEl = document.getElementById('signinCode');
+            var linkEl = document.getElementById('signinLink');
+            var waiting = document.getElementById('signinWaiting');
+            var hint = document.getElementById('signinHint');
+
+            btn.disabled = true;
+            btn.textContent = 'Starting...';
+            hint.textContent = '';
+            flow.style.display = '';
+
+            try {
+                var resp = await fetch('/auth/login', { method: 'POST' });
+                var data = await resp.json();
+
+                if (!data.needed) {
+                    btn.textContent = 'Already signed in';
+                    btn.style.background = '#22c55e';
+                    flow.style.display = 'none';
+                    setTimeout(function() { checkAll(); checkSigninNeeded(); }, 1000);
+                    return;
+                }
+
+                if (data.status === 'use-terminal') {
+                    instructions.innerHTML = 'Sign in via the <a href="http://' + window.location.hostname + ':7681" target="_blank" style="color:#818cf8;">Web Terminal</a>. The login wizard will guide you through AWS SSO.';
+                    btn.style.display = 'none';
+                    waiting.style.display = '';
+
+                    signinPolling = setInterval(async function() {
+                        try {
+                            var check = await fetch('/auth/check');
+                            var result = await check.json();
+                            if (result.authenticated) {
+                                clearInterval(signinPolling);
+                                signinPolling = null;
+                                flow.style.display = 'none';
+                                document.getElementById('signinSection').style.display = 'none';
+                                checkAll();
+                            }
+                        } catch(e) {}
+                    }, 3000);
+                    return;
+                }
+
+                if (data.provider === 'azure') {
+                    instructions.textContent = 'Enter this code at the Microsoft sign-in page:';
+                    if (data.code) { codeEl.textContent = data.code; codeEl.style.display = ''; }
+                    if (data.url) {
+                        linkEl.href = data.url;
+                        linkEl.textContent = 'Open Microsoft sign-in';
+                        linkEl.style.display = 'inline-block';
+                        window.open(data.url, '_blank');
+                    }
+                }
+
+                waiting.style.display = '';
+                btn.style.display = 'none';
+
+                signinPolling = setInterval(async function() {
+                    try {
+                        var check = await fetch('/auth/check');
+                        var result = await check.json();
+                        if (result.authenticated) {
+                            clearInterval(signinPolling);
+                            signinPolling = null;
+                            flow.style.display = 'none';
+                            btn.style.display = '';
+                            btn.disabled = false;
+                            btn.textContent = 'Signed in!';
+                            btn.style.background = '#22c55e';
+                            document.getElementById('signinSection').style.display = 'none';
+                            fetch('/auth/clear', { method: 'POST' });
+                            checkAll();
+                        }
+                    } catch(e) {}
+                }, 3000);
+            } catch(e) {
+                btn.disabled = false;
+                btn.textContent = 'Try again';
+                btn.style.display = '';
+            }
+        });
+
+        setTimeout(checkSigninNeeded, 2000);
     </script>
 </body>
 </html>

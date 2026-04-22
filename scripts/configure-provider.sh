@@ -41,11 +41,23 @@ if [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ] && [ -f "$SETTINGS_FILE" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Skip if settings.json already exists (preserves user edits)
+# Skip if settings.json already exists AND matches current provider.
+# Stale config from a different provider (e.g., Bedrock settings when
+# Foundry is now active) causes Claude Code to check the wrong auth.
 # ---------------------------------------------------------------------------
 if [ -f "$SETTINGS_FILE" ]; then
-    echo -e "${GREEN}[OK]${NC} Claude Code settings already configured"
-    exit 0
+    STALE=0
+    if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ] && grep -q '"CLAUDE_CODE_USE_BEDROCK"' "$SETTINGS_FILE" 2>/dev/null; then
+        STALE=1
+    elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ] && grep -q 'apiKeyHelper\|get-claude-token' "$SETTINGS_FILE" 2>/dev/null; then
+        STALE=1
+    fi
+    if [ "$STALE" = "0" ]; then
+        echo -e "${GREEN}[OK]${NC} Claude Code settings already configured"
+        exit 0
+    fi
+    echo -e "${YELLOW}[...]${NC} Provider changed -- regenerating settings.json"
+    rm -f "$SETTINGS_FILE" "$TOKEN_SCRIPT"
 fi
 
 # ---------------------------------------------------------------------------

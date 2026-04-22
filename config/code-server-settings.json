@@ -17,5 +17,16 @@
   "terminal.integrated.tabs.location": "left",
   "security.workspace.trust.enabled": false,
   "telemetry.telemetryLevel": "off",
-  "update.mode": "none"
+  "update.mode": "none",
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.python"
+  },
+  "[go]": {
+    "editor.defaultFormatter": "golang.go"
+  },
+  "go.gopath": "/home/coder/go",
+  "python.defaultInterpreterPath": "/usr/bin/python3",
+  "continue.telemetryEnabled": false
 }

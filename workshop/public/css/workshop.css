@@ -809,35 +809,64 @@ dialog::backdrop {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: opacity 0.3s ease;
 }
 
 .walkthrough-overlay.hidden {
   display: none;
 }
 
+.walkthrough-overlay.has-target {
+  pointer-events: none;
+}
+
 .walkthrough-step {
   background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  border: 1px solid var(--accent);
   border-radius: var(--radius-lg);
   padding: var(--space-xl);
-  max-width: 440px;
+  max-width: 380px;
   width: 90vw;
   text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 24px var(--accent-glow);
+  pointer-events: auto;
+  transition: transform 0.35s ease, opacity 0.3s ease;
+}
+
+.walkthrough-overlay.has-target .walkthrough-step {
+  position: fixed;
+  text-align: left;
 }
 
 .walkthrough-content {
   margin-bottom: var(--space-lg);
 }
 
+.walkthrough-content h2 {
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.walkthrough-content p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
 .walkthrough-actions {
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   gap: var(--space-md);
   margin-bottom: var(--space-md);
+}
+
+.walkthrough-overlay:not(.has-target) .walkthrough-actions {
+  justify-content: center;
 }
 
 .walkthrough-dots {
@@ -851,10 +880,49 @@ dialog::backdrop {
   height: 8px;
   border-radius: 50%;
   background: var(--border);
+  transition: background 0.2s;
 }
 
 .walkthrough-dot.active {
   background: var(--accent);
+}
+
+.walkthrough-dot.done {
+  background: var(--success);
+}
+
+.walkthrough-arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.walkthrough-arrow.arrow-top    { top: -7px; border-bottom: none; border-right: none; }
+.walkthrough-arrow.arrow-bottom { bottom: -7px; border-top: none; border-left: none; }
+.walkthrough-arrow.arrow-left   { left: -7px; border-top: none; border-right: none; }
+
+.walkthrough-spotlight {
+  position: relative !important;
+  z-index: 101 !important;
+  box-shadow: 0 0 0 4px var(--accent), 0 0 24px var(--accent-glow) !important;
+  border-radius: var(--radius-md);
+  transition: box-shadow 0.3s ease;
+}
+
+.tour-link {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: none;
+  margin-top: var(--space-sm);
+  display: inline-block;
+}
+.tour-link:hover {
+  color: var(--accent-hover);
 }
 
 /* --- Connection Overlay --- */

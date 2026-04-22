@@ -30,6 +30,8 @@ RUN apk update && apk upgrade && apk add --no-cache \
     docker-cli \
     docker-cli-compose \
     gcompat \
+    go \
+    libqrencode-tools \
     libstdc++ \
     tmux \
     su-exec \
@@ -103,6 +105,10 @@ RUN deluser node 2>/dev/null; delgroup node 2>/dev/null; \
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
+# Go toolchain paths (VS Code Go extension needs gopls on PATH)
+ENV GOPATH=/home/coder/go
+ENV PATH=$GOPATH/bin:$PATH
+
 # ---------------------------------------------------------------------------
 # Copy scripts
 # ---------------------------------------------------------------------------
@@ -125,10 +131,22 @@ RUN sed -i 's/\r$//' /opt/claude-code-docker/scripts/*.sh \
 RUN mv /opt/claude-code-docker/scripts/xdg-open /usr/local/bin/xdg-open
 
 # ---------------------------------------------------------------------------
-# Install /make-it skills as coder user (needs home directory)
+# Switch to coder user for extensions, Go tools, and skill install
 # ---------------------------------------------------------------------------
 USER coder
 WORKDIR /home/coder/Documents/GitHub
+
+# VS Code extensions (code-server uses Open VSX registry)
+RUN code-server --install-extension ms-python.python \
+    && code-server --install-extension golang.go \
+    && code-server --install-extension dbaeumer.vscode-eslint \
+    && code-server --install-extension esbenp.prettier-vscode \
+    && code-server --install-extension Continue.continue
+
+# Go language server (gopls) for the Go extension
+RUN go install golang.org/x/tools/gopls@latest
+
+# /make-it skills
 RUN curl -fsSL https://raw.githubusercontent.com/sealmindset/make-it/main/install.sh | bash
 
 # ---------------------------------------------------------------------------

@@ -1,73 +1,107 @@
-# Setup Module -- Try-It Report
-> Tested: 2026-04-21
-> Status: All Passing
+# Claude Code Docker -- Try-It Report
+> Tested: 2026-04-22
+> Status: All Passing (20/20)
 
 ## Summary
 
-The AI Provider Setup Module was tested end-to-end. All provider cards render, config panels open/close correctly, API endpoints respond with correct data, and the 3-step wizard (Prerequisites, Credentials, Test Connection) works for all 5 providers.
+Full infrastructure smoke test of the CCDW container with v0.5.2 changes (VS Code extensions, login UX, walkthrough, provider-aware auth, welcome-server.js extraction).
 
 | What Was Tested | Result |
 |----------------|--------|
-| Setup page loads at /setup.html | PASS |
-| All 5 provider cards render | PASS |
-| Config panel opens/closes for each provider | PASS |
-| Prerequisites check API | PASS |
-| Provider definitions API | PASS |
-| Connection test API (error handling) | PASS |
-| Azure Foundry shows as active (existing config) | PASS |
-| Status summary chip updates dynamically | PASS |
-| Workshop integration (gear icon, overlay) | PASS |
-| Welcome Dashboard integration (setup card, modal) | PASS |
+| Docker image builds | PASS |
+| Container starts and passes health check | PASS |
+| Welcome dashboard (port 3000) | PASS |
+| Workshop (port 9200) | PASS |
+| Web terminal (port 7681) | PASS |
+| VS Code code-server (port 8080) | PASS |
+| API: /api/status | PASS |
+| API: /api/health | PASS |
+| API: /api/usage | PASS |
+| API: /auth/pending | PASS |
+| API: /auth/check | PASS |
+| API: /auth/start (POST) | PASS |
+| API: /auth/clear (POST) | PASS |
+| Auth relay cycle (start -> pending -> clear) | PASS |
+| CORS preflight (OPTIONS /auth/*) | PASS |
+| VS Code extensions installed (5/5) | PASS |
+| Go toolchain (gopls) | PASS |
+| QR code tool (qrencode) | PASS |
+| welcome-server.js syntax validation | PASS |
+| welcome-server.sh -> .js extraction | PASS |
 
-## Provider Cards Tested
+## Services
 
-| Provider | Category | Card Renders | Panel Opens | Prereqs Check | Notes |
-|----------|----------|-------------|-------------|---------------|-------|
-| Anthropic API | Claude Code | PASS | PASS | No prereqs needed | Shows "Ready to configure" |
-| Azure AI Foundry | Claude Code | PASS | PASS | Azure CLI -- PASS | Active provider, green dot, SSO/API Key toggle |
-| AWS Bedrock | Claude Code | PASS | PASS | AWS CLI -- FAIL (expected) | Correctly shows "Not installed" |
-| OpenAI | App Development | PASS | PASS | No prereqs needed | Shows "Ready to configure" |
-| Azure OpenAI | App Development | PASS | PASS | No prereqs needed | Shows "Ready to configure" |
+| Service | Port | HTTP Status | Notes |
+|---------|------|-------------|-------|
+| Welcome Dashboard | 3000 | 200 | Cards, status, AI Provider section, Getting Started |
+| Workshop | 9200 | 200 | Home view with walkthrough overlay, project cards |
+| Web Terminal (ttyd) | 7681 | 200 | Shell init complete, Azure auth verified |
+| VS Code (code-server) | 8080 | 302 | Redirect to login (expected), file explorer + projects |
 
-## API Endpoints Tested
+## v0.5.2 Features Verified
 
-| Endpoint | Method | Status | Notes |
-|----------|--------|--------|-------|
-| /api/providers | GET | PASS | Returns correct status with Azure Foundry active |
-| /api/providers/definitions | GET | PASS | All 5 providers with fields, models, prereqs |
-| /api/providers/check-prereqs | POST | PASS | Bedrock correctly fails (no AWS CLI), others pass |
-| /api/providers/test | POST | PASS | Returns clean error when no config provided |
-| /api/providers/configure | POST | Not tested (would modify config) | |
-| /api/providers/auth-flow | POST | Not tested (requires Azure/AWS SSO) | |
-| /api/providers/auth-flow/status | GET | Not tested | |
-| /api/providers/remove | POST | Not tested (would modify config) | |
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Python extension | PASS | `ms-python.python` in extension list |
+| Go extension | PASS | `golang.go` in extension list |
+| ESLint extension | PASS | `dbaeumer.vscode-eslint` in extension list |
+| Prettier extension | PASS | `esbenp.prettier-vscode` in extension list |
+| Continue.dev extension | PASS | `continue.continue` in extension list |
+| gopls language server | PASS | `/home/coder/go/bin/gopls` v0.21.1 |
+| qrencode terminal QR | PASS | `/usr/bin/qrencode` available |
+| Walkthrough overlay | PASS | "Welcome to Workshop" step 1/5, progress dots, Skip/Next |
+| "Take the tour" link | PASS | `btnTakeTour` element present in Workshop HTML |
+| Auth notification banner | PASS | `authNotify` element in Welcome dashboard |
+| Provider-aware sign-in | PASS | `checkSigninNeeded` JS function served |
+| /auth/login endpoint | PASS | Returns `{authenticated: true, provider: "azure"}` |
+| /auth/pending endpoint | PASS | Returns `{pending: false}` (no active login) |
+| /auth/check endpoint | PASS | Returns `{authenticated: true, provider: "azure"}` |
 
-## Bug Found and Fixed
+## API Responses
 
-- **testProvider null safety**: Calling `/api/providers/test` without config crashed with `Cannot read properties of undefined`. Fixed by adding `config = config || {}` at the top of `testProvider()` in providers.js. Now returns clean error messages.
+**GET /api/status**
+```json
+{"docker":"ok","ai_provider":"Azure AI Foundry","ai_status":"ok"}
+```
+
+**GET /api/health**
+- Status: healthy
+- Auth: Azure AI Foundry via azure_cli_token
+- Docker socket: available
+- Disk: 359 GB free
+
+**GET /auth/check**
+```json
+{"authenticated":true,"provider":"azure"}
+```
 
 ## Screenshots
 
-Screenshots saved in `.try-it/screenshots/`:
-- `setup-main.png` -- Main setup page with all provider cards
-- `setup-azure-foundry-prereqs.png` -- Azure Foundry prereqs step (Azure CLI check)
-- `setup-azure-foundry-creds.png` -- Azure Foundry credentials step (SSO/API Key toggle, model deployments)
-- `setup-anthropic-panel.png` -- Anthropic API config panel
-- `setup-bedrock-panel.png` -- AWS Bedrock config panel (AWS CLI not installed)
-- `setup-openai-panel.png` -- OpenAI config panel
-- `setup-azure-openai-panel.png` -- Azure OpenAI config panel
-- `workshop-main.png` -- Workshop main page with gear icon
+Saved in `.try-it/screenshots/`:
+- `welcome-dashboard.png` -- Welcome page with all cards, status section, Getting Started
+- `workshop-home.png` -- Workshop with walkthrough overlay (step 1/5)
+- `terminal.png` -- Web terminal with shell init complete, Azure verified
+- `vscode.png` -- VS Code with file explorer, Welcome tab, zero errors
 
 ## How to Access
 
-1. **Start the Workshop server**: Inside the Docker container, Workshop runs on port 9200
-2. **Open setup page directly**: `http://localhost:9200/setup.html`
-3. **From Workshop**: Click the gear icon (top-right) or auth banner "Open Setup" link
-4. **From Welcome Dashboard**: Click the "AI Provider Setup" card (port 3000)
-5. **From terminal**: Type `setup` to get the URL
+| Service | URL |
+|---------|-----|
+| Welcome Dashboard | http://localhost:3000 |
+| Workshop | http://localhost:9200 |
+| Web Terminal | http://localhost:7681 |
+| VS Code | http://localhost:8080 |
+
+## Bugs Found & Fixed This Session
+
+| Bug | Root Cause | Fix |
+|-----|-----------|-----|
+| AI Provider badge stuck on "checking..." | Unicode smart quotes (U+2018/2019) broke JS parser | Replaced all curly quotes with ASCII in index.html |
+| "sso-bedrock-model-access not found" in terminal | Stale Bedrock settings.json in persistent Docker volume | configure-provider.sh now detects provider mismatch and regenerates |
 
 ## What to Do Next
-- Test end-to-end configure + test flows with real credentials for each provider
-- Test Azure SSO device code flow inside the container
-- Test AWS SSO flow inside the container
-- Verify Welcome Dashboard modal iframe integration (requires both port 3000 and 9200 running)
+- Test walkthrough steps 2-5 (interactive spotlight + positioned tooltips)
+- Test Azure sign-in flow from Welcome dashboard (click Sign In button)
+- Test QR code rendering in login wizard (run `login` in terminal)
+- Test Continue.dev auto-configuration (open Continue panel in VS Code)
+- Rebuild Docker image to bake in all fixes (when Open VSX is stable)

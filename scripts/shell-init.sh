@@ -87,6 +87,17 @@ print(val if val is not None else '')
 }
 
 # ---------------------------------------------------------------------------
+# SSL proxy detection (content filter intercepting HTTPS)
+# ---------------------------------------------------------------------------
+SSL_PROXY=0
+_ssl_rc=0
+curl -s --connect-timeout 5 -o /dev/null https://www.google.com 2>/dev/null
+_ssl_rc=$?
+if [ "$_ssl_rc" -eq 35 ] || [ "$_ssl_rc" -eq 51 ] || [ "$_ssl_rc" -eq 60 ]; then
+    SSL_PROXY=1
+fi
+
+# ---------------------------------------------------------------------------
 # Preflight checks (run silently, store results)
 # ---------------------------------------------------------------------------
 AI_OK=0; AI_LABEL=""
@@ -157,6 +168,18 @@ if [ ! -f "$FIRST_RUN_MARKER" ]; then
         fi
         [ "$DOCKER_OK" = "1" ] && echo -e "  ${CHECK_PASS} Docker" || echo -e "  ${CHECK_FAIL} Docker"
         echo ""
+        if [ "$SSL_PROXY" = "1" ]; then
+            echo -e "  ${YELLOW}╭──────────────────────────────────────────────────────────────────╮${NC}"
+            echo -e "  ${YELLOW}│${NC} ${RED}Content filter is blocking secure connections${NC}                   ${YELLOW}│${NC}"
+            echo -e "  ${YELLOW}│${NC}                                                                ${YELLOW}│${NC}"
+            echo -e "  ${YELLOW}│${NC} A security tool (Zscaler, Netskope, GlobalProtect) is          ${YELLOW}│${NC}"
+            echo -e "  ${YELLOW}│${NC} intercepting HTTPS. Extensions, AI, and downloads will fail.   ${YELLOW}│${NC}"
+            echo -e "  ${YELLOW}│${NC}                                                                ${YELLOW}│${NC}"
+            echo -e "  ${YELLOW}│${NC} ${BOLD}To fix:${NC} Pause the security tool in your menu bar or system    ${YELLOW}│${NC}"
+            echo -e "  ${YELLOW}│${NC} tray, pick the longest time option, then re-enable when done.  ${YELLOW}│${NC}"
+            echo -e "  ${YELLOW}╰──────────────────────────────────────────────────────────────────╯${NC}"
+            echo ""
+        fi
         echo -e "  ${GREEN}You're all set!${NC} Type ${GREEN}claude${NC} to start."
         echo -e "  Then type ${GREEN}/make-it${NC} to build your first app."
         echo ""
@@ -247,6 +270,19 @@ else
     fi
 
     echo ""
+
+    if [ "$SSL_PROXY" = "1" ]; then
+        echo -e "  ${YELLOW}╭──────────────────────────────────────────────────────────────────╮${NC}"
+        echo -e "  ${YELLOW}│${NC} ${RED}Content filter is blocking secure connections${NC}                   ${YELLOW}│${NC}"
+        echo -e "  ${YELLOW}│${NC}                                                                ${YELLOW}│${NC}"
+        echo -e "  ${YELLOW}│${NC} A security tool (Zscaler, Netskope, GlobalProtect) is          ${YELLOW}│${NC}"
+        echo -e "  ${YELLOW}│${NC} intercepting HTTPS. Extensions, AI, and downloads will fail.   ${YELLOW}│${NC}"
+        echo -e "  ${YELLOW}│${NC}                                                                ${YELLOW}│${NC}"
+        echo -e "  ${YELLOW}│${NC} ${BOLD}To fix:${NC} Pause the security tool in your menu bar or system    ${YELLOW}│${NC}"
+        echo -e "  ${YELLOW}│${NC} tray, pick the longest time option, then re-enable when done.  ${YELLOW}│${NC}"
+        echo -e "  ${YELLOW}╰──────────────────────────────────────────────────────────────────╯${NC}"
+        echo ""
+    fi
 
     if [ "$AI_OK" = "1" ] && [ "$AUTH_OK" = "1" ]; then
         echo -e "  ${GREEN}Ready.${NC} Type ${GREEN}claude${NC} to start, then ${GREEN}/make-it${NC} to build an app."

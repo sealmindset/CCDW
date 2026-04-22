@@ -582,12 +582,19 @@
 
     // Walkthrough
     document.getElementById('btnWalkthroughSkip').addEventListener('click', () => {
+      clearSpotlight();
       localStorage.setItem('workshop-walkthrough-done', '1');
       document.getElementById('walkthroughOverlay').classList.add('hidden');
     });
 
     document.getElementById('btnWalkthroughNext').addEventListener('click', () => {
       advanceWalkthrough();
+    });
+
+    // "Take a tour" link (re-triggers walkthrough for returning users)
+    document.getElementById('btnTakeTour').addEventListener('click', (e) => {
+      e.preventDefault();
+      showWalkthrough(true);
     });
   }
 
@@ -847,59 +854,129 @@
   const walkthroughSteps = [
     {
       title: 'Welcome to Workshop',
-      body: 'Workshop lets you build full applications just by describing what you want. No coding, no terminal -- just plain English.',
+      body: 'Describe an app idea in plain English and Workshop builds it for you — design, code, and all. No terminal needed.',
     },
     {
-      title: 'Start a New Project',
-      body: 'Click <strong>New Project</strong>, give it a name, then describe your idea in the chat. Workshop will design and build the whole thing.',
+      title: 'Create Your First App',
+      body: 'Click here to start. Pick a name, then describe what you want to build in the chat.',
+      target: '#btnNewProject',
+      placement: 'right',
     },
     {
-      title: 'Watch It Build',
-      body: 'The Bifrost progress bar shows each phase -- from idea to architecture to working code. The activity feed shows exactly what\'s happening.',
+      title: 'Your Workspace',
+      body: '<strong>Terminal</strong> gives full CLI access. <strong>See your app</strong> opens your running app in a new tab.',
+      target: '.header-nav',
+      placement: 'bottom',
     },
     {
-      title: 'Explore and Iterate',
-      body: 'Once built, you can try your app in the browser, check the dashboard, and request changes. Just describe what you want different.',
+      title: 'System Health',
+      body: 'Shows your AI provider status and connection health. Click the gear to see details.',
+      target: '.header-status',
+      placement: 'bottom',
     },
     {
-      title: 'Go Live When Ready',
-      body: 'When you\'re happy with your app, the Go Live wizard packages it up so you can share it with the world. That\'s it -- you\'re a builder now!',
+      title: 'You\'re All Set!',
+      body: 'Click <strong>New Project</strong> to start building. Describe your idea, watch the Bifrost progress bar, then try your app.',
     },
   ];
 
   let walkthroughIndex = 0;
+  let spotlightEl = null;
 
-  function showWalkthrough() {
-    if (localStorage.getItem('workshop-walkthrough-done')) return;
+  function clearSpotlight() {
+    if (spotlightEl) {
+      spotlightEl.classList.remove('walkthrough-spotlight');
+      spotlightEl = null;
+    }
+    const overlay = document.getElementById('walkthroughOverlay');
+    overlay.classList.remove('has-target');
+    const arrow = overlay.querySelector('.walkthrough-arrow');
+    if (arrow) arrow.remove();
+  }
 
+  function showWalkthrough(force) {
+    if (!force && localStorage.getItem('workshop-walkthrough-done')) return;
+    showView('home');
     walkthroughIndex = 0;
     renderWalkthroughStep();
     document.getElementById('walkthroughOverlay').classList.remove('hidden');
   }
 
   function renderWalkthroughStep() {
+    clearSpotlight();
+
     const step = walkthroughSteps[walkthroughIndex];
+    const overlay = document.getElementById('walkthroughOverlay');
+    const stepEl = document.getElementById('walkthroughStep');
     const contentEl = document.getElementById('walkthroughContent');
     const dotsEl = document.getElementById('walkthroughDots');
     const nextBtn = document.getElementById('btnWalkthroughNext');
 
-    contentEl.innerHTML = `<h2 style="font-size:1.15rem;margin-bottom:0.5rem;">${step.title}</h2><p style="color:var(--text-secondary);font-size:0.9rem;line-height:1.6;">${step.body}</p>`;
+    contentEl.innerHTML = `<h2>${step.title}</h2><p>${step.body}</p>`;
 
-    // Dots
     dotsEl.innerHTML = '';
     walkthroughSteps.forEach((_, i) => {
       const dot = document.createElement('span');
-      dot.className = `walkthrough-dot${i === walkthroughIndex ? ' active' : ''}`;
+      dot.className = 'walkthrough-dot' + (i === walkthroughIndex ? ' active' : i < walkthroughIndex ? ' done' : '');
       dotsEl.appendChild(dot);
     });
 
-    // Last step changes button text
-    nextBtn.textContent = walkthroughIndex === walkthroughSteps.length - 1 ? 'Get Started' : 'Next';
+    const isLast = walkthroughIndex === walkthroughSteps.length - 1;
+    nextBtn.textContent = isLast ? 'Start Building' : 'Next';
+
+    stepEl.style.top = '';
+    stepEl.style.left = '';
+    stepEl.style.right = '';
+    stepEl.style.bottom = '';
+
+    if (step.target) {
+      const targetEl = document.querySelector(step.target);
+      if (targetEl) {
+        targetEl.classList.add('walkthrough-spotlight');
+        spotlightEl = targetEl;
+        overlay.classList.add('has-target');
+        positionTooltip(stepEl, targetEl, step.placement || 'bottom');
+        return;
+      }
+    }
+
+    overlay.classList.remove('has-target');
+  }
+
+  function positionTooltip(stepEl, targetEl, placement) {
+    const rect = targetEl.getBoundingClientRect();
+    const gap = 16;
+
+    const arrow = document.createElement('div');
+    arrow.className = 'walkthrough-arrow';
+
+    if (placement === 'bottom') {
+      stepEl.style.top = (rect.bottom + gap) + 'px';
+      stepEl.style.left = Math.max(12, Math.min(rect.left, window.innerWidth - 400)) + 'px';
+      arrow.classList.add('arrow-top');
+      arrow.style.left = Math.min(Math.max(24, rect.left + rect.width / 2 - parseInt(stepEl.style.left) - 6), 360) + 'px';
+    } else if (placement === 'right') {
+      stepEl.style.top = Math.max(12, rect.top - 20) + 'px';
+      stepEl.style.left = (rect.right + gap) + 'px';
+      if (rect.right + gap + 400 > window.innerWidth) {
+        stepEl.style.left = '';
+        stepEl.style.top = (rect.bottom + gap) + 'px';
+        stepEl.style.left = Math.max(12, rect.left) + 'px';
+        arrow.classList.add('arrow-top');
+        arrow.style.left = (rect.width / 2) + 'px';
+      } else {
+        arrow.classList.add('arrow-left');
+        arrow.style.top = '24px';
+      }
+    }
+
+    stepEl.appendChild(arrow);
   }
 
   function advanceWalkthrough() {
     walkthroughIndex++;
     if (walkthroughIndex >= walkthroughSteps.length) {
+      clearSpotlight();
       localStorage.setItem('workshop-walkthrough-done', '1');
       document.getElementById('walkthroughOverlay').classList.add('hidden');
       return;

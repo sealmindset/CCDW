@@ -242,6 +242,24 @@ spinner_wait() {
     printf "\r%*s\r" 60 ""
 }
 
+notify_browser() {
+    local url="$1" code="$2" provider="$3"
+    curl -s -X POST "http://127.0.0.1:${WELCOME_PORT:-3000}/auth/start" \
+        -H "Content-Type: application/json" \
+        -d "{\"url\":\"$url\",\"code\":\"$code\",\"provider\":\"$provider\"}" \
+        2>/dev/null &
+}
+
+show_qr() {
+    local url="$1"
+    if command -v qrencode &>/dev/null; then
+        echo -e "  ${DIM}Or scan with your phone:${NC}"
+        echo ""
+        qrencode -t ANSIUTF8 -m 1 "$url" 2>/dev/null | sed 's/^/    /'
+        echo ""
+    fi
+}
+
 # =============================================================================
 # AZURE AI FOUNDRY LOGIN FLOW
 # =============================================================================
@@ -370,8 +388,9 @@ azure_signin() {
     echo -e "  Enter this code at the Microsoft sign-in page:"
     draw_code_box "$device_code"
     echo -e "  ${BOLD}▸${NC} ${BOLD}${login_url}${NC}"
-    echo -e "    ${DIM}(Click the link above — it opens in your browser)${NC}"
-    echo ""
+    echo -e "    ${DIM}(Auto-opening if the dashboard is open in your browser)${NC}"
+    notify_browser "$login_url" "$device_code" "azure"
+    show_qr "$login_url"
 
     spinner_wait "$AZ_PID" "Waiting for you to sign in..."
     local exit_code=$SPINNER_EXIT
@@ -587,7 +606,9 @@ bedrock_signin() {
             draw_code_box "$sso_code"
         fi
         echo -e "  ${BOLD}▸${NC} ${BOLD}${sso_url}${NC}"
-        echo -e "    ${DIM}(Open this URL in your browser to sign in)${NC}"
+        echo -e "    ${DIM}(Auto-opening if the dashboard is open in your browser)${NC}"
+        notify_browser "$sso_url" "${sso_code:-}" "bedrock"
+        show_qr "$sso_url"
     fi
 
     echo ""

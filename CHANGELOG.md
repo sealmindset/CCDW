@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.5.2] - 2026-04-22
+
+### Added
+- SSL proxy / content filter detection across all layers (health monitor, dashboard, terminal)
+  - Health monitor detects SSL interception (curl exit codes 35/51/60) as distinct `ssl_proxy` failure type
+  - Welcome dashboard: amber notice banner with step-by-step instructions to pause the security tool
+  - Terminal: boxed warning on shell startup when HTTPS connections are being intercepted
+  - `/api/health` endpoint includes `ssl_proxy` boolean for programmatic detection
+- code-server now inherits `NODE_EXTRA_CA_CERTS` and `SSL_CERT_FILE` from container environment
+  - Fixes Continue.dev and other extensions failing to download behind corporate SSL inspection
+- VS Code extensions pre-installed in Docker image: Python, Go, ESLint, Prettier, Continue.dev
+- Go toolchain (`go` + `gopls` language server) added to container
+- Continue.dev AI assistant auto-configured from active provider (Anthropic, Foundry, Bedrock)
+- code-server settings: format-on-save, per-language formatters, Go/Python paths
+- Login wizard: QR code displayed in terminal for mobile device authentication
+- Login wizard: auto-opens sign-in page in browser via welcome-server relay
+- Welcome dashboard: auth notification banner with device code + auto-open when login wizard triggers
+- Welcome server: `/auth/start`, `/auth/pending`, `/auth/clear` endpoints for browser-terminal relay
+- Interactive guided walkthrough: spotlight highlights target elements, positioned tooltips with arrows, progress dots
+- "Take the tour" link on home view for returning users to re-trigger walkthrough
+- Dashboard-driven sign-in: provider-aware auth flow triggered from welcome page
+  - Anthropic: no sign-in needed (API key configured at install)
+  - Azure Foundry: spawns `az login --use-device-code`, shows code, auto-opens Microsoft sign-in
+  - AWS Bedrock: defers to terminal login wizard (SSO flow needs real-account testing)
+- Welcome server: `/auth/login` POST spawns provider-specific auth, `/auth/check` GET verifies completion
+- CORS preflight handler for cross-origin auth requests from Workshop
+
+### Fixed
+- Welcome dashboard: AI Provider badge stuck on "checking..." due to Unicode smart quotes in JavaScript
+  - Curly quotes (U+2018/U+2019/U+201C/U+201D) and em dash (U+2014) broke the JS parser
+  - All replaced with ASCII equivalents in `welcome/index.html`
+- Provider mismatch: stale Bedrock `settings.json` persisted in Docker volume when switching to Foundry
+  - `configure-provider.sh` now detects provider mismatch and regenerates settings
+  - Foundry env vars + Bedrock settings.json triggers automatic cleanup and regeneration
+  - Also handles: Bedrock env + Foundry/token settings, API key mode + any stale settings
+
+### Changed
+- Welcome server extracted from embedded shell string to standalone `welcome-server.js`
+  - Eliminates shell escaping fragility (370 lines of JS no longer inside bash double-quotes)
+  - File is now lintable, formattable, and testable with standard JS tooling
+  - `welcome-server.sh` reduced to a 4-line launcher that sets env vars and `exec node`
+
 ## [0.5.1] - 2026-04-22
 
 ### Removed

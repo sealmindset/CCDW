@@ -68,13 +68,13 @@
   - Provide plain-English deployment status ("Your app is live at https://...")
 
 ## Medium Priority
-- [ ] Add VS Code extensions for common languages (Python, TypeScript, Go)
-- [ ] Add Copilot-style Claude extension to code-server
+- [x] Add VS Code extensions for common languages (Python, TypeScript, Go)
+- [x] Add Copilot-style Claude extension to code-server (Continue.dev with auto-provider detection)
 - [ ] Support Docker socket on macOS (Colima, Docker Desktop, Rancher Desktop)
 
 ## Low Priority
 - [ ] Add optional TLS/HTTPS for ttyd and code-server
 - [ ] Add container resource limit recommendations in README
-- [ ] Create a quick-start video walkthrough
-- [ ] Login wizard: auto-open Microsoft device login in new browser tab via welcome-server redirect endpoint
-- [ ] Login wizard: add QR code option for device code (for users on separate devices)
+- [x] Create a quick-start walkthrough (interactive guided tour with spotlight + positioning)
+- [x] Login wizard: auto-open Microsoft device login in new browser tab via welcome-server redirect endpoint
+- [x] Login wizard: add QR code option for device code (for users on separate devices)
