@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.5.0] - 2026-04-22
+
+### Added
+- Multi-provider install support with `--ai=foundry|bedrock|anthropic` argument
+  - Per-provider JSON config files drive both install scripts and container-side setup
+  - Config files declare endpoints, models, preflight checks, and settings templates
+  - Template JSON files (*.template.json) with `_help` descriptions for organizations to fork
+- AWS CLI v2 added to Docker image for Bedrock SSO authentication
+- Provider-aware login wizard: Azure device-code, AWS SSO, or API key (auto-detected)
+- Data-driven preflight checks: VPN, CLI tools, network, group membership per provider
+- Interactive provider prompts in install.bat (PowerShell) for missing values (endpoint, API key, SSO details)
+- install.bat: PowerShell-based JSON parsing replaces Node.js dependency
+- install.bat: Writes `~/.aws/config` SSO profile for Bedrock
+- install.command: Provider-specific prompts and `~/.aws/config` generation
+- Bedrock `settings.json` generation with `awsAuthRefresh`, permissions deny/ask, all model vars
+- `AUTH_OK` provider-agnostic auth variable in shell-init.sh (replaces Azure-only `AZ_OK`)
+- README: installer-driven setup as recommended path alongside manual .env editing
+- README: updated project structure showing config/ JSON files and current scripts
+- Chapter 11: CCDW Setup Guide in MakeIt-TheDocs (architecture, all providers, installation, troubleshooting)
+
+### Changed
+- install.bat: refactored from single-provider to multi-provider with interactive menu
+- install.command: refactored with `read_config()`, `write_env_from_config()`, `write_aws_config()` helpers
+- configure-provider.sh: Bedrock case generates full settings.json matching AWS spec
+- login-wizard.sh: full rewrite -- detects active provider, three complete login flows
+- shell-init.sh: Bedrock auth check via `aws sts get-caller-identity`
+- docker-compose.yml: `~/.aws` volume mount added for Bedrock credentials
+
 ## [0.4.5] - 2026-04-21
 
 ### Fixed
