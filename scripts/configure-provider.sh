@@ -26,7 +26,23 @@ NC='\033[0m'
 # directly from the environment variable.
 # ---------------------------------------------------------------------------
 if [ -n "$ANTHROPIC_API_KEY" ]; then
-    rm -f "$SETTINGS_FILE" "$TOKEN_SCRIPT"
+    # Remove stale provider config but preserve plugin keys
+    python3 -c "
+import json, os
+sf = '${SETTINGS_FILE}'
+if os.path.isfile(sf):
+    with open(sf) as f:
+        old = json.load(f)
+    keep = {k: old[k] for k in ('extraKnownMarketplaces','enabledPlugins') if k in old}
+    if keep:
+        with open(sf, 'w') as f:
+            json.dump(keep, f, indent=2)
+    else:
+        os.remove(sf)
+else:
+    pass
+" 2>/dev/null || rm -f "$SETTINGS_FILE"
+    rm -f "$TOKEN_SCRIPT"
     echo -e "${GREEN}[OK]${NC} Using personal API key (no settings.json needed)"
     exit 0
 fi
@@ -36,7 +52,20 @@ fi
 # ---------------------------------------------------------------------------
 if [ -n "$ANTHROPIC_FOUNDRY_API_KEY" ] && [ -f "$SETTINGS_FILE" ]; then
     if grep -q "apiKeyHelper" "$SETTINGS_FILE" 2>/dev/null; then
-        rm -f "$SETTINGS_FILE" "$TOKEN_SCRIPT"
+        # Remove stale token helper config but preserve plugin keys
+        python3 -c "
+import json, os
+sf = '${SETTINGS_FILE}'
+with open(sf) as f:
+    old = json.load(f)
+keep = {k: old[k] for k in ('extraKnownMarketplaces','enabledPlugins') if k in old}
+if keep:
+    with open(sf, 'w') as f:
+        json.dump(keep, f, indent=2)
+else:
+    os.remove(sf)
+" 2>/dev/null || rm -f "$SETTINGS_FILE"
+        rm -f "$TOKEN_SCRIPT"
     fi
 fi
 
@@ -47,7 +76,11 @@ fi
 # ---------------------------------------------------------------------------
 if [ -f "$SETTINGS_FILE" ]; then
     STALE=0
-    if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ] && grep -q '"CLAUDE_CODE_USE_BEDROCK"' "$SETTINGS_FILE" 2>/dev/null; then
+    HAS_PROVIDER=0
+    grep -q '"env"\|apiKeyHelper\|awsAuthRefresh' "$SETTINGS_FILE" 2>/dev/null && HAS_PROVIDER=1
+    if [ "$HAS_PROVIDER" = "0" ]; then
+        STALE=1
+    elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ] && grep -q '"CLAUDE_CODE_USE_BEDROCK"' "$SETTINGS_FILE" 2>/dev/null; then
         STALE=1
     elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ] && grep -q 'apiKeyHelper\|get-claude-token' "$SETTINGS_FILE" 2>/dev/null; then
         STALE=1
@@ -57,7 +90,20 @@ if [ -f "$SETTINGS_FILE" ]; then
         exit 0
     fi
     echo -e "${YELLOW}[...]${NC} Provider changed -- regenerating settings.json"
-    rm -f "$SETTINGS_FILE" "$TOKEN_SCRIPT"
+    # Preserve plugin keys when regenerating
+    python3 -c "
+import json, os
+sf = '${SETTINGS_FILE}'
+with open(sf) as f:
+    old = json.load(f)
+keep = {k: old[k] for k in ('extraKnownMarketplaces','enabledPlugins') if k in old}
+if keep:
+    with open(sf, 'w') as f:
+        json.dump(keep, f, indent=2)
+else:
+    os.remove(sf)
+" 2>/dev/null || rm -f "$SETTINGS_FILE"
+    rm -f "$TOKEN_SCRIPT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -101,6 +147,21 @@ fi
 
 PROVIDER_NAME=$(read_yaml "providers.${PROVIDER}.name")
 mkdir -p "$CLAUDE_DIR"
+
+# ---------------------------------------------------------------------------
+# Save plugin keys before overwriting settings.json
+# ---------------------------------------------------------------------------
+PLUGIN_KEYS_JSON=""
+if [ -f "$SETTINGS_FILE" ]; then
+    PLUGIN_KEYS_JSON=$(python3 -c "
+import json
+with open('${SETTINGS_FILE}') as f:
+    old = json.load(f)
+keep = {k: old[k] for k in ('extraKnownMarketplaces','enabledPlugins') if k in old}
+if keep:
+    print(json.dumps(keep))
+" 2>/dev/null || true)
+fi
 
 # ---------------------------------------------------------------------------
 # Read common Claude settings from YAML
@@ -233,6 +294,26 @@ print(json.dumps(settings, indent=2))
         fi
         ;;
 esac
+
+# ---------------------------------------------------------------------------
+# Restore plugin keys into settings.json
+# ---------------------------------------------------------------------------
+if [ -n "$PLUGIN_KEYS_JSON" ] && [ -f "$SETTINGS_FILE" ]; then
+    python3 -c "
+import json, sys
+with open('${SETTINGS_FILE}') as f:
+    settings = json.load(f)
+plugins = json.loads('${PLUGIN_KEYS_JSON}')
+settings.update(plugins)
+with open('${SETTINGS_FILE}', 'w') as f:
+    json.dump(settings, f, indent=2)
+" 2>/dev/null || true
+elif [ -n "$PLUGIN_KEYS_JSON" ] && [ ! -f "$SETTINGS_FILE" ]; then
+    echo "$PLUGIN_KEYS_JSON" | python3 -c "
+import json, sys
+print(json.dumps(json.load(sys.stdin), indent=2))
+" > "$SETTINGS_FILE" 2>/dev/null || true
+fi
 
 # Fix ownership
 chown coder:coder "$SETTINGS_FILE" 2>/dev/null || true
