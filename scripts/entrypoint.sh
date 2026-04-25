@@ -54,6 +54,17 @@ if [ "${SKILLS_AUTO_UPDATE:-1}" = "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Sync image defaults into volume (plugins, skills, CLAUDE.md)
+# Uses rsync --ignore-existing so user customizations are never overwritten.
+# New files from image updates (e.g., new plugins) are added automatically.
+# ---------------------------------------------------------------------------
+if [ -d /home/coder/.claude-defaults ]; then
+    rsync -a --ignore-existing /home/coder/.claude-defaults/ /home/coder/.claude/
+    chown -R coder:coder /home/coder/.claude 2>/dev/null || true
+    echo -e "${GREEN}[OK]${NC} Synced image defaults into .claude volume"
+fi
+
+# ---------------------------------------------------------------------------
 # Fix volume ownership (mounted volumes may be root-owned)
 # ---------------------------------------------------------------------------
 for dir in /home/coder/.config /home/coder/.claude /home/coder/.azure /home/coder/.gitconfig.d; do

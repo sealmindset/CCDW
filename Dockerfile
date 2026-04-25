@@ -161,6 +161,12 @@ RUN printf '%s\n' \
     > /home/coder/.claude/CLAUDE.md
 
 # ---------------------------------------------------------------------------
+# Stage .claude contents for volume initialization at runtime
+# (Named volumes mask image contents after first creation)
+# ---------------------------------------------------------------------------
+RUN cp -a /home/coder/.claude /home/coder/.claude-defaults
+
+# ---------------------------------------------------------------------------
 # Switch back to root for entrypoint (it drops to coder after setup)
 # ---------------------------------------------------------------------------
 USER root
