@@ -149,6 +149,10 @@ RUN go install golang.org/x/tools/gopls@latest
 # /make-it skills
 RUN curl -fsSL https://raw.githubusercontent.com/sealmindset/make-it/main/install.sh | bash
 
+# Caveman plugin (ultra-compressed communication mode)
+RUN claude plugin marketplace add JuliusBrussee/caveman \
+    && claude plugin install caveman@caveman
+
 # ---------------------------------------------------------------------------
 # Claude Code user-level instructions (shown on every conversation start)
 # ---------------------------------------------------------------------------
