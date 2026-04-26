@@ -15,7 +15,7 @@ powershell -NoProfile -Command ^
     "foreach ($d in @($desktop, $pub)) { " ^
     "  foreach ($name in @('Rancher Desktop.lnk','Claude Code.url')) { " ^
     "    $p = Join-Path $d $name; " ^
-    "    if (Test-Path $p) { Remove-Item $p -Force; Write-Host ('       Removed: ' + $name) } " ^
+    "    if (Test-Path $p) { Remove-Item $p -Force -EA SilentlyContinue; if (-not (Test-Path $p)) { Write-Host ('       Removed: ' + $name) } } " ^
     "  } " ^
     "}"
 
