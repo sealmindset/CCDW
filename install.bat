@@ -870,30 +870,32 @@ if "!REGISTRY_MIRROR:~-1!" neq "/" set "REGISTRY_MIRROR=!REGISTRY_MIRROR!/"
 REM Extract ACR hostname (e.g., dockyardgwprod.azurecr.io/docker.io/library/ -> dockyardgwprod.azurecr.io)
 for /f "delims=/" %%H in ("!REGISTRY_MIRROR!") do set "ACR_HOST=%%H"
 
-REM Authenticate to ACR using AAD token (no subscription context needed)
+REM Read ACR subscription from .env
+set "ACR_SUBSCRIPTION="
+for /f "usebackq eol=# tokens=1,* delims==" %%A in ("!ENV_FILE!") do if /i "%%A"=="ACR_SUBSCRIPTION" if "%%B" neq "" set "ACR_SUBSCRIPTION=%%B"
+
+REM Extract ACR name (e.g., dockyardgwprod.azurecr.io -> dockyardgwprod)
+for /f "delims=." %%N in ("!ACR_HOST!") do set "ACR_NAME=%%N"
+
+REM Authenticate to ACR (az acr login does proper token exchange for blob access)
 where az >nul 2>nul
 if !ERRORLEVEL! neq 0 (
     echo [WARN] Azure CLI not found -- image registry may not work.
     goto :acr_auth_done
 )
 
-REM Try existing Azure session first
-set "AAD_TOKEN="
-for /f "delims=" %%T in ('az account get-access-token --query accessToken -o tsv 2^>nul') do set "AAD_TOKEN=%%T"
-if not defined AAD_TOKEN goto :acr_need_login
-echo !AAD_TOKEN!| docker login "!ACR_HOST!" -u 00000000-0000-0000-0000-000000000000 --password-stdin >nul 2>nul
+set "ACR_LOGIN_ARGS=--name !ACR_NAME!"
+if defined ACR_SUBSCRIPTION set "ACR_LOGIN_ARGS=!ACR_LOGIN_ARGS! --subscription !ACR_SUBSCRIPTION!"
+
+call az acr login !ACR_LOGIN_ARGS! >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :acr_auth_ok
 
-:acr_need_login
+REM Login failed -- need Azure sign-in first
 echo [...]  Image registry needs Azure sign-in...
 call az login
-set "AAD_TOKEN="
-for /f "delims=" %%T in ('az account get-access-token --query accessToken -o tsv 2^>nul') do set "AAD_TOKEN=%%T"
-if not defined AAD_TOKEN goto :acr_auth_fail
-echo !AAD_TOKEN!| docker login "!ACR_HOST!" -u 00000000-0000-0000-0000-000000000000 --password-stdin >nul 2>nul
+call az acr login !ACR_LOGIN_ARGS! >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :acr_auth_ok
 
-:acr_auth_fail
 echo [WARN] Could not authenticate to image registry.
 goto :acr_auth_done
 
