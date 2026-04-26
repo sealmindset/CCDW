@@ -898,7 +898,7 @@ REM Ensure trailing slash
 if "!REGISTRY_MIRROR:~-1!" neq "/" set "REGISTRY_MIRROR=!REGISTRY_MIRROR!/"
 
 REM Extract ACR name (e.g., dockyardgwprod.azurecr.io/docker.io/library/ -> dockyardgwprod)
-for /f "delims=" %%N in ('powershell -NoProfile -Command "('!REGISTRY_MIRROR!' -split '\.azurecr\.io')[0] -replace '.*/',''"') do set "ACR_NAME=%%N"
+for /f "delims=." %%N in ("!REGISTRY_MIRROR!") do set "ACR_NAME=%%N"
 
 REM Ensure Azure CLI is installed (auto-install if missing)
 where az >nul 2>nul
