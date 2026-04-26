@@ -899,20 +899,54 @@ if "!REGISTRY_MIRROR:~-1!" neq "/" set "REGISTRY_MIRROR=!REGISTRY_MIRROR!/"
 REM Extract ACR name (e.g., dockyardgwprod.azurecr.io/docker.io/library/ -> dockyardgwprod)
 for /f "delims=" %%N in ('powershell -NoProfile -Command "('!REGISTRY_MIRROR!' -split '\.azurecr\.io')[0] -replace '.*/',''"') do set "ACR_NAME=%%N"
 
-REM Silently authenticate to ACR using existing Azure session
+REM Ensure Azure CLI is installed (auto-install if missing)
+where az >nul 2>nul
+if !ERRORLEVEL! neq 0 goto :install_az
+goto :az_ready
+
+:install_az
+echo [...]  Azure CLI is not installed. Installing it now...
+echo        (one-time setup -- may ask for admin permission)
+powershell -NoProfile -Command ^
+    "$ProgressPreference = 'SilentlyContinue'; " ^
+    "Write-Host '       Downloading Azure CLI...'; " ^
+    "$msi = Join-Path $env:TEMP 'AzureCLI.msi'; " ^
+    "Invoke-WebRequest -Uri https://aka.ms/installazurecliwindowsx64 -OutFile $msi; " ^
+    "Write-Host '       Installing (you may see a permissions prompt)...'; " ^
+    "$p = Start-Process msiexec.exe -Wait -PassThru -Verb RunAs -ArgumentList '/I', $msi, '/quiet'; " ^
+    "Remove-Item $msi -EA SilentlyContinue; " ^
+    "if ($p.ExitCode -eq 0) { exit 0 } else { exit 1 }"
+
+REM Add Azure CLI to PATH for this session
+if exist "%ProgramFiles%\Microsoft SDKs\Azure\CLI2\wbin" (
+    set "PATH=%ProgramFiles%\Microsoft SDKs\Azure\CLI2\wbin;!PATH!"
+)
+if exist "%ProgramFiles(x86)%\Microsoft SDKs\Azure\CLI2\wbin" (
+    set "PATH=%ProgramFiles(x86)%\Microsoft SDKs\Azure\CLI2\wbin;!PATH!"
+)
+
 where az >nul 2>nul
 if !ERRORLEVEL! equ 0 (
+    echo [OK] Azure CLI installed.
+) else (
+    echo [WARN] Azure CLI install may need a restart. Continuing without ACR auth.
+    goto :skip_acr
+)
+
+:az_ready
+
+REM Silently authenticate to ACR using existing Azure session
+az acr login --name "!ACR_NAME!" >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    echo [OK] Image registry authenticated.
+) else (
+    echo [...]  Image registry needs Azure sign-in...
+    az login --use-device-code
     az acr login --name "!ACR_NAME!" >nul 2>nul
     if !ERRORLEVEL! equ 0 (
         echo [OK] Image registry authenticated.
     ) else (
-        echo [...]  Image registry needs Azure sign-in...
-        az login --use-device-code >nul 2>nul && az acr login --name "!ACR_NAME!" >nul 2>nul
-        if !ERRORLEVEL! equ 0 (
-            echo [OK] Image registry authenticated.
-        ) else (
-            echo [WARN] Could not connect to image registry -- build may prompt for sign-in.
-        )
+        echo [WARN] Could not connect to image registry -- build may prompt for sign-in.
     )
 )
 
