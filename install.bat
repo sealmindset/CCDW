@@ -76,6 +76,156 @@ echo.
 :not_admin
 
 REM ---------------------------------------------------------------------------
+REM Preflight checks
+REM ---------------------------------------------------------------------------
+echo [...]  Running preflight checks...
+
+REM --- Check: WSL2 is installed and working ---
+where wsl >nul 2>nul
+if !ERRORLEVEL! neq 0 goto :wsl_not_installed
+
+REM wsl.exe exists -- check if the kernel is actually loaded
+wsl --status >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :wsl_running
+
+REM wsl exists but kernel not loaded -- try a lightweight test
+wsl -l >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :wsl_running
+
+REM WSL2 was installed but machine hasn't been rebooted yet
+echo [ERROR] Your computer needs to be restarted.
+echo.
+echo   WSL2 was recently installed (probably with Rancher Desktop)
+echo   but it can't start until you restart your computer.
+echo.
+echo   What to do:
+echo     1. Close this window
+echo     2. Restart your computer
+echo     3. After it restarts, wait about 60 seconds for
+echo        Rancher Desktop to finish starting up
+echo     4. Double-click install.bat again
+echo.
+pause
+exit /b 1
+
+:wsl_not_installed
+echo [ERROR] WSL is not installed.
+echo.
+echo   Rancher Desktop needs WSL2 to run Docker containers.
+echo.
+echo   How to install WSL2:
+echo     1. Open PowerShell as Administrator
+echo     2. Run: wsl --install
+echo     3. Restart your computer when prompted
+echo     4. Double-click install.bat again
+echo.
+pause
+exit /b 1
+
+:wsl_running
+
+REM --- Check: WSL2 is the default version (not WSL1) ---
+wsl --status 2>nul | findstr /i /c:"Default Version: 1" >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    echo [WARN] WSL is set to version 1. Switching to WSL2...
+    wsl --set-default-version 2 >nul 2>nul
+)
+echo [OK] WSL2 is ready.
+
+REM --- Check: Rancher Desktop or Docker Desktop is running (auto-start if not) ---
+tasklist /fi "imagename eq Rancher Desktop.exe" 2>nul | findstr /i "Rancher" >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    echo [OK] Rancher Desktop is running.
+    goto :desktop_running
+)
+tasklist /fi "imagename eq rdctl.exe" 2>nul | findstr /i "rdctl" >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    echo [OK] Rancher Desktop is running.
+    goto :desktop_running
+)
+tasklist /fi "imagename eq Docker Desktop.exe" 2>nul | findstr /i "Docker" >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    echo [OK] Docker Desktop is running.
+    goto :desktop_running
+)
+
+REM Nothing running -- try to auto-start Rancher Desktop
+echo [...]  Rancher Desktop is not running. Starting it...
+set "RD_EXE="
+if exist "%LOCALAPPDATA%\Programs\Rancher Desktop\Rancher Desktop.exe" set "RD_EXE=%LOCALAPPDATA%\Programs\Rancher Desktop\Rancher Desktop.exe"
+if not defined RD_EXE if exist "%ProgramFiles%\Rancher Desktop\Rancher Desktop.exe" set "RD_EXE=%ProgramFiles%\Rancher Desktop\Rancher Desktop.exe"
+if not defined RD_EXE (
+    for /d %%D in (C:\Users\*) do (
+        if not defined RD_EXE if exist "%%D\AppData\Local\Programs\Rancher Desktop\Rancher Desktop.exe" set "RD_EXE=%%D\AppData\Local\Programs\Rancher Desktop\Rancher Desktop.exe"
+    )
+)
+
+if defined RD_EXE (
+    REM Detect first-run: no rancher-desktop distro registered in WSL yet
+    set "RD_FIRST_RUN=0"
+    wsl -l 2>nul | findstr /i "rancher-desktop" >nul 2>nul
+    if !ERRORLEVEL! neq 0 set "RD_FIRST_RUN=1"
+
+    start "" "!RD_EXE!"
+    if "!RD_FIRST_RUN!"=="1" (
+        echo [OK] Rancher Desktop is starting for the first time.
+        echo      First-time setup takes 2-5 minutes -- it needs to download
+        echo      some components. The installer will wait automatically.
+        echo.
+        echo      IMPORTANT: If Rancher Desktop asks you to choose a container
+        echo      engine, pick "dockerd ^(moby^)" -- not containerd.
+    ) else (
+        echo [OK] Rancher Desktop is starting up.
+        echo      It needs about 60 seconds to initialize -- the installer
+        echo      will wait for it automatically.
+    )
+) else (
+    echo [WARN] Could not find Rancher Desktop to auto-start.
+    echo        Please open Rancher Desktop from your Start menu.
+)
+
+:desktop_running
+
+REM --- Check: Disk space (need at least 5 GB for image build) ---
+for /f "tokens=3" %%S in ('dir /-C "%~dp0." 2^>nul ^| findstr /c:"bytes free"') do set "FREE_BYTES=%%S"
+if defined FREE_BYTES (
+    powershell -NoProfile -Command "if ([long]'!FREE_BYTES!' -lt 5368709120) { Write-Host '[WARN] Less than 5 GB free disk space. Docker build may fail.' -ForegroundColor Yellow } else { Write-Host '[OK] Disk space is sufficient.' -ForegroundColor Green }"
+) else (
+    echo [OK] Disk space check skipped.
+)
+
+REM --- Check: Required ports are available ---
+set "PORT_CONFLICT=0"
+REM Skip port check if our container is already running (reinstall scenario)
+docker inspect claude-code >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :ports_ok
+
+powershell -NoProfile -Command ^
+    "$conflicts = @(); " ^
+    "foreach ($p in @(3000,7681,8080,9200)) { " ^
+    "  $r = netstat -ano 2>$null | Select-String \":$p\s.*LISTENING\"; " ^
+    "  if ($r) { $conflicts += $p } " ^
+    "} " ^
+    "if ($conflicts.Count -gt 0) { " ^
+    "  foreach ($p in $conflicts) { Write-Host \"[WARN] Port $p is already in use.\" -ForegroundColor Yellow } " ^
+    "  exit 1 " ^
+    "} else { exit 0 }"
+if !ERRORLEVEL! neq 0 (
+    set "PORT_CONFLICT=1"
+    echo.
+    echo   Ports 3000, 7681, 8080, and 9200 need to be available.
+    echo   Close the programs using those ports, or change the port
+    echo   numbers in .env ^(WELCOME_PORT, TTYD_PORT, etc.^)
+    echo.
+    choice /C YN /M "Continue anyway? Y=Yes, N=Exit"
+    if !ERRORLEVEL! equ 2 exit /b 0
+)
+:ports_ok
+if "!PORT_CONFLICT!"=="0" echo [OK] Required ports are available.
+
+echo.
+
+REM ---------------------------------------------------------------------------
 REM Step 1: Find the Docker CLI
 REM ---------------------------------------------------------------------------
 set "DOCKER_CMD="
@@ -289,25 +439,28 @@ if "!PIPE_OK!"=="0" (
 docker info >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :engine_ok
 
-if "!PIPE_OK!"=="1" (
-    echo [...]  Docker engine is starting up, waiting...
-) else (
-    echo [...]  Waiting for Docker engine...
-)
+echo [...]  Waiting for Docker engine to be ready...
+echo        (this can take a minute or two if it just started)
 set DOCKER_WAIT=0
 
 :docker_retry
-if !DOCKER_WAIT! geq 12 goto :engine_fail
+if !DOCKER_WAIT! geq 24 goto :engine_fail
 ping -n 6 127.0.0.1 >nul
 docker info >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :engine_ok
 set /a DOCKER_WAIT+=1
-echo          Still waiting... !DOCKER_WAIT! of 12
+if !DOCKER_WAIT! leq 6 (
+    echo          Starting up... !DOCKER_WAIT! of 24
+) else if !DOCKER_WAIT! leq 12 (
+    echo          Almost ready... !DOCKER_WAIT! of 24
+) else (
+    echo          Still working... !DOCKER_WAIT! of 24
+)
 goto :docker_retry
 
 :engine_fail
 echo.
-echo [ERROR] The Docker engine did not start after 60 seconds.
+echo [ERROR] The Docker engine did not start after 2 minutes.
 echo.
 
 if not defined FOUND_OTHER_USER goto :engine_fail_generic
@@ -350,6 +503,29 @@ exit /b 1
 
 :engine_ok
 echo [OK] Docker engine is running.
+
+REM --- Check: Docker is using dockerd (not containerd/nerdctl) ---
+docker version --format "{{.Server.Components}}" 2>nul | findstr /i "Engine" >nul 2>nul
+if !ERRORLEVEL! neq 0 (
+    REM Could be containerd/nerdctl -- check for docker compose support
+    docker compose version >nul 2>nul
+    if !ERRORLEVEL! neq 0 (
+        echo.
+        echo [ERROR] Docker is running but appears to be using containerd
+        echo         instead of dockerd. Claude Code Docker needs dockerd.
+        echo.
+        echo   How to fix in Rancher Desktop:
+        echo     1. Open Rancher Desktop
+        echo     2. Go to Preferences
+        echo     3. Click "Container Engine"
+        echo     4. Select "dockerd ^(moby^)"
+        echo     5. Wait for it to restart
+        echo     6. Double-click install.bat again
+        echo.
+        pause
+        exit /b 1
+    )
+)
 
 REM ---------------------------------------------------------------------------
 REM Create required folders
@@ -651,6 +827,80 @@ if "!AI_PROVIDER!"=="bedrock" (
 :skip_setup
 
 REM ---------------------------------------------------------------------------
+REM Auto-extract SSL inspection proxy certificates (Zscaler, Netskope, etc.)
+REM Searches Windows cert store and exports any proxy CA certs to certs/
+REM so Docker builds trust corporate HTTPS inspection.
+REM ---------------------------------------------------------------------------
+echo.
+echo [...]  Checking for SSL inspection proxy certificates...
+powershell -NoProfile -Command ^
+    "$certsDir = Join-Path '%~dp0' 'certs'; " ^
+    "if (!(Test-Path $certsDir)) { New-Item $certsDir -ItemType Directory | Out-Null } " ^
+    "$patterns = @('Zscaler','Netskope','Palo Alto','GlobalProtect','Blue Coat','Forcepoint','Symantec Web','ContentKeeper'); " ^
+    "$found = 0; " ^
+    "foreach ($storePath in @('Cert:\LocalMachine\Root','Cert:\CurrentUser\Root','Cert:\LocalMachine\CA','Cert:\CurrentUser\CA')) { " ^
+    "  try { " ^
+    "    foreach ($cert in (Get-ChildItem $storePath -EA SilentlyContinue)) { " ^
+    "      $subj = $cert.Subject + ' ' + $cert.Issuer; " ^
+    "      foreach ($p in $patterns) { " ^
+    "        if ($subj -match $p) { " ^
+    "          $safeName = ($cert.Subject -replace 'CN=','') -replace '[^a-zA-Z0-9._-]','-'; " ^
+    "          $safeName = $safeName.Trim('-').ToLower(); " ^
+    "          $outPath = Join-Path $certsDir ($safeName + '.crt'); " ^
+    "          if (!(Test-Path $outPath)) { " ^
+    "            $b64 = [Convert]::ToBase64String($cert.RawData, 'InsertLineBreaks'); " ^
+    "            Set-Content $outPath \"-----BEGIN CERTIFICATE-----`n$b64`n-----END CERTIFICATE-----\"; " ^
+    "            Write-Host ('[OK] Exported: ' + $cert.Subject) -ForegroundColor Green; " ^
+    "            $found++; " ^
+    "          } " ^
+    "          break " ^
+    "        } " ^
+    "      } " ^
+    "    } " ^
+    "  } catch {} " ^
+    "} " ^
+    "if ($found -eq 0) { Write-Host '[OK] No SSL proxy certs found (not behind an inspection proxy)' -ForegroundColor Green } " ^
+    "else { Write-Host \"[OK] Exported $found proxy certificate(s) to certs/\" -ForegroundColor Green }"
+
+REM ---------------------------------------------------------------------------
+REM ACR pull-through cache (bypasses Zscaler / SSL inspection entirely)
+REM If REGISTRY_MIRROR is set in .env, authenticate and use it for base images.
+REM ---------------------------------------------------------------------------
+set "REGISTRY_MIRROR="
+if exist "!ENV_FILE!" (
+    for /f "usebackq tokens=1,* delims==" %%A in ("!ENV_FILE!") do (
+        if /i "%%A"=="REGISTRY_MIRROR" if "%%B" neq "" set "REGISTRY_MIRROR=%%B"
+    )
+)
+
+if not defined REGISTRY_MIRROR goto :skip_acr
+
+REM Ensure trailing slash
+if "!REGISTRY_MIRROR:~-1!" neq "/" set "REGISTRY_MIRROR=!REGISTRY_MIRROR!/"
+
+REM Extract ACR name (e.g., dockyardgwprod.azurecr.io/docker.io/library/ -> dockyardgwprod)
+for /f "delims=" %%N in ('powershell -NoProfile -Command "('!REGISTRY_MIRROR!' -split '\.azurecr\.io')[0] -replace '.*/',''"') do set "ACR_NAME=%%N"
+
+REM Silently authenticate to ACR using existing Azure session
+where az >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    az acr login --name "!ACR_NAME!" >nul 2>nul
+    if !ERRORLEVEL! equ 0 (
+        echo [OK] Image registry authenticated.
+    ) else (
+        echo [...]  Image registry needs Azure sign-in...
+        az login --use-device-code >nul 2>nul && az acr login --name "!ACR_NAME!" >nul 2>nul
+        if !ERRORLEVEL! equ 0 (
+            echo [OK] Image registry authenticated.
+        ) else (
+            echo [WARN] Could not connect to image registry -- build may prompt for sign-in.
+        )
+    )
+)
+
+:skip_acr
+
+REM ---------------------------------------------------------------------------
 REM Auto-update: pull latest image
 REM ---------------------------------------------------------------------------
 echo.
@@ -665,9 +915,24 @@ if !ERRORLEVEL! equ 0 (
 )
 
 echo [...]  No cached image. Building locally -- this may take a few minutes...
-docker build -t ghcr.io/sealmindset/claude-code-docker:latest "%~dp0."
+set "BUILD_ARGS="
+if defined REGISTRY_MIRROR set "BUILD_ARGS=--build-arg REGISTRY_MIRROR=!REGISTRY_MIRROR!"
+docker build !BUILD_ARGS! -t ghcr.io/sealmindset/claude-code-docker:latest "%~dp0."
 if !ERRORLEVEL! neq 0 (
-    echo [ERROR] Build failed. Check the output above for details.
+    echo [ERROR] Build failed.
+    if defined REGISTRY_MIRROR (
+        echo.
+        echo   The build could not download its base components from the
+        echo   image registry. This can happen if:
+        echo     - Your Azure sign-in expired -- try: az login
+        echo     - The registry doesn't have the right cache rules set up
+        echo       ^(ask the AI CoE team to verify the Docker Hub cache rule^)
+        echo     - Your network is blocking the connection
+    ) else (
+        echo.
+        echo   The build could not download its base components.
+        echo   Check your internet connection and try again.
+    )
     echo.
     pause
     exit /b 1

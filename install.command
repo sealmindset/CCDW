@@ -556,6 +556,71 @@ with open('$CONFIG_FILE', 'w') as f: json.dump(cfg, f, indent=2)
 fi
 
 # ---------------------------------------------------------------------------
+# Auto-extract SSL inspection proxy certificates (Zscaler, Netskope, etc.)
+# Searches macOS Keychain and exports any proxy CA certs to certs/
+# so Docker builds trust corporate HTTPS inspection.
+# ---------------------------------------------------------------------------
+echo ""
+echo -e "${YELLOW}[...]${NC} Checking for SSL inspection proxy certificates..."
+
+CERTS_DIR="$(pwd)/certs"
+mkdir -p "$CERTS_DIR"
+
+PROXY_CERT_COUNT=0
+for pattern in Zscaler Netskope "Palo Alto" GlobalProtect "Blue Coat" Forcepoint "Symantec Web" ContentKeeper; do
+    while IFS= read -r cert_name; do
+        [ -z "$cert_name" ] && continue
+        safe_name=$(echo "$cert_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g' | sed 's/--*/-/g; s/^-//; s/-$//')
+        out_path="${CERTS_DIR}/${safe_name}.crt"
+        if [ ! -f "$out_path" ]; then
+            security find-certificate -c "$cert_name" -p /Library/Keychains/System.keychain > "$out_path" 2>/dev/null \
+                || security find-certificate -c "$cert_name" -p ~/Library/Keychains/login.keychain-db > "$out_path" 2>/dev/null
+            if [ -s "$out_path" ]; then
+                echo -e "  ${GREEN}[OK]${NC} Exported: $cert_name"
+                PROXY_CERT_COUNT=$((PROXY_CERT_COUNT + 1))
+            else
+                rm -f "$out_path"
+            fi
+        fi
+    done < <(security find-certificate -a -c "$pattern" -p /Library/Keychains/System.keychain 2>/dev/null \
+        | grep -o "subject=.*CN = [^,]*" | sed 's/.*CN = //' | sort -u; \
+        security find-certificate -a -c "$pattern" ~/Library/Keychains/login.keychain-db 2>/dev/null \
+        | awk -F'"' '/0x00000011/{getline; print $2}' | sort -u)
+done
+
+if [ "$PROXY_CERT_COUNT" -eq 0 ]; then
+    echo -e "${GREEN}[OK]${NC} No SSL proxy certs found (not behind an inspection proxy)"
+else
+    echo -e "${GREEN}[OK]${NC} Exported ${PROXY_CERT_COUNT} proxy certificate(s) to certs/"
+fi
+
+# ---------------------------------------------------------------------------
+# ACR pull-through cache (bypasses Zscaler / SSL inspection entirely)
+# If REGISTRY_MIRROR is set in .env, authenticate and use it for base images.
+# ---------------------------------------------------------------------------
+REGISTRY_MIRROR=""
+if [ -f "$ENV_FILE" ]; then
+    REGISTRY_MIRROR=$(grep -E "^REGISTRY_MIRROR=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-)
+fi
+
+if [ -n "$REGISTRY_MIRROR" ]; then
+    REGISTRY_MIRROR="${REGISTRY_MIRROR%/}/"
+    ACR_HOST="${REGISTRY_MIRROR%%/*}"
+    ACR_NAME="${ACR_HOST%.azurecr.io}"
+
+    # Silently authenticate to ACR using existing Azure session
+    if command -v az &>/dev/null; then
+        if az acr login --name "$ACR_NAME" &>/dev/null; then
+            echo -e "${GREEN}[OK]${NC} Image registry authenticated."
+        elif az login --use-device-code &>/dev/null && az acr login --name "$ACR_NAME" &>/dev/null; then
+            echo -e "${GREEN}[OK]${NC} Image registry authenticated."
+        else
+            echo -e "${YELLOW}[WARN]${NC} Could not connect to image registry -- build may prompt for sign-in."
+        fi
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Auto-update: pull latest image
 # ---------------------------------------------------------------------------
 echo ""
@@ -563,7 +628,32 @@ echo -e "${YELLOW}[...]${NC} Checking for updates and downloading latest version
 if docker pull ghcr.io/sealmindset/claude-code-docker:latest; then
     echo -e "${GREEN}[OK]${NC} Image is up to date."
 else
-    echo -e "${YELLOW}[WARN]${NC} Could not check for updates. Using cached image if available."
+    if docker image inspect ghcr.io/sealmindset/claude-code-docker:latest &>/dev/null; then
+        echo -e "${YELLOW}[WARN]${NC} Could not check for updates. Using cached image."
+    else
+        echo -e "${YELLOW}[...]${NC} No cached image. Building locally..."
+        BUILD_ARGS=""
+        [ -n "$REGISTRY_MIRROR" ] && BUILD_ARGS="--build-arg REGISTRY_MIRROR=${REGISTRY_MIRROR}"
+        if ! docker build $BUILD_ARGS -t ghcr.io/sealmindset/claude-code-docker:latest .; then
+            echo -e "${RED}[ERROR]${NC} Build failed."
+            if [ -n "$REGISTRY_MIRROR" ]; then
+                echo ""
+                echo "  The build could not download its base components from the"
+                echo "  image registry. This can happen if:"
+                echo "    - Your Azure sign-in expired -- try: az login"
+                echo "    - The registry doesn't have the right cache rules set up"
+                echo "      (ask the AI CoE team to verify the Docker Hub cache rule)"
+                echo "    - Your network is blocking the connection"
+            else
+                echo ""
+                echo "  The build could not download its base components."
+                echo "  Check your internet connection and try again."
+            fi
+            echo ""
+            read -p "Press Enter to close..."
+            exit 1
+        fi
+    fi
 fi
 
 # ---------------------------------------------------------------------------

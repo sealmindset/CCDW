@@ -2,7 +2,11 @@
 # Claude Code Docker
 # A ready-to-run container with Claude Code CLI + Web UI + /make-it skills
 # =============================================================================
-FROM node:20-alpine
+# ACR pull-through cache: set REGISTRY_MIRROR to pull base images through
+# Azure instead of directly from Docker Hub (bypasses Zscaler/SSL inspection).
+# Example: docker build --build-arg REGISTRY_MIRROR=dockyardgwprod.azurecr.io/docker.io/library/ .
+ARG REGISTRY_MIRROR=
+FROM ${REGISTRY_MIRROR}node:20-alpine
 
 LABEL org.opencontainers.image.title="Claude Code Docker"
 LABEL org.opencontainers.image.description="Claude Code CLI + Web UI + /make-it skills in a single container"
