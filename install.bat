@@ -867,7 +867,8 @@ powershell -NoProfile -Command ^
     "          $outPath = Join-Path $certsDir ($safeName + '.crt'); " ^
     "          if (!(Test-Path $outPath)) { " ^
     "            $b64 = [Convert]::ToBase64String($cert.RawData, 'InsertLineBreaks'); " ^
-    "            Set-Content $outPath \"-----BEGIN CERTIFICATE-----`n$b64`n-----END CERTIFICATE-----\"; " ^
+    "            $nl = [char]10; " ^
+    "            Set-Content $outPath ('-----BEGIN CERTIFICATE-----' + $nl + $b64 + $nl + '-----END CERTIFICATE-----'); " ^
     "            Write-Host ('[OK] Exported: ' + $cert.Subject) -ForegroundColor Green; " ^
     "            $found++; " ^
     "          } " ^
@@ -878,7 +879,7 @@ powershell -NoProfile -Command ^
     "  } catch {} " ^
     "} " ^
     "if ($found -eq 0) { Write-Host '[OK] No SSL proxy certs found -- not behind an inspection proxy' -ForegroundColor Green } " ^
-    "else { Write-Host ('[OK] Exported ' + $found + ' proxy cert(s) to certs/') -ForegroundColor Green }"
+    "else { Write-Host ('[OK] Exported ' + $found + ' proxy certs to certs/') -ForegroundColor Green }"
 
 REM ---------------------------------------------------------------------------
 REM ACR pull-through cache (bypasses Zscaler / SSL inspection entirely)
