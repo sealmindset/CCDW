@@ -33,7 +33,7 @@ End If
 
 ' Start the container (capture errors for diagnostics)
 errFile = fso.BuildPath(fso.GetSpecialFolder(2), "claude-launch-err.txt")
-ret = WshShell.Run("cmd /c docker compose up -d > """ & errFile & """ 2>&1", 0, True)
+ret = WshShell.Run("cmd /c docker compose up -d --no-build > """ & errFile & """ 2>&1", 0, True)
 If ret <> 0 Then
     ' Read error output for the dialog
     errText = ""
@@ -46,8 +46,7 @@ If ret <> 0 Then
     If Len(errText) > 500 Then errText = Left(errText, 500) & "..."
 
     MsgBox "Could not start Claude Code Docker." & vbCrLf & vbCrLf & _
-           errText & vbCrLf & vbCrLf & _
-           "Run install.bat to check for problems.", _
+           "Run install.bat first to set up the application.", _
            vbExclamation, "Claude Code Docker"
     WScript.Quit 1
 End If
