@@ -24,3 +24,4 @@ corporate-ca.crt
 certs/*.crt
 certs/*.pem
 !certs/.gitkeep
+claude.ico
