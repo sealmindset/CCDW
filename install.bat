@@ -906,13 +906,13 @@ goto :az_ready
 
 :install_az
 echo [...]  Azure CLI is not installed. Installing it now...
-echo        (one-time setup -- may ask for admin permission)
+echo        (one-time setup -- enter your Local Admin credentials when prompted)
 powershell -NoProfile -Command ^
     "$ProgressPreference = 'SilentlyContinue'; " ^
     "Write-Host '       Downloading Azure CLI...'; " ^
     "$msi = Join-Path $env:TEMP 'AzureCLI.msi'; " ^
     "Invoke-WebRequest -Uri https://aka.ms/installazurecliwindowsx64 -OutFile $msi; " ^
-    "Write-Host '       Installing (you may see a permissions prompt)...'; " ^
+    "Write-Host '       Installing (enter your Local Admin credentials when prompted)...'; " ^
     "$p = Start-Process msiexec.exe -Wait -PassThru -Verb RunAs -ArgumentList '/I', $msi, '/quiet'; " ^
     "Remove-Item $msi -EA SilentlyContinue; " ^
     "if ($p.ExitCode -eq 0) { exit 0 } else { exit 1 }"
@@ -928,6 +928,15 @@ if exist "%ProgramFiles(x86)%\Microsoft SDKs\Azure\CLI2\wbin" (
 where az >nul 2>nul
 if !ERRORLEVEL! equ 0 (
     echo [OK] Azure CLI installed.
+    echo.
+    echo ========================================================================
+    echo   REBOOT REQUIRED
+    echo   Azure CLI was just installed. Please restart your computer so that
+    echo   all system paths are updated, then run install.bat again.
+    echo ========================================================================
+    echo.
+    pause
+    exit /b 0
 ) else (
     echo [WARN] Azure CLI install may need a restart. Continuing without ACR auth.
     goto :skip_acr
