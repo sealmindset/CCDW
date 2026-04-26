@@ -10,7 +10,10 @@
 
 services:
   claude:
-    build: .
+    build:
+      context: .
+      args:
+        REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
     image: ghcr.io/sealmindset/claude-code-docker:latest
     container_name: claude-code
     ports:

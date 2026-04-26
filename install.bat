@@ -305,7 +305,7 @@ if defined FOUND_OTHER_USER goto :found_other_user
 REM --- 1i. DOCKER_PATH override from .env ---
 :check_env_docker_path
 if not exist "%~dp0.env" goto :check_pipe_hint
-for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0.env") do (
+for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0.env") do (
     if /i "%%A"=="DOCKER_PATH" (
         if exist "%%B\docker.exe" (
             set "DOCKER_CMD=%%B\docker.exe"
@@ -533,7 +533,7 @@ REM ---------------------------------------------------------------------------
 set "PROJECTS_DIR="
 
 if not exist "%~dp0.env" goto :default_projects_dir
-for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0.env") do (
+for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0.env") do (
     if /i "%%A"=="PROJECTS_PATH" set "PROJECTS_DIR=%%B"
 )
 
@@ -581,7 +581,7 @@ if exist "!ENV_FILE!" (
     findstr /i /b "REGISTRY_MIRROR=" "!ENV_FILE!" >nul 2>nul
     if !ERRORLEVEL! neq 0 (
         if exist "%~dp0.env.example" (
-            for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0.env.example") do (
+            for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0.env.example") do (
                 if /i "%%A"=="REGISTRY_MIRROR" if "%%B" neq "" (
                     echo.>> "!ENV_FILE!"
                     echo REGISTRY_MIRROR=%%B>> "!ENV_FILE!"
@@ -887,7 +887,7 @@ REM If REGISTRY_MIRROR is set in .env, authenticate and use it for base images.
 REM ---------------------------------------------------------------------------
 set "REGISTRY_MIRROR="
 if exist "!ENV_FILE!" (
-    for /f "usebackq tokens=1,* delims==" %%A in ("!ENV_FILE!") do (
+    for /f "usebackq eol=# tokens=1,* delims==" %%A in ("!ENV_FILE!") do (
         if /i "%%A"=="REGISTRY_MIRROR" if "%%B" neq "" set "REGISTRY_MIRROR=%%B"
     )
 )
