@@ -31,11 +31,26 @@ If ret = 0 Then
     WScript.Quit 0
 End If
 
-' Start the container (capture errors for diagnostics)
+' Check if image exists locally
+ret = WshShell.Run("cmd /c docker image inspect ghcr.io/sealmindset/claude-code-docker:latest >nul 2>nul", 0, True)
+If ret <> 0 Then
+    ' First time -- run install.bat which handles build + setup with progress
+    Dim installBat
+    installBat = fso.BuildPath(projectDir, "install.bat")
+    If fso.FileExists(installBat) Then
+        WshShell.Run """" & installBat & """", 1, False
+    Else
+        MsgBox "First-time setup needed but install.bat was not found." & vbCrLf & vbCrLf & _
+               "Re-download the project and run install.bat.", _
+               vbExclamation, "Claude Code Docker"
+    End If
+    WScript.Quit 0
+End If
+
+' Image exists -- start the container (no build needed)
 errFile = fso.BuildPath(fso.GetSpecialFolder(2), "claude-launch-err.txt")
 ret = WshShell.Run("cmd /c docker compose up -d --no-build > """ & errFile & """ 2>&1", 0, True)
 If ret <> 0 Then
-    ' Read error output for the dialog
     errText = ""
     If fso.FileExists(errFile) Then
         Dim f
@@ -46,7 +61,8 @@ If ret <> 0 Then
     If Len(errText) > 500 Then errText = Left(errText, 500) & "..."
 
     MsgBox "Could not start Claude Code Docker." & vbCrLf & vbCrLf & _
-           "Run install.bat first to set up the application.", _
+           errText & vbCrLf & vbCrLf & _
+           "Run install.bat to check for problems.", _
            vbExclamation, "Claude Code Docker"
     WScript.Quit 1
 End If
