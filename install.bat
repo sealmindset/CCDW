@@ -1004,6 +1004,69 @@ if !ERRORLEVEL! neq 0 (
 echo [OK] Image is ready.
 
 REM ---------------------------------------------------------------------------
+REM Desktop shortcut (runs before container start so it's always created)
+REM ---------------------------------------------------------------------------
+echo.
+echo [...]  Setting up desktop shortcut...
+
+REM Clean up unwanted desktop shortcuts (uses PowerShell to find real Desktop path)
+powershell -NoProfile -Command ^
+    "$desktop = [Environment]::GetFolderPath('Desktop'); " ^
+    "$pub = [Environment]::GetFolderPath('CommonDesktopDirectory'); " ^
+    "foreach ($d in @($desktop, $pub)) { " ^
+    "  foreach ($name in @('Rancher Desktop.lnk','Claude Code.url')) { " ^
+    "    $p = Join-Path $d $name; " ^
+    "    if (Test-Path $p) { Remove-Item $p -Force } " ^
+    "  } " ^
+    "}"
+
+REM Generate Claude icon (terracotta circle with white C)
+powershell -NoProfile -Command ^
+    "Add-Type -AssemblyName System.Drawing; " ^
+    "$sz = 64; " ^
+    "$bmp = New-Object System.Drawing.Bitmap $sz,$sz; " ^
+    "$g = [System.Drawing.Graphics]::FromImage($bmp); " ^
+    "$g.SmoothingMode = 'AntiAlias'; " ^
+    "$g.Clear([System.Drawing.Color]::Transparent); " ^
+    "$brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(217,119,87)); " ^
+    "$g.FillEllipse($brush, 2, 2, ($sz-4), ($sz-4)); " ^
+    "$white = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White); " ^
+    "$font = New-Object System.Drawing.Font('Segoe UI',28,[System.Drawing.FontStyle]::Bold); " ^
+    "$sf = New-Object System.Drawing.StringFormat; " ^
+    "$sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'; " ^
+    "$rect = New-Object System.Drawing.RectangleF(0,0,$sz,$sz); " ^
+    "$g.DrawString('C',$font,$white,$rect,$sf); " ^
+    "$g.Dispose(); " ^
+    "$ico = Join-Path '%~dp0' 'claude.ico'; " ^
+    "$ms = New-Object System.IO.MemoryStream; " ^
+    "$bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); " ^
+    "$png = $ms.ToArray(); $ms.Dispose(); $bmp.Dispose(); " ^
+    "$fs = [System.IO.File]::Create($ico); " ^
+    "$bw = New-Object System.IO.BinaryWriter($fs); " ^
+    "$bw.Write([Int16]0); $bw.Write([Int16]1); $bw.Write([Int16]1); " ^
+    "$bw.Write([byte]$sz); $bw.Write([byte]$sz); $bw.Write([byte]0); " ^
+    "$bw.Write([byte]0); $bw.Write([Int16]1); $bw.Write([Int16]32); " ^
+    "$bw.Write([int]$png.Length); $bw.Write([int]22); " ^
+    "$bw.Write($png); $bw.Close(); $fs.Close()"
+
+REM Create desktop shortcut with Claude icon (fall back to shell globe if .ico failed)
+powershell -NoProfile -Command ^
+    "$projDir = '%~dp0'.TrimEnd('\'); " ^
+    "$vbsPath = Join-Path $projDir 'launch-claude.vbs'; " ^
+    "$icoPath = Join-Path $projDir 'claude.ico'; " ^
+    "$desktop = [Environment]::GetFolderPath('Desktop'); " ^
+    "$lnkPath = Join-Path $desktop 'Claude.lnk'; " ^
+    "$ws = New-Object -ComObject WScript.Shell; " ^
+    "$lnk = $ws.CreateShortcut($lnkPath); " ^
+    "$lnk.TargetPath = $vbsPath; " ^
+    "$lnk.WorkingDirectory = $projDir; " ^
+    "$lnk.Description = 'Start Claude Code Docker and open in browser'; " ^
+    "if (Test-Path $icoPath) { $lnk.IconLocation = $icoPath + ',0' } " ^
+    "else { $lnk.IconLocation = 'shell32.dll,14' }; " ^
+    "$lnk.Save(); " ^
+    "Write-Host '[OK] Claude shortcut added to your desktop.' -ForegroundColor Green"
+
+REM ---------------------------------------------------------------------------
 REM Stop existing container if running
 REM ---------------------------------------------------------------------------
 docker rm -f claude-code >nul 2>nul
@@ -1081,7 +1144,7 @@ echo   Opening Claude Code in your browser...
 echo ========================================
 echo.
 start http://localhost:3000
-goto :shortcuts
+goto :done
 
 :timedout
 echo.
@@ -1089,62 +1152,7 @@ echo [OK] Container is still starting up -- this can take a minute.
 echo      Opening browser anyway...
 start http://localhost:3000
 
-:shortcuts
-REM ---------------------------------------------------------------------------
-REM Desktop shortcut (launches Docker + opens browser, no terminal window)
-REM ---------------------------------------------------------------------------
-echo.
-echo [...]  Creating desktop shortcut...
-
-REM Clean up shortcuts we don't want on the desktop
-if exist "%USERPROFILE%\Desktop\Claude Code.url" del "%USERPROFILE%\Desktop\Claude Code.url" >nul 2>nul
-if exist "%USERPROFILE%\Desktop\Rancher Desktop.lnk" del "%USERPROFILE%\Desktop\Rancher Desktop.lnk" >nul 2>nul
-if exist "%PUBLIC%\Desktop\Rancher Desktop.lnk" del "%PUBLIC%\Desktop\Rancher Desktop.lnk" >nul 2>nul
-
-REM Generate Claude icon (terracotta circle on transparent background)
-powershell -NoProfile -Command ^
-    "Add-Type -AssemblyName System.Drawing; " ^
-    "$sz = 64; " ^
-    "$bmp = New-Object System.Drawing.Bitmap $sz,$sz; " ^
-    "$g = [System.Drawing.Graphics]::FromImage($bmp); " ^
-    "$g.SmoothingMode = 'AntiAlias'; " ^
-    "$g.Clear([System.Drawing.Color]::Transparent); " ^
-    "$brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(217,119,87)); " ^
-    "$g.FillEllipse($brush, 2, 2, $sz-4, $sz-4); " ^
-    "$white = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White); " ^
-    "$font = New-Object System.Drawing.Font('Segoe UI',28,[System.Drawing.FontStyle]::Bold); " ^
-    "$sf = New-Object System.Drawing.StringFormat; " ^
-    "$sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'; " ^
-    "$rect = New-Object System.Drawing.RectangleF(0,0,$sz,$sz); " ^
-    "$g.DrawString('C',$font,$white,$rect,$sf); " ^
-    "$g.Dispose(); " ^
-    "$ico = Join-Path '%~dp0' 'claude.ico'; " ^
-    "$ms = New-Object System.IO.MemoryStream; " ^
-    "$bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); " ^
-    "$png = $ms.ToArray(); $ms.Dispose(); $bmp.Dispose(); " ^
-    "$fs = [System.IO.File]::Create($ico); " ^
-    "$bw = New-Object System.IO.BinaryWriter($fs); " ^
-    "$bw.Write([Int16]0); $bw.Write([Int16]1); $bw.Write([Int16]1); " ^
-    "$bw.Write([byte]$sz); $bw.Write([byte]$sz); $bw.Write([byte]0); " ^
-    "$bw.Write([byte]0); $bw.Write([Int16]1); $bw.Write([Int16]32); " ^
-    "$bw.Write([int]$png.Length); $bw.Write([int]22); " ^
-    "$bw.Write($png); $bw.Close(); $fs.Close()"
-
-REM Create desktop shortcut with Claude icon
-powershell -NoProfile -Command ^
-    "$projDir = '%~dp0'.TrimEnd('\'); " ^
-    "$vbsPath = Join-Path $projDir 'launch-claude.vbs'; " ^
-    "$icoPath = Join-Path $projDir 'claude.ico'; " ^
-    "$desktop = [Environment]::GetFolderPath('Desktop'); " ^
-    "$lnkPath = Join-Path $desktop 'Claude.lnk'; " ^
-    "$ws = New-Object -ComObject WScript.Shell; " ^
-    "$lnk = $ws.CreateShortcut($lnkPath); " ^
-    "$lnk.TargetPath = $vbsPath; " ^
-    "$lnk.WorkingDirectory = $projDir; " ^
-    "$lnk.Description = 'Start Claude Code Docker and open in browser'; " ^
-    "$lnk.IconLocation = $icoPath + ',0'; " ^
-    "$lnk.Save(); " ^
-    "Write-Host '[OK] Claude shortcut added to your desktop.' -ForegroundColor Green"
+:done
 
 echo.
 echo ========================================
