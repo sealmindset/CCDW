@@ -886,7 +886,7 @@ if !ERRORLEVEL! equ 0 goto :acr_auth_ok
 
 :acr_need_login
 echo [...]  Image registry needs Azure sign-in...
-az login
+call az login
 set "AAD_TOKEN="
 for /f "delims=" %%T in ('az account get-access-token --query accessToken -o tsv 2^>nul') do set "AAD_TOKEN=%%T"
 if not defined AAD_TOKEN goto :acr_auth_fail
