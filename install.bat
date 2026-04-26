@@ -1091,21 +1091,27 @@ start http://localhost:3000
 
 :shortcuts
 REM ---------------------------------------------------------------------------
-REM Desktop shortcut
+REM Desktop shortcut (launches Docker + opens browser, no terminal window)
 REM ---------------------------------------------------------------------------
 echo.
 echo [...]  Creating desktop shortcut...
 
-set "SHORTCUT=%USERPROFILE%\Desktop\Claude Code.url"
-echo [InternetShortcut]> "!SHORTCUT!"
-echo URL=http://localhost:3000>> "!SHORTCUT!"
-echo IconIndex=0>> "!SHORTCUT!"
+REM Remove old .url bookmark if present
+if exist "%USERPROFILE%\Desktop\Claude Code.url" del "%USERPROFILE%\Desktop\Claude Code.url" >nul 2>nul
 
-if exist "!SHORTCUT!" (
-    echo [OK] Desktop shortcut created: "Claude Code" on your desktop
-) else (
-    echo [WARN] Could not create desktop shortcut -- not a problem
-)
+powershell -NoProfile -Command ^
+    "$projDir = '%~dp0'.TrimEnd('\'); " ^
+    "$vbsPath = Join-Path $projDir 'launch-claude.vbs'; " ^
+    "$desktop = [Environment]::GetFolderPath('Desktop'); " ^
+    "$lnkPath = Join-Path $desktop 'Claude.lnk'; " ^
+    "$ws = New-Object -ComObject WScript.Shell; " ^
+    "$lnk = $ws.CreateShortcut($lnkPath); " ^
+    "$lnk.TargetPath = $vbsPath; " ^
+    "$lnk.WorkingDirectory = $projDir; " ^
+    "$lnk.Description = 'Start Claude Code Docker and open in browser'; " ^
+    "$lnk.IconLocation = 'shell32.dll,14'; " ^
+    "$lnk.Save(); " ^
+    "Write-Host '[OK] Claude shortcut added to your desktop.' -ForegroundColor Green"
 
 echo.
 echo ========================================
@@ -1121,7 +1127,7 @@ echo   FIRST TIME? Click "Workshop" in the dashboard to build
 echo   your first app -- no coding needed!
 echo.
 echo   To stop:    docker rm -f claude-code
-echo   To restart: double-click "Claude Code" on your desktop
+echo   To restart: double-click "Claude" on your desktop
 echo.
 pause
 endlocal
