@@ -813,7 +813,7 @@ if "!AI_PROVIDER!"=="bedrock" (
         "  Write-Host '[INFO] Bedrock SSO not fully configured -- edit config\bedrock.json'; exit 0 " ^
         "} " ^
         "$awsDir = Join-Path $env:USERPROFILE '.aws'; " ^
-        "if (!(Test-Path $awsDir)) { New-Item $awsDir -ItemType Directory | Out-Null } " ^
+        "if (-not (Test-Path $awsDir)) { New-Item $awsDir -ItemType Directory | Out-Null } " ^
         "$cfgPath = Join-Path $awsDir 'config'; " ^
         "$profile = if ($cfg.profile_name) { $cfg.profile_name } else { 'sso-bedrock' }; " ^
         "$session = 'aws-sso'; " ^
@@ -822,7 +822,7 @@ if "!AI_PROVIDER!"=="bedrock" (
         "foreach ($line in $existing -split '`n') { " ^
         "  if ($line -match ('^\[(sso-session\s+' + [regex]::Escape($session) + '|profile\s+' + [regex]::Escape($profile) + ')\]')) { $skip = $true } " ^
         "  elseif ($line -match '^\[') { $skip = $false } " ^
-        "  if (!$skip) { $out += $line } " ^
+        "  if (-not $skip) { $out += $line } " ^
         "} " ^
         "$ssoRegion = if ($cfg.sso_region) { $cfg.sso_region } else { 'us-east-1' }; " ^
         "$region = if ($cfg.region) { $cfg.region } else { 'us-east-1' }; " ^
@@ -853,7 +853,7 @@ echo.
 echo [...]  Checking for SSL inspection proxy certificates...
 powershell -NoProfile -Command ^
     "$certsDir = Join-Path '%~dp0' 'certs'; " ^
-    "if (!(Test-Path $certsDir)) { New-Item $certsDir -ItemType Directory | Out-Null } " ^
+    "if (-not (Test-Path $certsDir)) { New-Item $certsDir -ItemType Directory | Out-Null } " ^
     "$patterns = @('Zscaler','Netskope','Palo Alto','GlobalProtect','Blue Coat','Forcepoint','Symantec Web','ContentKeeper'); " ^
     "$found = 0; " ^
     "foreach ($storePath in @('Cert:\LocalMachine\Root','Cert:\CurrentUser\Root','Cert:\LocalMachine\CA','Cert:\CurrentUser\CA')) { " ^
@@ -865,7 +865,7 @@ powershell -NoProfile -Command ^
     "          $safeName = ($cert.Subject -replace 'CN=','') -replace '[^a-zA-Z0-9._-]','-'; " ^
     "          $safeName = $safeName.Trim('-').ToLower(); " ^
     "          $outPath = Join-Path $certsDir ($safeName + '.crt'); " ^
-    "          if (!(Test-Path $outPath)) { " ^
+    "          if (-not (Test-Path $outPath)) { " ^
     "            $b64 = [Convert]::ToBase64String($cert.RawData, 'InsertLineBreaks'); " ^
     "            $nl = [char]10; " ^
     "            Set-Content $outPath ('-----BEGIN CERTIFICATE-----' + $nl + $b64 + $nl + '-----END CERTIFICATE-----'); " ^
