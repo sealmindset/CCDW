@@ -305,16 +305,17 @@ if defined FOUND_OTHER_USER goto :found_other_user
 REM --- 1i. DOCKER_PATH override from .env ---
 :check_env_docker_path
 if not exist "%~dp0.env" goto :check_pipe_hint
-for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0.env") do (
-    if /i "%%A"=="DOCKER_PATH" (
-        if exist "%%B\docker.exe" (
-            set "DOCKER_CMD=%%B\docker.exe"
-            set "DOCKER_SOURCE=.env DOCKER_PATH"
-            set "PATH=%%B;!PATH!"
-            goto :found_cli
-        )
-    )
+for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0.env") do if /i "%%A"=="DOCKER_PATH" call :try_docker_path "%%B"
+goto :check_pipe_hint
+:try_docker_path
+set "_DP=%~1"
+if exist "!_DP!\docker.exe" (
+    set "DOCKER_CMD=!_DP!\docker.exe"
+    set "DOCKER_SOURCE=.env DOCKER_PATH"
+    set "PATH=!_DP!;!PATH!"
+    goto :found_cli
 )
+exit /b
 
 REM --- 1j. Docker pipe exists but no docker.exe ---
 :check_pipe_hint
@@ -533,9 +534,7 @@ REM ---------------------------------------------------------------------------
 set "PROJECTS_DIR="
 
 if not exist "%~dp0.env" goto :default_projects_dir
-for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0.env") do (
-    if /i "%%A"=="PROJECTS_PATH" set "PROJECTS_DIR=%%B"
-)
+for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0.env") do if /i "%%A"=="PROJECTS_PATH" set "PROJECTS_DIR=%%B"
 
 :default_projects_dir
 if not defined PROJECTS_DIR set "PROJECTS_DIR=%USERPROFILE%\GitHub"
@@ -579,18 +578,17 @@ REM Ensure REGISTRY_MIRROR is in .env (may be missing from older .env files)
 REM ---------------------------------------------------------------------------
 if exist "!ENV_FILE!" (
     findstr /i /b "REGISTRY_MIRROR=" "!ENV_FILE!" >nul 2>nul
-    if !ERRORLEVEL! neq 0 (
-        if exist "%~dp0.env.example" (
-            for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0.env.example") do (
-                if /i "%%A"=="REGISTRY_MIRROR" if "%%B" neq "" (
-                    echo.>> "!ENV_FILE!"
-                    echo REGISTRY_MIRROR=%%B>> "!ENV_FILE!"
-                    echo [OK] Added image registry setting to .env
-                )
-            )
-        )
+    if !ERRORLEVEL! neq 0 if exist "%~dp0.env.example" (
+        for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0.env.example") do if /i "%%A"=="REGISTRY_MIRROR" if "%%B" neq "" call :add_registry_mirror "%%B"
     )
 )
+goto :after_registry_mirror_check
+:add_registry_mirror
+echo.>> "!ENV_FILE!"
+echo REGISTRY_MIRROR=%~1>> "!ENV_FILE!"
+echo [OK] Added image registry setting to .env
+exit /b
+:after_registry_mirror_check
 
 REM ---------------------------------------------------------------------------
 REM AI Provider Setup
@@ -883,99 +881,57 @@ powershell -NoProfile -Command ^
 
 REM ---------------------------------------------------------------------------
 REM ACR pull-through cache (bypasses Zscaler / SSL inspection entirely)
-REM If REGISTRY_MIRROR is set in .env, authenticate and use it for base images.
+REM If REGISTRY_MIRROR is set in .env, use it for base images and pre-built pulls.
+REM No authentication needed -- ACR allows anonymous pulls.
 REM ---------------------------------------------------------------------------
 set "REGISTRY_MIRROR="
+set "ACR_HOST="
 if exist "!ENV_FILE!" (
-    for /f "usebackq eol=# tokens=1,* delims==" %%A in ("!ENV_FILE!") do (
-        if /i "%%A"=="REGISTRY_MIRROR" if "%%B" neq "" set "REGISTRY_MIRROR=%%B"
-    )
+    for /f "usebackq eol=# tokens=1,* delims==" %%A in ("!ENV_FILE!") do if /i "%%A"=="REGISTRY_MIRROR" if "%%B" neq "" set "REGISTRY_MIRROR=%%B"
 )
 
 if not defined REGISTRY_MIRROR goto :skip_acr
 
-REM Ensure trailing slash
+REM Ensure trailing slash for Dockerfile FROM prefix
 if "!REGISTRY_MIRROR:~-1!" neq "/" set "REGISTRY_MIRROR=!REGISTRY_MIRROR!/"
 
-REM Extract ACR name (e.g., dockyardgwprod.azurecr.io/docker.io/library/ -> dockyardgwprod)
-for /f "delims=." %%N in ("!REGISTRY_MIRROR!") do set "ACR_NAME=%%N"
+REM Extract ACR hostname (e.g., dockyardgwprod.azurecr.io/docker.io/library/ -> dockyardgwprod.azurecr.io)
+for /f "delims=/" %%H in ("!REGISTRY_MIRROR!") do set "ACR_HOST=%%H"
 
-REM Ensure Azure CLI is installed (auto-install if missing)
-where az >nul 2>nul
-if !ERRORLEVEL! neq 0 goto :install_az
-goto :az_ready
-
-:install_az
-echo [...]  Azure CLI is not installed. Installing it now...
-echo        (one-time setup -- enter your Local Admin credentials when prompted)
-powershell -NoProfile -Command ^
-    "$ProgressPreference = 'SilentlyContinue'; " ^
-    "Write-Host '       Downloading Azure CLI...'; " ^
-    "$msi = Join-Path $env:TEMP 'AzureCLI.msi'; " ^
-    "Invoke-WebRequest -Uri https://aka.ms/installazurecliwindowsx64 -OutFile $msi; " ^
-    "Write-Host '       Installing (enter your Local Admin credentials when prompted)...'; " ^
-    "$p = Start-Process msiexec.exe -Wait -PassThru -Verb RunAs -ArgumentList '/I', $msi, '/quiet'; " ^
-    "Remove-Item $msi -EA SilentlyContinue; " ^
-    "if ($p.ExitCode -eq 0) { exit 0 } else { exit 1 }"
-
-REM Add Azure CLI to PATH for this session
-if exist "%ProgramFiles%\Microsoft SDKs\Azure\CLI2\wbin" (
-    set "PATH=%ProgramFiles%\Microsoft SDKs\Azure\CLI2\wbin;!PATH!"
-)
-if exist "%ProgramFiles(x86)%\Microsoft SDKs\Azure\CLI2\wbin" (
-    set "PATH=%ProgramFiles(x86)%\Microsoft SDKs\Azure\CLI2\wbin;!PATH!"
-)
-
-where az >nul 2>nul
-if !ERRORLEVEL! equ 0 (
-    echo [OK] Azure CLI installed.
-    echo.
-    echo ========================================================================
-    echo   REBOOT REQUIRED
-    echo   Azure CLI was just installed. Please restart your computer so that
-    echo   all system paths are updated, then run install.bat again.
-    echo ========================================================================
-    echo.
-    pause
-    exit /b 0
-) else (
-    echo [WARN] Azure CLI install may need a restart. Continuing without ACR auth.
-    goto :skip_acr
-)
-
-:az_ready
-
-REM Silently authenticate to ACR using existing Azure session
-az acr login --name "!ACR_NAME!" >nul 2>nul
-if !ERRORLEVEL! equ 0 (
-    echo [OK] Image registry authenticated.
-) else (
-    echo [...]  Image registry needs Azure sign-in...
-    az login --use-device-code
-    az acr login --name "!ACR_NAME!" >nul 2>nul
-    if !ERRORLEVEL! equ 0 (
-        echo [OK] Image registry authenticated.
-    ) else (
-        echo [WARN] Could not connect to image registry -- build may prompt for sign-in.
-    )
-)
+echo [OK] Image registry: !ACR_HOST!
 
 :skip_acr
 
 REM ---------------------------------------------------------------------------
-REM Auto-update: pull latest image
+REM Auto-update: pull latest image (try gateway first, then direct, then build)
 REM ---------------------------------------------------------------------------
 echo.
 echo [...]  Checking for updates...
+
+REM --- Try 1: Pull pre-built image through ACR gateway (fastest, bypasses Zscaler) ---
+if defined ACR_HOST (
+    echo [...]  Downloading via image registry...
+    docker pull "!ACR_HOST!/ghcr.io/sealmindset/claude-code-docker:latest" >nul 2>nul
+    if !ERRORLEVEL! equ 0 (
+        docker tag "!ACR_HOST!/ghcr.io/sealmindset/claude-code-docker:latest" ghcr.io/sealmindset/claude-code-docker:latest >nul 2>nul
+        echo [OK] Image downloaded via registry.
+        goto :image_ready
+    )
+    echo [...]  Registry pull didn't work -- trying other methods...
+)
+
+REM --- Try 2: Pull directly from GitHub (works if not behind Zscaler) ---
 docker pull ghcr.io/sealmindset/claude-code-docker:latest >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :image_ready
 
+REM --- Try 3: Use cached image if available ---
 docker image inspect ghcr.io/sealmindset/claude-code-docker:latest >nul 2>nul
 if !ERRORLEVEL! equ 0 (
     echo [OK] Could not check for updates, using cached image.
     goto :image_ready
 )
 
+REM --- Try 4: Build from source using gateway for base images ---
 echo [...]  No cached image. Building locally -- this may take a few minutes...
 set "BUILD_ARGS="
 if defined REGISTRY_MIRROR set "BUILD_ARGS=--build-arg REGISTRY_MIRROR=!REGISTRY_MIRROR!"
@@ -984,9 +940,8 @@ if !ERRORLEVEL! neq 0 (
     echo [ERROR] Build failed.
     if defined REGISTRY_MIRROR (
         echo.
-        echo   The build could not download its base components from the
-        echo   image registry. This can happen if:
-        echo     - Your Azure sign-in expired -- try: az login
+        echo   The build could not download its base components.
+        echo   This can happen if:
         echo     - The registry doesn't have the right cache rules set up
         echo       ^(ask the AI CoE team to verify the Docker Hub cache rule^)
         echo     - Your network is blocking the connection
