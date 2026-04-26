@@ -575,6 +575,24 @@ if exist "%~dp0.env.example" (
 :env_exists
 
 REM ---------------------------------------------------------------------------
+REM Ensure REGISTRY_MIRROR is in .env (may be missing from older .env files)
+REM ---------------------------------------------------------------------------
+if exist "!ENV_FILE!" (
+    findstr /i /b "REGISTRY_MIRROR=" "!ENV_FILE!" >nul 2>nul
+    if !ERRORLEVEL! neq 0 (
+        if exist "%~dp0.env.example" (
+            for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0.env.example") do (
+                if /i "%%A"=="REGISTRY_MIRROR" if "%%B" neq "" (
+                    echo.>> "!ENV_FILE!"
+                    echo REGISTRY_MIRROR=%%B>> "!ENV_FILE!"
+                    echo [OK] Added image registry setting to .env
+                )
+            )
+        )
+    )
+)
+
+REM ---------------------------------------------------------------------------
 REM AI Provider Setup
 REM ---------------------------------------------------------------------------
 set "HAS_PROVIDER=0"
@@ -859,8 +877,8 @@ powershell -NoProfile -Command ^
     "    } " ^
     "  } catch {} " ^
     "} " ^
-    "if ($found -eq 0) { Write-Host '[OK] No SSL proxy certs found (not behind an inspection proxy)' -ForegroundColor Green } " ^
-    "else { Write-Host \"[OK] Exported $found proxy certificate(s) to certs/\" -ForegroundColor Green }"
+    "if ($found -eq 0) { Write-Host '[OK] No SSL proxy certs found -- not behind an inspection proxy' -ForegroundColor Green } " ^
+    "else { Write-Host ('[OK] Exported ' + $found + ' proxy cert(s) to certs/') -ForegroundColor Green }"
 
 REM ---------------------------------------------------------------------------
 REM ACR pull-through cache (bypasses Zscaler / SSL inspection entirely)
