@@ -870,28 +870,30 @@ if "!REGISTRY_MIRROR:~-1!" neq "/" set "REGISTRY_MIRROR=!REGISTRY_MIRROR!/"
 REM Extract ACR hostname (e.g., dockyardgwprod.azurecr.io/docker.io/library/ -> dockyardgwprod.azurecr.io)
 for /f "delims=/" %%H in ("!REGISTRY_MIRROR!") do set "ACR_HOST=%%H"
 
-REM Extract ACR name (e.g., dockyardgwprod.azurecr.io -> dockyardgwprod)
-for /f "delims=." %%N in ("!ACR_HOST!") do set "ACR_NAME=%%N"
-
-REM Authenticate to ACR (data plane requires a token even with anonymous_pull)
+REM Authenticate to ACR using AAD token (no subscription context needed)
+set "ACR_LOGGED_IN=0"
 where az >nul 2>nul
 if !ERRORLEVEL! equ 0 (
-    az acr login --name "!ACR_NAME!" >nul 2>nul
-    if !ERRORLEVEL! equ 0 (
-        echo [OK] Image registry: !ACR_HOST!
-    ) else (
+    for /f "delims=" %%T in ('az account get-access-token --query accessToken -o tsv 2^>nul') do set "AAD_TOKEN=%%T"
+    if defined AAD_TOKEN (
+        echo !AAD_TOKEN!| docker login "!ACR_HOST!" -u 00000000-0000-0000-0000-000000000000 --password-stdin >nul 2>nul
+        if !ERRORLEVEL! equ 0 set "ACR_LOGGED_IN=1"
+    )
+    if "!ACR_LOGGED_IN!"=="0" (
         echo [...]  Image registry needs Azure sign-in...
         az login >nul 2>nul
-        az acr login --name "!ACR_NAME!" >nul 2>nul
-        if !ERRORLEVEL! equ 0 (
-            echo [OK] Image registry: !ACR_HOST!
-        ) else (
-            echo [WARN] Could not authenticate to image registry.
+        for /f "delims=" %%T in ('az account get-access-token --query accessToken -o tsv 2^>nul') do set "AAD_TOKEN=%%T"
+        if defined AAD_TOKEN (
+            echo !AAD_TOKEN!| docker login "!ACR_HOST!" -u 00000000-0000-0000-0000-000000000000 --password-stdin >nul 2>nul
+            if !ERRORLEVEL! equ 0 set "ACR_LOGGED_IN=1"
         )
     )
+)
+if "!ACR_LOGGED_IN!"=="1" (
+    echo [OK] Image registry: !ACR_HOST!
 ) else (
-    echo [WARN] Azure CLI not found -- image registry may not work.
-    echo        Install Azure CLI: https://aka.ms/installazurecli
+    echo [WARN] Could not authenticate to image registry.
+    echo        Install Azure CLI and run: az login
 )
 
 :skip_acr
