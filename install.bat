@@ -870,7 +870,29 @@ if "!REGISTRY_MIRROR:~-1!" neq "/" set "REGISTRY_MIRROR=!REGISTRY_MIRROR!/"
 REM Extract ACR hostname (e.g., dockyardgwprod.azurecr.io/docker.io/library/ -> dockyardgwprod.azurecr.io)
 for /f "delims=/" %%H in ("!REGISTRY_MIRROR!") do set "ACR_HOST=%%H"
 
-echo [OK] Image registry: !ACR_HOST!
+REM Extract ACR name (e.g., dockyardgwprod.azurecr.io -> dockyardgwprod)
+for /f "delims=." %%N in ("!ACR_HOST!") do set "ACR_NAME=%%N"
+
+REM Authenticate to ACR (data plane requires a token even with anonymous_pull)
+where az >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    az acr login --name "!ACR_NAME!" >nul 2>nul
+    if !ERRORLEVEL! equ 0 (
+        echo [OK] Image registry: !ACR_HOST!
+    ) else (
+        echo [...]  Image registry needs Azure sign-in...
+        az login >nul 2>nul
+        az acr login --name "!ACR_NAME!" >nul 2>nul
+        if !ERRORLEVEL! equ 0 (
+            echo [OK] Image registry: !ACR_HOST!
+        ) else (
+            echo [WARN] Could not authenticate to image registry.
+        )
+    )
+) else (
+    echo [WARN] Azure CLI not found -- image registry may not work.
+    echo        Install Azure CLI: https://aka.ms/installazurecli
+)
 
 :skip_acr
 
