@@ -871,30 +871,36 @@ REM Extract ACR hostname (e.g., dockyardgwprod.azurecr.io/docker.io/library/ -> 
 for /f "delims=/" %%H in ("!REGISTRY_MIRROR!") do set "ACR_HOST=%%H"
 
 REM Authenticate to ACR using AAD token (no subscription context needed)
-set "ACR_LOGGED_IN=0"
 where az >nul 2>nul
-if !ERRORLEVEL! equ 0 (
-    for /f "delims=" %%T in ('az account get-access-token --query accessToken -o tsv 2^>nul') do set "AAD_TOKEN=%%T"
-    if defined AAD_TOKEN (
-        echo !AAD_TOKEN!| docker login "!ACR_HOST!" -u 00000000-0000-0000-0000-000000000000 --password-stdin >nul 2>nul
-        if !ERRORLEVEL! equ 0 set "ACR_LOGGED_IN=1"
-    )
-    if "!ACR_LOGGED_IN!"=="0" (
-        echo [...]  Image registry needs Azure sign-in...
-        az login >nul 2>nul
-        for /f "delims=" %%T in ('az account get-access-token --query accessToken -o tsv 2^>nul') do set "AAD_TOKEN=%%T"
-        if defined AAD_TOKEN (
-            echo !AAD_TOKEN!| docker login "!ACR_HOST!" -u 00000000-0000-0000-0000-000000000000 --password-stdin >nul 2>nul
-            if !ERRORLEVEL! equ 0 set "ACR_LOGGED_IN=1"
-        )
-    )
+if !ERRORLEVEL! neq 0 (
+    echo [WARN] Azure CLI not found -- image registry may not work.
+    goto :acr_auth_done
 )
-if "!ACR_LOGGED_IN!"=="1" (
-    echo [OK] Image registry: !ACR_HOST!
-) else (
-    echo [WARN] Could not authenticate to image registry.
-    echo        Install Azure CLI and run: az login
-)
+
+REM Try existing Azure session first
+set "AAD_TOKEN="
+for /f "delims=" %%T in ('az account get-access-token --query accessToken -o tsv 2^>nul') do set "AAD_TOKEN=%%T"
+if not defined AAD_TOKEN goto :acr_need_login
+echo !AAD_TOKEN!| docker login "!ACR_HOST!" -u 00000000-0000-0000-0000-000000000000 --password-stdin >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :acr_auth_ok
+
+:acr_need_login
+echo [...]  Image registry needs Azure sign-in...
+az login
+set "AAD_TOKEN="
+for /f "delims=" %%T in ('az account get-access-token --query accessToken -o tsv 2^>nul') do set "AAD_TOKEN=%%T"
+if not defined AAD_TOKEN goto :acr_auth_fail
+echo !AAD_TOKEN!| docker login "!ACR_HOST!" -u 00000000-0000-0000-0000-000000000000 --password-stdin >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :acr_auth_ok
+
+:acr_auth_fail
+echo [WARN] Could not authenticate to image registry.
+goto :acr_auth_done
+
+:acr_auth_ok
+echo [OK] Image registry: !ACR_HOST!
+
+:acr_auth_done
 
 :skip_acr
 
