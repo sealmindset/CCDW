@@ -183,9 +183,11 @@ echo ========================================
 echo.
 echo   WSL2 was installed successfully.
 echo.
-echo   Please restart your computer now.
-echo   After it restarts, double-click this file again.
+echo   Your computer needs to restart.
+echo   Setup will continue automatically after restart.
 echo.
+>> "!STATE_FILE!" echo WSL=1
+call :schedule_resume
 pause
 exit /b 0
 
@@ -261,13 +263,34 @@ powershell -NoProfile -Command ^
 if !ERRORLEVEL! neq 0 goto :download_failed
 
 echo [...]  Installing (this may take a minute or two)...
+echo         Please wait -- do not close this window.
 REM ALLUSERS=0 = per-user install, no admin needed
 start /wait msiexec /i "!RD_INSTALLER!" /passive /norestart ALLUSERS=0
 if !ERRORLEVEL! neq 0 (
     echo [...]  Passive install did not work -- trying with installer UI...
-    start /wait msiexec /i "!RD_INSTALLER!" ALLUSERS=0
+    start /wait msiexec /i "!RD_INSTALLER!" /norestart ALLUSERS=0
 )
 del "!RD_INSTALLER!" >nul 2>nul
+
+REM Wait for Rancher Desktop to actually exist on disk before continuing
+echo [...]  Verifying installation...
+set "RD_VERIFY=0"
+for /L %%I in (1,1,12) do (
+    if "!RD_VERIFY!"=="0" (
+        if exist "%LOCALAPPDATA%\Programs\Rancher Desktop\Rancher Desktop.exe" set "RD_VERIFY=1"
+        if exist "%ProgramFiles%\Rancher Desktop\Rancher Desktop.exe" set "RD_VERIFY=1"
+        if exist "%USERPROFILE%\.rd\bin\docker.exe" set "RD_VERIFY=1"
+        if "!RD_VERIFY!"=="0" (
+            timeout /t 5 /nobreak >nul
+        )
+    )
+)
+if "!RD_VERIFY!"=="0" (
+    echo [WARN] Could not verify Rancher Desktop installed.
+    echo        It may still be finishing. Restart and re-run this file.
+    pause
+    exit /b 1
+)
 goto :rancher_installed
 
 :download_failed
@@ -305,10 +328,11 @@ if not exist "!RD_SETTINGS_DIR!\settings.json" (
 )
 
 echo.
-echo   Please restart your computer, then double-click this file again.
-echo   After restarting, wait for the Rancher Desktop icon in your
-echo   system tray to stop spinning before running this setup again.
+echo   Please restart your computer now.
+echo   Setup will continue automatically after restart.
 echo.
+>> "!STATE_FILE!" echo DOCKER=1
+call :schedule_resume
 pause
 exit /b 0
 
@@ -379,6 +403,7 @@ REM ---------------------------------------------------------------------------
 REM Step 5: Run the installer (clean up state file -- setup is complete)
 REM ---------------------------------------------------------------------------
 if exist "!STATE_FILE!" del "!STATE_FILE!" >nul 2>nul
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce" /v "ClaudeCodeSetup" /f >nul 2>nul
 echo.
 echo ========================================
 echo   Starting Claude Code installer...
@@ -387,3 +412,19 @@ echo.
 
 cd /d "!INSTALL_DIR!"
 call "!INSTALL_DIR!\install.bat" --ai=foundry
+goto :eof
+
+REM ---------------------------------------------------------------------------
+REM Subroutine: Schedule this script to auto-run after reboot
+REM Uses HKCU\...\RunOnce -- no admin needed, runs once then deletes itself
+REM ---------------------------------------------------------------------------
+:schedule_resume
+set "SELF_PATH=%~f0"
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce" /v "ClaudeCodeSetup" /t REG_SZ /d "cmd /c \"\"%SELF_PATH%\"\"" /f >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    echo [OK]  Setup will resume automatically after restart.
+) else (
+    echo [INFO] Could not set up auto-resume. After restarting,
+    echo        double-click this file again to continue.
+)
+goto :eof
