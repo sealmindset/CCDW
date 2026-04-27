@@ -602,6 +602,11 @@ if exist "!ENV_FILE!" (
 
 if "!HAS_PROVIDER!"=="1" if not defined AI_PROVIDER (
     echo [OK] AI provider already configured in .env
+    REM Check if Foundry provider is missing API key (causes auth failure inside container)
+    set "NEEDS_FOUNDRY_KEY=0"
+    findstr /i /b "ANTHROPIC_FOUNDRY_BASE_URL=" "!ENV_FILE!" >nul 2>nul && set "NEEDS_FOUNDRY_KEY=1"
+    findstr /i /b "ANTHROPIC_FOUNDRY_API_KEY=" "!ENV_FILE!" >nul 2>nul && set "NEEDS_FOUNDRY_KEY=0"
+    if "!NEEDS_FOUNDRY_KEY!"=="1" call :prompt_foundry_key
     goto :skip_setup
 )
 
@@ -696,14 +701,8 @@ if "!AI_PROVIDER!"=="foundry" (
         "if (-not $cfg.endpoint) { " ^
         "  $ep = Read-Host '  Foundry endpoint URL'; " ^
         "  if ($ep) { $cfg.endpoint = $ep; $cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'; Write-Host '  [OK] Endpoint saved' } " ^
-        "} " ^
-        "if ($cfg.auth_mode -eq 'apikey' -and -not $cfg.api_key) { " ^
-        "  $key = Read-Host '  API key' -AsSecureString; " ^
-        "  $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($key)); " ^
-        "  if ($plain) { $cfg.api_key = $plain; $cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'; Write-Host '  [OK] API key saved' } " ^
-        "} elseif ($cfg.auth_mode -ne 'apikey') { " ^
-        "  Write-Host '  Note: Azure SSO sign-in will happen after the container starts.' -ForegroundColor Cyan " ^
         "}"
+    call :foundry_key_setup
 )
 
 if "!AI_PROVIDER!"=="bedrock" (
@@ -840,6 +839,83 @@ if "!AI_PROVIDER!"=="bedrock" (
         "Write-Host \"[OK] AWS config written to $cfgPath\""
 )
 
+goto :skip_foundry_key_subs
+
+:foundry_key_setup
+REM Try to decrypt bundled key with passphrase, fall back to manual entry
+set "ENC_FILE=%~dp0config\foundry-key.enc"
+if not exist "!ENC_FILE!" goto :foundry_key_manual
+echo.
+echo ========================================
+echo   AI Foundry Setup
+echo ========================================
+echo.
+echo   Enter the setup passphrase to activate Claude.
+echo   (Get this from your team lead or the AI CoE team.)
+echo   Press Enter to skip (will use Azure SSO instead).
+echo.
+set "SETUP_PHRASE="
+set /p "SETUP_PHRASE=  Setup passphrase: "
+if not defined SETUP_PHRASE echo [OK] Using Azure SSO -- you will need to run az login inside the container.& exit /b
+for /f "usebackq delims=" %%K in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\decrypt-key.ps1" -EncFile "!ENC_FILE!" -Passphrase "!SETUP_PHRASE!" 2^>nul`) do set "DECRYPTED_KEY=%%K"
+if not defined DECRYPTED_KEY (
+    echo [WARN] Wrong passphrase. Falling back to manual entry...
+    goto :foundry_key_manual
+)
+REM Save decrypted key to config JSON and .env
+powershell -NoProfile -Command ^
+    "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
+    "$cfg.api_key = '!DECRYPTED_KEY!'; " ^
+    "$cfg.auth_mode = 'apikey'; " ^
+    "$cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'"
+echo [OK] API key configured.
+exit /b
+
+:foundry_key_manual
+echo.
+echo   Or enter the API key directly (press Enter to skip):
+set "MANUAL_KEY="
+set /p "MANUAL_KEY=  AI Foundry API key: "
+if defined MANUAL_KEY (
+    powershell -NoProfile -Command ^
+        "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
+        "$cfg.api_key = '!MANUAL_KEY!'; " ^
+        "$cfg.auth_mode = 'apikey'; " ^
+        "$cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'"
+    echo [OK] API key saved.
+) else (
+    echo [OK] Using Azure SSO -- you will need to run az login inside the container.
+)
+exit /b
+
+:prompt_foundry_key
+REM Called when re-running install and foundry is configured but API key is missing
+set "ENC_FILE=%~dp0config\foundry-key.enc"
+if not exist "!ENC_FILE!" goto :prompt_foundry_key_manual
+echo.
+echo   Enter the setup passphrase to activate Claude (press Enter to skip):
+set "SETUP_PHRASE="
+set /p "SETUP_PHRASE=  Setup passphrase: "
+if not defined SETUP_PHRASE exit /b
+for /f "usebackq delims=" %%K in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\decrypt-key.ps1" -EncFile "!ENC_FILE!" -Passphrase "!SETUP_PHRASE!" 2^>nul`) do set "DECRYPTED_KEY=%%K"
+if not defined DECRYPTED_KEY (
+    echo [WARN] Wrong passphrase.
+    exit /b
+)
+echo ANTHROPIC_FOUNDRY_API_KEY=!DECRYPTED_KEY!>> "!ENV_FILE!"
+echo [OK] API key saved to .env
+exit /b
+:prompt_foundry_key_manual
+set "MANUAL_KEY="
+set /p "MANUAL_KEY=  AI Foundry API key (press Enter to skip): "
+if defined MANUAL_KEY (
+    echo ANTHROPIC_FOUNDRY_API_KEY=!MANUAL_KEY!>> "!ENV_FILE!"
+    echo [OK] API key saved to .env
+)
+exit /b
+
+:skip_foundry_key_subs
+
 :skip_setup
 
 REM ---------------------------------------------------------------------------
@@ -852,9 +928,9 @@ echo [...]  Checking for SSL inspection proxy certificates...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\extract-certs.ps1" -CertsDir "%~dp0certs"
 
 REM ---------------------------------------------------------------------------
-REM ACR pull-through cache (bypasses Zscaler / SSL inspection entirely)
+REM ACR image registry (bypasses Zscaler / SSL inspection entirely)
 REM If REGISTRY_MIRROR is set in .env, use it for base images and pre-built pulls.
-REM No authentication needed -- ACR allows anonymous pulls.
+REM Images are pre-imported into ACR via az acr import (not cache proxied).
 REM ---------------------------------------------------------------------------
 set "REGISTRY_MIRROR="
 set "ACR_HOST="
@@ -912,13 +988,13 @@ REM ---------------------------------------------------------------------------
 echo.
 echo [...]  Checking for updates...
 
-REM --- Try 1: Pull pre-built image through ACR gateway (fastest, bypasses Zscaler) ---
+REM --- Try 1: Pull pre-built image from ACR (imported, bypasses Zscaler) ---
 if defined ACR_HOST (
     echo [...]  Downloading via image registry...
-    docker pull "!ACR_HOST!/ghcr.io/sealmindset/claude-code-docker:latest" >nul 2>nul
+    docker pull "!ACR_HOST!/claude-code-docker:latest"
     if !ERRORLEVEL! equ 0 (
-        docker tag "!ACR_HOST!/ghcr.io/sealmindset/claude-code-docker:latest" ghcr.io/sealmindset/claude-code-docker:latest >nul 2>nul
-        echo [OK] Image downloaded via registry.
+        docker tag "!ACR_HOST!/claude-code-docker:latest" ghcr.io/sealmindset/claude-code-docker:latest >nul 2>nul
+        echo [OK]  Image downloaded via registry.
         goto :image_ready
     )
     echo [...]  Registry pull didn't work -- trying other methods...
@@ -935,7 +1011,7 @@ if !ERRORLEVEL! equ 0 (
     goto :image_ready
 )
 
-REM --- Try 4: Build from source using gateway for base images ---
+REM --- Try 4: Build from source using ACR-imported base images ---
 echo [...]  No cached image. Building locally -- this may take a few minutes...
 set "BUILD_ARGS="
 if defined REGISTRY_MIRROR set "BUILD_ARGS=--build-arg REGISTRY_MIRROR=!REGISTRY_MIRROR!"
@@ -946,8 +1022,8 @@ if !ERRORLEVEL! neq 0 (
         echo.
         echo   The build could not download its base components.
         echo   This can happen if:
-        echo     - The registry doesn't have the right cache rules set up
-        echo       ^(ask the AI CoE team to verify the Docker Hub cache rule^)
+        echo     - The base image has not been imported into ACR yet
+        echo       ^(ask the AI CoE team to run: az acr import --name !ACR_NAME! --source docker.io/library/node:20-alpine --image node:20-alpine^)
         echo     - Your network is blocking the connection
     ) else (
         echo.

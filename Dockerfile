@@ -2,9 +2,9 @@
 # Claude Code Docker
 # A ready-to-run container with Claude Code CLI + Web UI + /make-it skills
 # =============================================================================
-# ACR pull-through cache: set REGISTRY_MIRROR to pull base images through
-# Azure instead of directly from Docker Hub (bypasses Zscaler/SSL inspection).
-# Example: docker build --build-arg REGISTRY_MIRROR=dockyardgwprod.azurecr.io/docker.io/library/ .
+# ACR imported images: set REGISTRY_MIRROR to pull base images from Azure ACR
+# instead of directly from Docker Hub (bypasses Zscaler/SSL inspection).
+# Example: docker build --build-arg REGISTRY_MIRROR=dockyardgwprod.azurecr.io/ .
 ARG REGISTRY_MIRROR=
 FROM ${REGISTRY_MIRROR}node:20-alpine
 
