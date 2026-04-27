@@ -625,7 +625,24 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo -e "${YELLOW}[...]${NC} Checking for updates and downloading latest version..."
-if docker pull ghcr.io/sealmindset/claude-code-docker:latest; then
+
+# Try 0: Load from local .tar file (pre-baked image distribution)
+# Place claude-code-docker.tar next to this script to skip all network pulls.
+# Create with: docker save ghcr.io/sealmindset/claude-code-docker:latest -o claude-code-docker.tar
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/claude-code-docker.tar" ]; then
+    echo -e "${YELLOW}[...]${NC} Found local image file -- loading..."
+    if docker load -i "$SCRIPT_DIR/claude-code-docker.tar"; then
+        echo -e "${GREEN}[OK]${NC} Image loaded from local file."
+        IMAGE_LOADED=1
+    else
+        echo -e "${YELLOW}[...]${NC} Local file load failed -- trying network..."
+    fi
+fi
+
+if [ "${IMAGE_LOADED:-0}" = "1" ]; then
+    : # Already loaded from .tar
+elif docker pull ghcr.io/sealmindset/claude-code-docker:latest; then
     echo -e "${GREEN}[OK]${NC} Image is up to date."
 else
     if docker image inspect ghcr.io/sealmindset/claude-code-docker:latest &>/dev/null; then

@@ -631,6 +631,83 @@
   }
 
   // ============================================================
+  // PROACTIVE HEALTH MONITORING
+  // ============================================================
+
+  let healthInterval = null;
+
+  function showHealthBanner(id) {
+    var el = document.getElementById(id);
+    if (el) el.classList.remove('hidden');
+  }
+
+  function hideHealthBanner(id) {
+    var el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  }
+
+  function hideAllHealthBanners() {
+    ['healthBannerVpn', 'healthBannerTokenExpired', 'healthBannerTokenWarning',
+     'healthBannerDisk', 'healthBannerDown'].forEach(hideHealthBanner);
+  }
+
+  async function pollHealth() {
+    var dashHost = window.location.hostname;
+    var baseUrl = 'http://' + dashHost + ':3000';
+    try {
+      var ctrl = new AbortController();
+      setTimeout(function() { ctrl.abort(); }, 5000);
+      var statusRes = await fetch(baseUrl + '/api/status', { signal: ctrl.signal });
+      var status = await statusRes.json();
+
+      var healthRes = await fetch(baseUrl + '/api/health', { signal: ctrl.signal });
+      var health = await healthRes.json();
+
+      hideAllHealthBanners();
+
+      // VPN / network down
+      if (health.failure_type === 'vpn_down' || health.failure_type === 'endpoint_unreachable') {
+        showHealthBanner('healthBannerVpn');
+        return;
+      }
+
+      // Token expired
+      if (status.ai_status === 'Token expired' || status.ai_status === 'Session expired') {
+        showHealthBanner('healthBannerTokenExpired');
+        return;
+      }
+
+      // Token expiring soon (< 30 min)
+      if (status.token_minutes_remaining !== null && status.token_minutes_remaining <= 30 && status.token_minutes_remaining > 0) {
+        var minEl = document.getElementById('healthTokenMinutes');
+        if (minEl) minEl.textContent = status.token_minutes_remaining;
+        showHealthBanner('healthBannerTokenWarning');
+      }
+
+      // Low disk (< 500 MB)
+      if (health.system && health.system.disk_free_mb > 0 && health.system.disk_free_mb < 500) {
+        showHealthBanner('healthBannerDisk');
+      }
+
+      // General service issue
+      if (health.status === 'failing' && health.failure_type !== 'vpn_down' && health.failure_type !== 'endpoint_unreachable') {
+        var detail = document.getElementById('healthDownDetail');
+        if (detail && health.message) detail.textContent = health.message;
+        showHealthBanner('healthBannerDown');
+      }
+
+    } catch (e) {
+      // Dashboard unreachable — don't spam banners, just hide all
+      hideAllHealthBanners();
+    }
+  }
+
+  function startHealthPolling() {
+    pollHealth();
+    healthInterval = setInterval(pollHealth, 60000);
+  }
+
+  // ============================================================
   // INITIALIZATION
   // ============================================================
 
@@ -660,6 +737,10 @@
       iterateChat.showTyping();
     };
 
+    // Dashboard link (port 3000 with ?dashboard to prevent redirect loop)
+    var dashLink = document.getElementById('dashboardLink');
+    if (dashLink) dashLink.href = 'http://' + window.location.hostname + ':3000?dashboard';
+
     // Setup
     setupButtons();
     setupBootstrapPanel();
@@ -682,6 +763,16 @@
 
     // First visit walkthrough
     showWalkthrough();
+
+    // Health banner links → dashboard
+    var dashUrl = 'http://' + window.location.hostname + ':3000?dashboard';
+    var signInLink = document.getElementById('healthSignInLink');
+    if (signInLink) signInLink.addEventListener('click', function(e) { e.preventDefault(); window.open(dashUrl, '_blank'); });
+    var refreshLink = document.getElementById('healthRefreshLink');
+    if (refreshLink) refreshLink.addEventListener('click', function(e) { e.preventDefault(); window.open(dashUrl, '_blank'); });
+
+    // Start background health monitoring (polls every 60s)
+    startHealthPolling();
   }
 
   // ============================================================

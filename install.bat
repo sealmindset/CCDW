@@ -166,14 +166,23 @@ if defined RD_EXE (
     wsl -l 2>nul | findstr /i "rancher-desktop" >nul 2>nul
     if !ERRORLEVEL! neq 0 set "RD_FIRST_RUN=1"
 
+    REM Pre-configure Rancher Desktop to use dockerd before first launch.
+    REM This eliminates the engine selection dialog that confuses new users.
+    if "!RD_FIRST_RUN!"=="1" (
+        set "RD_SETTINGS_DIR=%APPDATA%\rancher-desktop"
+        if not exist "!RD_SETTINGS_DIR!" mkdir "!RD_SETTINGS_DIR!"
+        if not exist "!RD_SETTINGS_DIR!\settings.json" (
+            powershell -NoProfile -Command ^
+                "$s = @{ version = 10; containerEngine = @{ name = 'moby' }; kubernetes = @{ enabled = $false } }; " ^
+                "$s | ConvertTo-Json -Depth 5 | Set-Content '!RD_SETTINGS_DIR!\settings.json' -Encoding UTF8"
+        )
+    )
+
     start "" "!RD_EXE!"
     if "!RD_FIRST_RUN!"=="1" (
         echo [OK] Rancher Desktop is starting for the first time.
-        echo      First-time setup takes 2-5 minutes -- it needs to download
-        echo      some components. The installer will wait automatically.
-        echo.
-        echo      IMPORTANT: If Rancher Desktop asks you to choose a container
-        echo      engine, pick "dockerd ^(moby^)" -- not containerd.
+        echo      First-time setup takes 3-5 minutes. Do NOT close this window.
+        echo      The installer will wait and continue automatically.
     ) else (
         echo [OK] Rancher Desktop is starting up.
         echo      It needs about 60 seconds to initialize -- the installer
@@ -213,12 +222,24 @@ powershell -NoProfile -Command ^
 if !ERRORLEVEL! neq 0 (
     set "PORT_CONFLICT=1"
     echo.
-    echo   Ports 3000, 7681, 8080, and 9200 need to be available.
-    echo   Close the programs using those ports, or change the port
-    echo   numbers in .env ^(WELCOME_PORT, TTYD_PORT, etc.^)
+    echo   Another program is using a port that Claude Code needs:
     echo.
-    choice /C YN /M "Continue anyway? Y=Yes, N=Exit"
-    if !ERRORLEVEL! equ 2 exit /b 0
+    powershell -NoProfile -Command ^
+        "foreach ($p in @(3000,7681,8080,9200)) { " ^
+        "  try { " ^
+        "    $conn = Get-NetTCPConnection -LocalPort $p -State Listen -EA Stop; " ^
+        "    $proc = Get-Process -Id $conn[0].OwningProcess -EA Stop; " ^
+        "    Write-Host ('   Port ' + $p + ' is used by: ' + $proc.ProcessName) -ForegroundColor Yellow " ^
+        "  } catch { } " ^
+        "}"
+    echo.
+    echo   Close those programs, then run this installer again.
+    echo.
+    echo   Not sure what they are? Restarting your computer usually
+    echo   clears stuck ports. Then double-click install.bat again.
+    echo.
+    pause
+    exit /b 1
 )
 :ports_ok
 if "!PORT_CONFLICT!"=="0" echo [OK] Required ports are available.
@@ -512,15 +533,15 @@ if !ERRORLEVEL! neq 0 (
     docker compose version >nul 2>nul
     if !ERRORLEVEL! neq 0 (
         echo.
-        echo [ERROR] Docker is running but appears to be using containerd
-        echo         instead of dockerd. Claude Code Docker needs dockerd.
+        echo [ERROR] Rancher Desktop is using the wrong engine setting.
         echo.
-        echo   How to fix in Rancher Desktop:
-        echo     1. Open Rancher Desktop
-        echo     2. Go to Preferences
-        echo     3. Click "Container Engine"
-        echo     4. Select "dockerd ^(moby^)"
-        echo     5. Wait for it to restart
+        echo   How to fix:
+        echo     1. Look for the Rancher Desktop icon in your system tray
+        echo        ^(bottom-right corner, near the clock^)
+        echo     2. Right-click it and choose "Preferences"
+        echo     3. Click "Container Engine" on the left side
+        echo     4. Select "dockerd ^(moby^)" -- NOT containerd
+        echo     5. Wait about 60 seconds for it to restart
         echo     6. Double-click install.bat again
         echo.
         pause
@@ -983,10 +1004,23 @@ echo [OK] Image registry: !ACR_HOST!
 :skip_acr
 
 REM ---------------------------------------------------------------------------
-REM Auto-update: pull latest image (try gateway first, then direct, then build)
+REM Auto-update: pull latest image (try local file, gateway, direct, then build)
 REM ---------------------------------------------------------------------------
 echo.
 echo [...]  Checking for updates...
+
+REM --- Try 0: Load from local .tar file (pre-baked image distribution) ---
+REM   Place claude-code-docker.tar next to this script to skip all network pulls.
+REM   Create with: docker save ghcr.io/sealmindset/claude-code-docker:latest -o claude-code-docker.tar
+if exist "%~dp0claude-code-docker.tar" (
+    echo [...]  Found local image file -- loading...
+    docker load -i "%~dp0claude-code-docker.tar"
+    if !ERRORLEVEL! equ 0 (
+        echo [OK]  Image loaded from local file.
+        goto :image_ready
+    )
+    echo [...]  Local file load failed -- trying network methods...
+)
 
 REM --- Try 1: Pull pre-built image from ACR (imported, bypasses Zscaler) ---
 if defined ACR_HOST (

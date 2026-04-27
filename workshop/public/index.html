@@ -28,6 +28,9 @@
       <button class="nav-tag disabled" id="btnSeeApp" title="Open your running app">See your app</button>
     </nav>
     <div class="header-status">
+      <a class="nav-dashboard-link" id="dashboardLink" href="?dashboard" title="System health and diagnostics">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </a>
       <span class="status-dot" id="statusDot"></span>
       <span class="status-text" id="statusText">Ready</span>
       <button class="btn-icon btn-bootstrap" id="btnBootstrap" title="Bootstrap Status">
@@ -40,6 +43,40 @@
   <!-- MAIN CONTENT AREA                                             -->
   <!-- ============================================================ -->
   <main class="workshop-main">
+
+    <!-- HEALTH BANNERS (proactive warnings from system health polling) -->
+    <div class="health-banner hidden" id="healthBannerVpn">
+      <div class="health-banner-content health-banner-error">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span><strong>Network unreachable.</strong> Check that your VPN (GlobalProtect) is connected.</span>
+      </div>
+    </div>
+    <div class="health-banner hidden" id="healthBannerTokenExpired">
+      <div class="health-banner-content health-banner-error">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span><strong>Session expired.</strong> Sign in again to continue.</span>
+        <a class="health-banner-action" id="healthSignInLink" href="#" title="Open dashboard to sign in">Sign in</a>
+      </div>
+    </div>
+    <div class="health-banner hidden" id="healthBannerTokenWarning">
+      <div class="health-banner-content health-banner-warning">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span><strong>Session expiring soon.</strong> <span id="healthTokenMinutes"></span> minutes remaining.</span>
+        <a class="health-banner-action" id="healthRefreshLink" href="#" title="Open dashboard to refresh">Refresh</a>
+      </div>
+    </div>
+    <div class="health-banner hidden" id="healthBannerDisk">
+      <div class="health-banner-content health-banner-warning">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+        <span><strong>Low disk space.</strong> Your container may not be able to save files.</span>
+      </div>
+    </div>
+    <div class="health-banner hidden" id="healthBannerDown">
+      <div class="health-banner-content health-banner-error">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span><strong>Service issue detected.</strong> <span id="healthDownDetail">Some services may not be responding.</span></span>
+      </div>
+    </div>
 
     <!-- AUTH BANNER (shown when no AI credentials configured) -->
     <div class="auth-banner hidden" id="authBanner">

@@ -21,7 +21,7 @@ const mimeTypes = {
 };
 
 function getStatus() {
-    const status = { docker: 'unavailable', ai_provider: 'none', ai_status: 'unknown' };
+    const status = { docker: 'unavailable', ai_provider: 'none', ai_status: 'unknown', token_minutes_remaining: null };
 
     try {
         execSync('docker info', { stdio: 'ignore', timeout: 5000 });
@@ -32,22 +32,42 @@ function getStatus() {
 
     const foundryUrl = process.env.ANTHROPIC_FOUNDRY_BASE_URL;
     const apiKey = process.env.ANTHROPIC_API_KEY;
+    const foundryKey = process.env.ANTHROPIC_FOUNDRY_API_KEY;
     const bedrock = process.env.CLAUDE_CODE_USE_BEDROCK;
 
     if (apiKey) {
         status.ai_provider = 'Anthropic API';
+        status.ai_status = 'ok';
+    } else if (foundryKey) {
+        status.ai_provider = 'Azure AI Foundry';
         status.ai_status = 'ok';
     } else if (foundryUrl) {
         status.ai_provider = 'Azure AI Foundry';
         try {
             execSync('az account show', { stdio: 'ignore', timeout: 10000 });
             status.ai_status = 'ok';
+            try {
+                const tokenJson = execSync('az account get-access-token --resource https://cognitiveservices.azure.com 2>/dev/null', { timeout: 10000 }).toString();
+                const match = tokenJson.match(/"expiresOn"\s*:\s*"([^"]+)"/);
+                if (match) {
+                    const expiry = new Date(match[1]).getTime();
+                    const remaining = Math.floor((expiry - Date.now()) / 60000);
+                    status.token_minutes_remaining = remaining;
+                    if (remaining <= 0) status.ai_status = 'Token expired';
+                }
+            } catch (e) {}
         } catch (e) {
             status.ai_status = 'Token expired';
         }
     } else if (bedrock === '1') {
         status.ai_provider = 'AWS Bedrock';
-        status.ai_status = process.env.AWS_ACCESS_KEY_ID ? 'ok' : 'No credentials';
+        const prof = process.env.AWS_PROFILE || 'sso-bedrock';
+        try {
+            execSync('aws sts get-caller-identity --profile ' + prof, { stdio: 'ignore', timeout: 10000 });
+            status.ai_status = 'ok';
+        } catch (e) {
+            status.ai_status = 'Session expired';
+        }
     }
 
     return status;

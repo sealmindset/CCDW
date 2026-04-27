@@ -16,11 +16,69 @@ WshShell.CurrentDirectory = projectDir
 ' Check Docker engine is reachable
 ret = WshShell.Run("cmd /c docker info >nul 2>nul", 0, True)
 If ret <> 0 Then
-    MsgBox "Rancher Desktop does not appear to be running." & vbCrLf & vbCrLf & _
-           "Open Rancher Desktop from the Start menu and wait for " & _
-           "it to finish loading, then try again.", _
-           vbExclamation, "Claude Code Docker"
-    WScript.Quit 1
+    ' Docker not running -- try to auto-start Rancher Desktop
+    Dim rdExe, localApp, progFiles
+    rdExe = ""
+    localApp = WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%")
+    progFiles = WshShell.ExpandEnvironmentStrings("%ProgramFiles%")
+
+    If fso.FileExists(localApp & "\Programs\Rancher Desktop\Rancher Desktop.exe") Then
+        rdExe = localApp & "\Programs\Rancher Desktop\Rancher Desktop.exe"
+    ElseIf fso.FileExists(progFiles & "\Rancher Desktop\Rancher Desktop.exe") Then
+        rdExe = progFiles & "\Rancher Desktop\Rancher Desktop.exe"
+    End If
+
+    If rdExe = "" Then
+        ' Check other user profiles as last resort
+        Dim usersFolder, subFolder
+        Set usersFolder = fso.GetFolder("C:\Users")
+        For Each subFolder In usersFolder.SubFolders
+            Dim tryPath
+            tryPath = subFolder.Path & "\AppData\Local\Programs\Rancher Desktop\Rancher Desktop.exe"
+            If fso.FileExists(tryPath) Then
+                rdExe = tryPath
+                Exit For
+            End If
+        Next
+    End If
+
+    If rdExe = "" Then
+        MsgBox "Could not find Rancher Desktop on this computer." & vbCrLf & vbCrLf & _
+               "Double-click install.bat to set everything up.", _
+               vbExclamation, "Claude Code Docker"
+        WScript.Quit 1
+    End If
+
+    ' Start Rancher Desktop
+    WshShell.Run """" & rdExe & """", 1, False
+
+    ' Brief notification so user knows something is happening
+    WshShell.Popup "Starting Docker..." & vbCrLf & vbCrLf & _
+                   "This takes about a minute. Claude Code will open" & vbCrLf & _
+                   "in your browser automatically when ready." & vbCrLf & vbCrLf & _
+                   "Click OK or just wait.", _
+                   8, "Claude Code Docker", vbInformation
+
+    ' Wait for Docker engine (up to 2 minutes, checking every 5 seconds)
+    Dim waitCount
+    waitCount = 0
+    Do While waitCount < 24
+        ret = WshShell.Run("cmd /c docker info >nul 2>nul", 0, True)
+        If ret = 0 Then Exit Do
+        WScript.Sleep 5000
+        waitCount = waitCount + 1
+    Loop
+
+    ' Final check
+    ret = WshShell.Run("cmd /c docker info >nul 2>nul", 0, True)
+    If ret <> 0 Then
+        MsgBox "Docker is still starting up." & vbCrLf & vbCrLf & _
+               "Wait for the Rancher Desktop icon in your system tray" & vbCrLf & _
+               "(bottom-right, near the clock) to stop spinning," & vbCrLf & _
+               "then double-click the Claude shortcut again.", _
+               vbExclamation, "Claude Code Docker"
+        WScript.Quit 1
+    End If
 End If
 
 ' Check if container already running

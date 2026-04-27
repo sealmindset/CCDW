@@ -202,13 +202,42 @@
             background: #1e1b4b;
             border: 2px solid #6366f1;
             border-radius: 8px;
-            padding: 0.5rem 1rem;
+            padding: 0.6rem 1.25rem;
             font-family: monospace;
-            font-size: 1.25rem;
+            font-size: 1.75rem;
             font-weight: 700;
             color: #a78bfa;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.15em;
+            cursor: pointer;
+            position: relative;
+            user-select: all;
         }
+        .auth-notify-code:hover { border-color: #818cf8; }
+        .auth-notify-code .copy-hint {
+            position: absolute;
+            top: -1.5rem;
+            right: 0;
+            font-size: 0.65rem;
+            color: #6366f1;
+            letter-spacing: normal;
+            font-weight: 400;
+        }
+        .copy-toast {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: #22c55e;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        .copy-toast.show { opacity: 1; }
         .auth-notify-btn {
             background: #6366f1;
             color: white;
@@ -254,6 +283,38 @@
             color: #fde68a;
         }
 
+        .redirect-banner {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            padding: 0.75rem 1rem 0;
+        }
+        .redirect-inner {
+            background: linear-gradient(135deg, #1e3a5f, #1e293b);
+            border: 1px solid #3b82f6;
+            border-radius: 10px;
+            padding: 0.75rem 1.25rem;
+            max-width: 900px;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: #93c5fd;
+            font-size: 0.95rem;
+        }
+        .redirect-spinner {
+            display: inline-block;
+            animation: pulse 1s infinite;
+            color: #3b82f6;
+        }
+        .redirect-stay {
+            margin-left: auto;
+            color: #64748b;
+            font-size: 0.8rem;
+            text-decoration: underline;
+        }
+        .redirect-stay:hover { color: #94a3b8; }
+
         .usage-section {
             max-width: 900px;
             width: 100%;
@@ -297,6 +358,18 @@
     </style>
 </head>
 <body>
+    <!-- Copy-to-clipboard toast -->
+    <div class="copy-toast" id="copyToast">Code copied!</div>
+
+    <!-- Redirect banner (shown briefly before auto-redirect to Workshop) -->
+    <div class="redirect-banner" id="redirectBanner" style="display:none;">
+        <div class="redirect-inner">
+            <span class="redirect-spinner">&#9679;</span>
+            <span>Opening Workshop...</span>
+            <a href="?dashboard" class="redirect-stay">Stay on dashboard</a>
+        </div>
+    </div>
+
     <div class="header">
         <h1>Claude Code Docker</h1>
         <p>Your AI-powered development environment is ready</p>
@@ -310,7 +383,7 @@
                 <strong>Sign-in required</strong>
                 <span id="authNotifyDetail">Enter the code at the sign-in page</span>
             </div>
-            <div class="auth-notify-code" id="authNotifyCode">---</div>
+            <div class="auth-notify-code" id="authNotifyCode" title="Click to copy">---<span class="copy-hint">click to copy</span></div>
             <a class="auth-notify-btn" id="authNotifyLink" href="#" target="_blank">Open Sign-in Page</a>
         </div>
     </div>
@@ -371,7 +444,7 @@
                 <div id="signinFlow" style="display:none;margin-top:1rem;">
                     <p id="signinInstructions" style="color:#94a3b8;font-size:0.85rem;margin-bottom:0.75rem;"></p>
                     <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-                        <span id="signinCode" style="display:none;background:#1e1b4b;border:2px solid #6366f1;border-radius:8px;padding:0.5rem 1rem;font-family:monospace;font-size:1.25rem;font-weight:700;color:#a78bfa;letter-spacing:0.1em;"></span>
+                        <span id="signinCode" style="display:none;background:#1e1b4b;border:2px solid #6366f1;border-radius:8px;padding:0.6rem 1.25rem;font-family:monospace;font-size:1.75rem;font-weight:700;color:#a78bfa;letter-spacing:0.15em;cursor:pointer;user-select:all;" title="Click to copy"></span>
                         <a id="signinLink" href="#" target="_blank" style="display:none;background:#6366f1;color:white;padding:0.4rem 1rem;border-radius:6px;font-weight:600;text-decoration:none;font-size:0.85rem;">Open sign-in page</a>
                     </div>
                     <div id="signinWaiting" style="display:none;margin-top:0.75rem;color:#94a3b8;font-size:0.85rem;">
@@ -418,6 +491,7 @@
                 <div>
                     <div class="status-label">AI Provider</div>
                     <div class="status-detail" id="status-ai">Checking...</div>
+                    <div class="status-detail" id="status-token" style="display:none;"></div>
                 </div>
             </div>
         </div>
@@ -468,6 +542,19 @@
     </div>
 
     <script>
+        // Copy-to-clipboard for auth codes
+        function copyCode(el) {
+            var text = el.textContent.replace('click to copy', '').trim();
+            if (!text || text === '---') return;
+            navigator.clipboard.writeText(text).then(function() {
+                var toast = document.getElementById('copyToast');
+                toast.classList.add('show');
+                setTimeout(function() { toast.classList.remove('show'); }, 1500);
+            });
+        }
+        document.getElementById('authNotifyCode').addEventListener('click', function() { copyCode(this); });
+        document.getElementById('signinCode').addEventListener('click', function() { copyCode(this); });
+
         // Set correct links based on current hostname
         const host = window.location.hostname;
         document.getElementById('workshop-link').href = 'http://' + host + ':9200';
@@ -534,21 +621,44 @@
                     dockerDot.className = 'status-dot ' + (data.docker === 'ok' ? 'green' : 'yellow');
                     dockerStatus.textContent = data.docker === 'ok' ? 'Connected' : 'Not available';
 
+                    var tokenEl = document.getElementById('status-token');
+
                     if (data.ai_provider === 'none') {
                         aiDot.className = 'status-dot yellow';
                         aiStatus.textContent = 'Not configured';
                         setupBadge.textContent = 'not configured';
                         setupBadge.style.color = '#facc15';
+                        tokenEl.style.display = 'none';
                     } else if (data.ai_status === 'ok') {
                         aiDot.className = 'status-dot green';
                         aiStatus.textContent = data.ai_provider;
                         setupBadge.textContent = data.ai_provider;
                         setupBadge.style.color = '#4ade80';
+
+                        if (data.token_minutes_remaining != null) {
+                            tokenEl.style.display = '';
+                            var mins = data.token_minutes_remaining;
+                            if (mins > 60) {
+                                var h = Math.floor(mins / 60);
+                                tokenEl.textContent = 'Session: ' + h + 'h ' + (mins % 60) + 'm remaining';
+                                tokenEl.style.color = '#4ade80';
+                            } else if (mins > 15) {
+                                tokenEl.textContent = 'Session: ' + mins + ' min remaining';
+                                tokenEl.style.color = '#facc15';
+                            } else if (mins > 0) {
+                                tokenEl.textContent = 'Session expiring in ' + mins + ' min!';
+                                tokenEl.style.color = '#f87171';
+                            }
+                        } else {
+                            tokenEl.style.display = 'none';
+                        }
                     } else {
                         aiDot.className = 'status-dot red';
                         aiStatus.textContent = data.ai_provider + ' - ' + data.ai_status;
                         setupBadge.textContent = data.ai_provider;
                         setupBadge.style.color = '#f87171';
+                        tokenEl.style.display = '';
+                        tokenEl.innerHTML = '<span style="color:#f87171;">Sign in needed</span>';
                     }
                 }
             } catch (e) {
@@ -707,11 +817,13 @@
                 }
 
                 if (data.provider === 'azure') {
-                    instructions.textContent = 'Enter this code at the Microsoft sign-in page:';
+                    instructions.innerHTML = '<strong>Step 1:</strong> Click the button below to open the Microsoft sign-in page.<br>' +
+                        '<strong>Step 2:</strong> Enter the code shown here (click to copy it).<br>' +
+                        '<strong>Step 3:</strong> Sign in with your work email. This page updates automatically.';
                     if (data.code) { codeEl.textContent = data.code; codeEl.style.display = ''; }
                     if (data.url) {
                         linkEl.href = data.url;
-                        linkEl.textContent = 'Open Microsoft sign-in';
+                        linkEl.textContent = 'Open Microsoft sign-in page';
                         linkEl.style.display = 'inline-block';
                         window.open(data.url, '_blank');
                     }
@@ -746,6 +858,50 @@
         });
 
         setTimeout(checkSigninNeeded, 2000);
+
+        // Auto-redirect to Workshop when everything is healthy.
+        // Stay on dashboard if: ?dashboard in URL, auth issues, SSL issues, Workshop down.
+        const stayOnDashboard = window.location.search.includes('dashboard');
+
+        async function maybeRedirectToWorkshop() {
+            if (stayOnDashboard) return;
+
+            // Check Workshop is responding
+            try {
+                const ctrl = new AbortController();
+                setTimeout(() => ctrl.abort(), 3000);
+                await fetch('http://' + host + ':9200', { mode: 'no-cors', signal: ctrl.signal });
+            } catch (e) {
+                return;
+            }
+
+            // Check for auth problems that need dashboard attention
+            try {
+                const resp = await fetch('/api/status');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.ai_provider !== 'none' && data.ai_status !== 'ok') return;
+                    if (data.ai_provider === 'none') return;
+                }
+            } catch (e) { return; }
+
+            // Check for SSL proxy issues
+            try {
+                const resp = await fetch('/api/health');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.ssl_proxy || data.failure_type === 'ssl_proxy') return;
+                }
+            } catch (e) {}
+
+            // All clear -- show banner and redirect
+            document.getElementById('redirectBanner').style.display = 'flex';
+            setTimeout(function() {
+                window.location.href = 'http://' + host + ':9200';
+            }, 1500);
+        }
+
+        setTimeout(maybeRedirectToWorkshop, 2500);
     </script>
 </body>
 </html>

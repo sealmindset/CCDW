@@ -178,6 +178,21 @@ body {
   pointer-events: none;
 }
 
+.nav-dashboard-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+}
+.nav-dashboard-link:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 .header-status {
   margin-left: auto;
   display: flex;
@@ -278,6 +293,63 @@ body {
 }
 
 .auth-banner-link:hover {
+  text-decoration: underline;
+}
+
+/* --- Health Banners --- */
+.health-banner {
+  padding: var(--space-xs) var(--space-lg);
+  flex-shrink: 0;
+  animation: healthSlideIn 0.3s ease-out;
+}
+
+.health-banner.hidden {
+  display: none;
+}
+
+@keyframes healthSlideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.health-banner-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.82rem;
+  padding: var(--space-xs) 0;
+}
+
+.health-banner-content strong {
+  color: var(--text-primary);
+}
+
+.health-banner-error {
+  color: var(--error);
+  background: var(--error-soft);
+  border-radius: 6px;
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.health-banner-warning {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-radius: 6px;
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.health-banner-action {
+  margin-left: auto;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.health-banner-action:hover {
   text-decoration: underline;
 }
 
