@@ -262,7 +262,7 @@ echo   Rancher Desktop provides Docker for your computer.
 echo   It's free and installs under your own account (no admin needed).
 echo.
 
-REM --- Strategy 1: Try winget (with source refresh) ---
+REM --- Strategy 1: Try winget (with source refresh, output suppressed) ---
 where winget >nul 2>nul
 if !ERRORLEVEL! neq 0 goto :try_direct_download
 
@@ -270,14 +270,14 @@ echo [...]  Updating package sources...
 winget source update --name winget >nul 2>nul
 
 echo [...]  Installing Rancher Desktop via winget...
-winget install --id suse.RancherDesktop -e --source winget --accept-package-agreements --accept-source-agreements
+echo         (this may take a few minutes)
+winget install --id suse.RancherDesktop -e --source winget --accept-package-agreements --accept-source-agreements >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :rancher_installed
 
-REM Sometimes the ID casing matters or the source name changed
-winget install --id SUSE.RancherDesktop -e --accept-package-agreements --accept-source-agreements
+winget install --id SUSE.RancherDesktop -e --accept-package-agreements --accept-source-agreements >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :rancher_installed
 
-echo [...]  Winget could not find the package -- downloading directly...
+echo [...]  Winget install did not work -- downloading directly...
 
 REM --- Strategy 2: Direct download from GitHub releases ---
 :try_direct_download
