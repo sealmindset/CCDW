@@ -225,12 +225,72 @@ echo   Rancher Desktop provides Docker for your computer.
 echo   It's free and installs under your own account (no admin needed).
 echo.
 
-REM Try winget first
+REM --- Strategy 1: Try winget (with source refresh) ---
 where winget >nul 2>nul
-if !ERRORLEVEL! neq 0 goto :no_winget_rancher
-echo [...]  Installing Rancher Desktop...
+if !ERRORLEVEL! neq 0 goto :try_direct_download
+
+echo [...]  Updating package sources...
+winget source update --name winget >nul 2>nul
+
+echo [...]  Installing Rancher Desktop via winget...
 winget install --id suse.RancherDesktop -e --source winget --accept-package-agreements --accept-source-agreements
-if !ERRORLEVEL! neq 0 goto :no_winget_rancher
+if !ERRORLEVEL! equ 0 goto :rancher_installed
+
+REM Sometimes the ID casing matters or the source name changed
+winget install --id SUSE.RancherDesktop -e --accept-package-agreements --accept-source-agreements
+if !ERRORLEVEL! equ 0 goto :rancher_installed
+
+echo [...]  Winget could not find the package -- downloading directly...
+
+REM --- Strategy 2: Direct download from GitHub releases ---
+:try_direct_download
+echo [...]  Downloading Rancher Desktop installer...
+set "RD_INSTALLER=%TEMP%\RancherDesktopSetup.msi"
+powershell -NoProfile -Command ^
+    "$ProgressPreference = 'SilentlyContinue'; " ^
+    "try { " ^
+    "  $headers = @{}; " ^
+    "  $rel = Invoke-RestMethod 'https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest' -Headers $headers -TimeoutSec 20; " ^
+    "  $msi = $rel.assets | Where-Object { $_.name -match '\.msi$' } | Select-Object -First 1; " ^
+    "  if (-not $msi) { Write-Host 'No MSI found in latest release'; exit 1 }; " ^
+    "  Write-Host ('   Downloading ' + $msi.name + ' (' + [math]::Round($msi.size/1MB,1) + ' MB)...'); " ^
+    "  Invoke-WebRequest $msi.browser_download_url -OutFile '%RD_INSTALLER%' -UseBasicParsing; " ^
+    "  if ((Get-Item '%RD_INSTALLER%').Length -lt 1MB) { Write-Host 'Download too small -- likely blocked'; exit 1 }; " ^
+    "  exit 0 " ^
+    "} catch { Write-Host ('Download failed: ' + $_.Exception.Message); exit 1 }"
+if !ERRORLEVEL! neq 0 goto :download_failed
+
+echo [...]  Installing (this may take a minute or two)...
+REM ALLUSERS=0 = per-user install, no admin needed
+start /wait msiexec /i "!RD_INSTALLER!" /passive /norestart ALLUSERS=0
+if !ERRORLEVEL! neq 0 (
+    echo [...]  Passive install did not work -- trying with installer UI...
+    start /wait msiexec /i "!RD_INSTALLER!" ALLUSERS=0
+)
+del "!RD_INSTALLER!" >nul 2>nul
+goto :rancher_installed
+
+:download_failed
+REM --- Strategy 3: Open browser to download page (last resort) ---
+echo.
+echo ========================================
+echo   Automatic install did not work
+echo ========================================
+echo.
+echo   Opening the Rancher Desktop download page in your browser...
+echo.
+echo   When the page opens:
+echo     1. Click the Windows download button
+echo     2. Run the installer when it finishes downloading
+echo     3. Choose "Install for me only" if asked
+echo     4. Restart your computer
+echo     5. Then double-click this file again
+echo.
+start "" "https://rancherdesktop.io/"
+pause
+exit /b 1
+
+:rancher_installed
 echo [OK]  Rancher Desktop installed.
 
 REM Pre-configure Rancher Desktop to use dockerd (not containerd) and skip Kubernetes.
@@ -251,19 +311,6 @@ echo   system tray to stop spinning before running this setup again.
 echo.
 pause
 exit /b 0
-:no_winget_rancher
-
-echo   Please install Rancher Desktop manually:
-echo.
-echo     1. Open your browser
-echo     2. Go to https://rancherdesktop.io
-echo     3. Click the download button
-echo     4. Run the installer -- choose "Install for me only"
-echo     5. Restart your computer
-echo     6. Then double-click this file again
-echo.
-pause
-exit /b 1
 
 :docker_ok
 
