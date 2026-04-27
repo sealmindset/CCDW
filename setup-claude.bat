@@ -455,7 +455,14 @@ REM Uses HKCU\...\RunOnce -- no admin needed, runs once then deletes itself
 REM ---------------------------------------------------------------------------
 :schedule_resume
 set "SELF_PATH=%~f0"
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce" /v "ClaudeCodeSetup" /t REG_SZ /d "cmd /c \"\"%SELF_PATH%\"\"" /f >nul 2>nul
+powershell -NoProfile -Command ^
+    "try { " ^
+    "  $path = '%SELF_PATH%'; " ^
+    "  $val = 'cmd.exe /c \"' + $path + '\"'; " ^
+    "  New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce' " ^
+    "    -Name 'ClaudeCodeSetup' -Value $val -PropertyType String -Force | Out-Null; " ^
+    "  exit 0 " ^
+    "} catch { exit 1 }"
 if !ERRORLEVEL! equ 0 (
     echo [OK]  Setup will resume automatically after restart.
 ) else (
