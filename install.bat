@@ -660,6 +660,7 @@ if not exist "!CONFIG_FILE!" (
 )
 
 REM --- Run provider-specific preflight checks ---
+:run_preflight
 echo.
 echo ========================================
 echo   Preflight Checks: !AI_PROVIDER!
@@ -704,11 +705,17 @@ powershell -NoProfile -Command ^
     "if ($failCount -gt 0) { exit 1 } else { exit 0 }"
 if !ERRORLEVEL! neq 0 (
     echo.
-    echo [ERROR] Some required preflight checks failed.
-    echo         Fix the items above and run the installer again.
+    echo ========================================
+    echo   Some preflight checks failed
+    echo ========================================
+    echo.
+    echo   Most common fix: connect your VPN ^(GlobalProtect^).
+    echo   Look for it in the system tray ^(bottom-right, near clock^).
+    echo.
+    echo   Press any key after fixing, and we'll check again...
     echo.
     pause
-    exit /b 1
+    goto :run_preflight
 )
 echo.
 echo [OK] Preflight checks passed.

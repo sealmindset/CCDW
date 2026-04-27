@@ -76,6 +76,41 @@ if !ERRORLEVEL! equ 0 (
     exit /b 1
 )
 
+:vpn_check
+echo [...]  Checking VPN connection...
+curl.exe -s --connect-timeout 8 -o nul https://snapistg-scus.azure.sleepnumber.com 2>nul
+if !ERRORLEVEL! equ 0 (
+    echo [OK]  VPN connected.
+) else (
+    echo.
+    echo ========================================
+    echo   VPN is not connected
+    echo ========================================
+    echo.
+    echo   Claude Code needs VPN to reach Sleep Number services.
+    echo.
+    echo   How to connect:
+    echo     1. Look for the GlobalProtect icon in the system tray
+    echo        ^(bottom-right corner, near the clock^)
+    echo     2. Click it and make sure it says "Connected"
+    echo     3. If you don't see it, search for "GlobalProtect"
+    echo        in the Start menu and open it
+    echo.
+    echo   Press any key after connecting your VPN...
+    echo.
+    pause
+    curl.exe -s --connect-timeout 8 -o nul https://snapistg-scus.azure.sleepnumber.com 2>nul
+    if !ERRORLEVEL! neq 0 (
+        echo.
+        echo [ERROR] Still cannot reach Sleep Number services.
+        echo         Make sure GlobalProtect VPN is connected and try again.
+        echo.
+        pause
+        exit /b 1
+    )
+    echo [OK]  VPN connected.
+)
+
 REM ---------------------------------------------------------------------------
 REM Step 1: Check for Git
 REM ---------------------------------------------------------------------------
