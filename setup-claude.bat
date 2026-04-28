@@ -160,7 +160,7 @@ echo [OK]  Git installed.
 :git_ok
 
 REM ---------------------------------------------------------------------------
-REM Step 2: Check for WSL2
+REM Step 2: Check for WSL2 (includes Windows feature enablement)
 REM ---------------------------------------------------------------------------
 if "!S_WSL!"=="1" (
     echo [OK]  WSL2 ^(already done^)
@@ -168,6 +168,8 @@ if "!S_WSL!"=="1" (
 )
 
 echo [...]  Checking for WSL2...
+
+REM First check if WSL2 is already working
 wsl --status >nul 2>nul
 if !ERRORLEVEL! equ 0 (
     echo [OK]  WSL2 is installed.
@@ -175,17 +177,119 @@ if !ERRORLEVEL! equ 0 (
     goto :wsl_ok
 )
 
+REM WSL2 not working -- check if the required Windows features are enabled.
+REM On clean Win 11 Pro these are pre-enabled, but older/upgraded machines
+REM or machines with corporate group policies may not have them.
+echo [...]  Checking Windows features for WSL2...
+
+set "WSL_FEATURES_NEEDED=0"
+
+REM Check VirtualMachinePlatform
+powershell -NoProfile -Command ^
+    "$f = Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -ErrorAction SilentlyContinue; " ^
+    "if (-not $f -or $f.State -ne 'Enabled') { exit 1 } else { exit 0 }" >nul 2>nul
+if !ERRORLEVEL! neq 0 (
+    echo [INFO] Windows feature "Virtual Machine Platform" is not enabled.
+    set "WSL_FEATURES_NEEDED=1"
+)
+
+REM Check Microsoft-Windows-Subsystem-Linux
+powershell -NoProfile -Command ^
+    "$f = Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux -ErrorAction SilentlyContinue; " ^
+    "if (-not $f -or $f.State -ne 'Enabled') { exit 1 } else { exit 0 }" >nul 2>nul
+if !ERRORLEVEL! neq 0 (
+    echo [INFO] Windows feature "Windows Subsystem for Linux" is not enabled.
+    set "WSL_FEATURES_NEEDED=1"
+)
+
+if "!WSL_FEATURES_NEEDED!"=="0" goto :wsl_features_ok
+
+REM Features missing -- need admin elevation to enable them
+echo.
+echo ========================================
+echo   Windows features need to be enabled
+echo ========================================
+echo.
+echo   Docker needs two Windows features that aren't turned on yet.
+echo   This is normal on older machines or corporate-managed PCs.
+echo.
+echo   Windows will pop up asking for an admin password.
+echo   Use your SSMITH Local Admin credentials. To find them:
+echo     - Search your email for "Local Admin" or "SSMITH"
+echo     - The username is usually SSMITH ^(all caps^)
+echo     - The password was in that email
+echo.
+echo   If you can't find the email, contact the IT Service Desk.
+echo.
+echo   Your computer will need to restart after this step.
+echo.
+pause
+
+REM Enable both features via DISM (requires elevation)
+REM Use PowerShell Start-Process -Verb RunAs to get the UAC prompt
+powershell -NoProfile -Command ^
+    "try { " ^
+    "  $script = @' " ^
+    "dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart " ^
+    "dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart " ^
+    "'@ ; " ^
+    "  $tmpFile = Join-Path $env:TEMP 'enable-wsl-features.cmd'; " ^
+    "  Set-Content -Path $tmpFile -Value $script -Encoding ASCII; " ^
+    "  $proc = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', $tmpFile -Verb RunAs -Wait -PassThru; " ^
+    "  Remove-Item $tmpFile -Force -ErrorAction SilentlyContinue; " ^
+    "  exit $proc.ExitCode " ^
+    "} catch { " ^
+    "  Write-Host 'Admin elevation was cancelled or failed.'; " ^
+    "  exit 1 " ^
+    "}"
+if !ERRORLEVEL! neq 0 (
+    echo.
+    echo [ERROR] Could not enable Windows features.
+    echo.
+    echo   This usually means:
+    echo     - The admin password was wrong
+    echo     - You cancelled the admin prompt
+    echo     - You don't have Local Admin rights
+    echo.
+    echo   Search your email for "Local Admin" or "SSMITH" to find
+    echo   your credentials. If you don't have them, contact the
+    echo   IT Service Desk to request Local Admin access.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo [OK]  Windows features enabled.
+echo.
+echo ========================================
+echo   Restart required
+echo ========================================
+echo.
+echo   The Windows features were enabled successfully.
+echo.
+echo   Your computer needs to restart for them to take effect.
+echo   Setup will continue automatically after restart.
+echo.
+>> "!STATE_FILE!" echo GIT=!S_GIT!
+call :schedule_resume
+pause
+shutdown /r /t 10 /c "Restarting to finish WSL2 setup. Setup will resume automatically."
+exit /b 0
+
+:wsl_features_ok
+REM Features are enabled but WSL still not working -- try wsl --install
 echo.
 echo ========================================
 echo   WSL2 needs to be installed
 echo ========================================
 echo.
-echo   WSL2 is a Windows feature that Docker needs.
+echo   The Windows features are enabled, but WSL2 itself
+echo   needs to be downloaded and installed.
 echo.
-echo   Windows will pop up asking for an admin password.
+echo   Windows may pop up asking for an admin password.
 echo   Use your SSMITH Local Admin credentials. To find them:
 echo     - Search your email for "Local Admin" or "SSMITH"
-echo     - The username is usually SSMITH (all caps)
+echo     - The username is usually SSMITH ^(all caps^)
 echo     - The password was in that email
 echo.
 echo   If you can't find the email, contact the IT Service Desk.
@@ -197,20 +301,25 @@ pause
 
 wsl --install
 if !ERRORLEVEL! neq 0 (
-    echo.
-    echo [ERROR] WSL2 installation failed.
-    echo.
-    echo   This usually means the admin password was wrong or you
-    echo   don't have Local Admin rights on this computer.
-    echo.
-    echo   Search your email for "Local Admin" or "SSMITH" to find
-    echo   your credentials. If you don't have them, contact the
-    echo   IT Service Desk to request Local Admin access.
-    echo.
-    pause
-    exit /b 1
+    REM wsl --install may fail but still succeed (Windows quirk).
+    REM Also try wsl --update as a fallback.
+    echo [...]  Trying WSL update as fallback...
+    wsl --update >nul 2>nul
 )
 
+REM Verify WSL is now working
+wsl --status >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    echo [OK]  WSL2 installed.
+    >> "!STATE_FILE!" echo WSL=1
+    goto :wsl_check_reboot
+)
+
+REM Still not working -- may need reboot for features to take effect
+echo.
+echo [INFO] WSL2 install ran. A restart may be needed to finish.
+
+:wsl_check_reboot
 echo.
 echo ========================================
 echo   Restart required
