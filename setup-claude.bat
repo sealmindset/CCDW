@@ -541,6 +541,63 @@ exit /b 0
 REM Verify Docker is actually running
 docker info >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :docker_running
+
+REM Docker not running -- try to find and launch Rancher Desktop
+set "RD_EXE="
+if exist "%LOCALAPPDATA%\Programs\Rancher Desktop\Rancher Desktop.exe" (
+    set "RD_EXE=%LOCALAPPDATA%\Programs\Rancher Desktop\Rancher Desktop.exe"
+)
+if not defined RD_EXE if exist "%ProgramFiles%\Rancher Desktop\Rancher Desktop.exe" (
+    set "RD_EXE=%ProgramFiles%\Rancher Desktop\Rancher Desktop.exe"
+)
+
+REM Check if Rancher was installed under a different user profile (e.g. SSMITH admin)
+if not defined RD_EXE (
+    for /d %%U in (C:\Users\*) do (
+        if exist "%%U\AppData\Local\Programs\Rancher Desktop\Rancher Desktop.exe" (
+            if /i not "%%U"=="%USERPROFILE%" (
+                echo.
+                echo ========================================
+                echo   Rancher Desktop installed under
+                echo   a different Windows account
+                echo ========================================
+                echo.
+                echo   Rancher Desktop was installed under %%~nxU
+                echo   but you're logged in as %USERNAME%.
+                echo.
+                echo   Rancher Desktop needs to be installed for YOUR account.
+                echo   It does NOT need admin rights to install.
+                echo.
+                echo   I'll open the download page -- install it again:
+                echo     1. Click the Windows download button
+                echo     2. Run the installer
+                echo     3. Choose "Install for me only" if asked
+                echo     4. Restart your computer
+                echo     5. Then double-click this file again
+                echo.
+                start "" "https://rancherdesktop.io/"
+                pause
+                exit /b 1
+            )
+        )
+    )
+)
+
+if defined RD_EXE (
+    echo [...]  Starting Rancher Desktop...
+    start "" "!RD_EXE!"
+    echo [WAIT] Waiting for Docker to start ^(this can take 30-60 seconds^)...
+    set "DOCKER_WAIT=0"
+    :docker_wait_loop
+    if !DOCKER_WAIT! GEQ 12 goto :docker_wait_done
+    timeout /t 5 /nobreak >nul
+    docker info >nul 2>nul
+    if !ERRORLEVEL! equ 0 goto :docker_running
+    set /a DOCKER_WAIT+=1
+    goto :docker_wait_loop
+    :docker_wait_done
+)
+
 echo.
 echo [WAIT] Docker is installed but not running yet.
 echo.
