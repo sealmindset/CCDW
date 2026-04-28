@@ -169,6 +169,62 @@ if "!S_WSL!"=="1" (
 
 echo [...]  Checking for WSL2...
 
+REM --- Pre-flight: Windows build check (WSL2 needs build 18362+) ---
+REM ver output: "Microsoft Windows [Version 10.0.BUILD.REV]"
+for /f "tokens=2 delims=[]" %%V in ('ver 2^>nul') do (
+    for /f "tokens=3 delims=." %%B in ("%%V") do set "WIN_BUILD=%%B"
+)
+if defined WIN_BUILD (
+    if !WIN_BUILD! LSS 18362 (
+        echo.
+        echo ========================================
+        echo   Windows version too old for WSL2
+        echo ========================================
+        echo.
+        echo   WSL2 requires Windows 10 build 18362 ^(May 2019^) or later.
+        echo   Your build: !WIN_BUILD!
+        echo.
+        echo   Please update Windows via Settings ^> Update ^& Security
+        echo   ^> Windows Update, then run this setup again.
+        echo.
+        pause
+        exit /b 1
+    )
+)
+
+REM --- Pre-flight: CPU virtualization check (VT-x / AMD-V) ---
+REM If disabled in BIOS/UEFI, WSL2 will crash even with features enabled.
+powershell -NoProfile -Command ^
+    "$p = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue; " ^
+    "if ($p.VirtualizationFirmwareEnabled -eq $true) { exit 0 } " ^
+    "elseif ($p.VirtualizationFirmwareEnabled -eq $false) { exit 1 } " ^
+    "else { exit 0 }" >nul 2>nul
+if !ERRORLEVEL! equ 1 (
+    echo.
+    echo ========================================
+    echo   CPU virtualization is disabled
+    echo ========================================
+    echo.
+    echo   WSL2 and Docker need hardware virtualization ^(VT-x / AMD-V^)
+    echo   which is turned off in your computer's BIOS settings.
+    echo.
+    echo   To fix this:
+    echo     1. Restart your computer
+    echo     2. During boot, press F2 ^(or F12/Del^) to enter BIOS Setup
+    echo     3. Look for "Intel Virtualization Technology" or "VT-x"
+    echo        ^(often under Security, Advanced, or CPU settings^)
+    echo     4. Change it to Enabled
+    echo     5. Save and exit ^(usually F10^)
+    echo.
+    echo   If you're not sure how to do this, ask IT for help --
+    echo   tell them "I need VT-x enabled in BIOS for Docker/WSL2."
+    echo.
+    echo   After enabling it, run this setup again.
+    echo.
+    pause
+    exit /b 1
+)
+
 REM First check if WSL2 is already working
 wsl --status >nul 2>nul
 if !ERRORLEVEL! equ 0 (
