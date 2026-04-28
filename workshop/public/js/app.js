@@ -647,7 +647,7 @@
   }
 
   function hideAllHealthBanners() {
-    ['healthBannerVpn', 'healthBannerTokenExpired', 'healthBannerTokenWarning',
+    ['healthBannerVpn', 'healthBannerTokenExpired',
      'healthBannerDisk', 'healthBannerDown'].forEach(hideHealthBanner);
   }
 
@@ -675,13 +675,6 @@
       if (status.ai_status === 'Token expired' || status.ai_status === 'Session expired') {
         showHealthBanner('healthBannerTokenExpired');
         return;
-      }
-
-      // Token expiring soon (< 30 min)
-      if (status.token_minutes_remaining !== null && status.token_minutes_remaining <= 30 && status.token_minutes_remaining > 0) {
-        var minEl = document.getElementById('healthTokenMinutes');
-        if (minEl) minEl.textContent = status.token_minutes_remaining;
-        showHealthBanner('healthBannerTokenWarning');
       }
 
       // Low disk (< 500 MB)
@@ -737,9 +730,13 @@
       iterateChat.showTyping();
     };
 
-    // Dashboard link (port 3000 with ?dashboard to prevent redirect loop)
+    // Dashboard link (port 3000)
     var dashLink = document.getElementById('dashboardLink');
-    if (dashLink) dashLink.href = 'http://' + window.location.hostname + ':3000?dashboard';
+    if (dashLink) dashLink.href = 'http://' + window.location.hostname + ':3000';
+
+    // Home nav → dashboard
+    var navHome = document.getElementById('navHome');
+    if (navHome) navHome.href = 'http://' + window.location.hostname + ':3000';
 
     // Setup
     setupButtons();
@@ -768,8 +765,6 @@
     var dashUrl = 'http://' + window.location.hostname + ':3000?dashboard';
     var signInLink = document.getElementById('healthSignInLink');
     if (signInLink) signInLink.addEventListener('click', function(e) { e.preventDefault(); window.open(dashUrl, '_blank'); });
-    var refreshLink = document.getElementById('healthRefreshLink');
-    if (refreshLink) refreshLink.addEventListener('click', function(e) { e.preventDefault(); window.open(dashUrl, '_blank'); });
 
     // Start background health monitoring (polls every 60s)
     startHealthPolling();

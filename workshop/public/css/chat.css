@@ -28,7 +28,7 @@
 }
 
 @keyframes message-in {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -40,7 +40,7 @@
 .message.ai .message-bubble {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md) var(--radius-md) var(--radius-md) 4px;
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-sm);
   padding: var(--space-md) var(--space-lg);
   color: var(--text-primary);
   font-size: 0.9rem;
@@ -54,11 +54,12 @@
 
 .message.user .message-bubble {
   background: var(--accent);
-  border-radius: var(--radius-md) var(--radius-md) 4px var(--radius-md);
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
   padding: var(--space-md) var(--space-lg);
   color: white;
   font-size: 0.9rem;
   line-height: 1.7;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
 }
 
 /* Typing indicator */
@@ -151,10 +152,10 @@
 
 .quick-reply-btn {
   padding: 6px 16px;
-  border: 1px solid var(--accent);
+  border: 1px solid rgba(99, 102, 241, 0.3);
   border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -165,12 +166,14 @@
 .quick-reply-btn:hover {
   background: var(--accent);
   color: white;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow);
 }
 
 .quick-reply-btn.selected {
   background: var(--accent);
   color: white;
-  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 3px var(--accent);
+  border-color: var(--accent);
 }
 
 .welcome-action-btn {
@@ -214,11 +217,12 @@
   outline: none;
   min-height: 42px;
   max-height: 120px;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .chat-input:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .chat-input::placeholder {
@@ -243,12 +247,14 @@
 .btn-send:hover {
   background: var(--accent-hover);
   transform: scale(1.05);
+  box-shadow: var(--shadow-glow);
 }
 
 .btn-send:disabled {
   opacity: 0.4;
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
 }
 
 /* --- Markdown in AI messages --- */

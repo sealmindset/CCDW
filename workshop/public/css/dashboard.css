@@ -14,7 +14,7 @@
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   padding: var(--space-sm) 0 var(--space-xs);
   margin-top: var(--space-sm);
 }
@@ -37,7 +37,7 @@
 }
 
 .board-item.board-in-progress {
-  border-color: var(--accent);
+  border-color: rgba(99, 102, 241, 0.3);
   background: var(--accent-soft);
 }
 
@@ -71,7 +71,7 @@
 
 .board-badge {
   font-size: 0.65rem;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: var(--radius-full);
   font-weight: 600;
   flex-shrink: 0;
@@ -171,15 +171,29 @@
   padding: var(--space-lg);
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.ship-mode-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.04), transparent);
+  opacity: 0;
+  transition: opacity 0.2s;
 }
 
 .ship-mode-card:hover {
   border-color: var(--accent);
-  background: var(--bg-hover);
   transform: translateX(4px);
+}
+
+.ship-mode-card:hover::before {
+  opacity: 1;
 }
 
 .mode-icon {
@@ -192,18 +206,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
 .ship-mode-card h3 {
   font-size: 1rem;
   margin-bottom: var(--space-xs);
   color: var(--text-primary);
+  position: relative;
 }
 
 .ship-mode-card p {
   font-size: 0.85rem;
   color: var(--text-secondary);
   line-height: 1.5;
+  position: relative;
 }
 
 /* Deploying state */

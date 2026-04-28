@@ -5,231 +5,178 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Claude Code Docker</title>
     <style>
+        :root {
+            --bg-primary: #0c0e14;
+            --bg-secondary: #12151e;
+            --bg-tertiary: #1a1e2e;
+            --bg-card: #161a28;
+            --bg-hover: #1e2336;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent: #6366f1;
+            --accent-hover: #818cf8;
+            --accent-soft: rgba(99, 102, 241, 0.12);
+            --accent-glow: rgba(99, 102, 241, 0.3);
+            --success: #22c55e;
+            --success-soft: rgba(34, 197, 94, 0.12);
+            --warning: #f59e0b;
+            --warning-soft: rgba(245, 158, 11, 0.12);
+            --error: #ef4444;
+            --error-soft: rgba(239, 68, 68, 0.12);
+            --border: rgba(100, 116, 139, 0.15);
+            --border-hover: rgba(100, 116, 139, 0.3);
+            --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+            --shadow-glow: 0 0 20px var(--accent-glow);
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0f172a;
-            color: #e2e8f0;
+            font-family: var(--font-sans);
+            background: var(--bg-primary);
+            color: var(--text-primary);
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
+
+        .page {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 0 1.5rem 4rem;
+        }
+
+        /* ---- Header ---- */
         .header {
-            text-align: center;
-            padding: 3rem 1rem 2rem;
-        }
-        .header h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 0.5rem;
-        }
-        .header p {
-            color: #94a3b8;
-            font-size: 1.1rem;
-        }
-        .cards {
-            display: flex;
-            gap: 1.5rem;
-            padding: 1rem;
-            max-width: 900px;
-            width: 100%;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        .card {
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 16px;
-            padding: 2rem;
-            flex: 1;
-            min-width: 280px;
-            max-width: 400px;
-            text-decoration: none;
-            color: inherit;
-            transition: all 0.2s;
-            cursor: pointer;
-            display: block;
-        }
-        .card:hover {
-            border-color: #818cf8;
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(129, 140, 248, 0.15);
-        }
-        .card-icon {
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
-        }
-        .card h2 {
-            font-size: 1.3rem;
-            margin-bottom: 0.5rem;
-            color: #f1f5f9;
-        }
-        .card p {
-            color: #94a3b8;
-            line-height: 1.6;
-            font-size: 0.95rem;
-        }
-        .card .port {
-            display: inline-block;
-            background: #334155;
-            color: #818cf8;
-            padding: 0.2rem 0.6rem;
-            border-radius: 6px;
-            font-family: monospace;
-            font-size: 0.85rem;
-            margin-top: 0.75rem;
-        }
-        .status-section {
-            max-width: 900px;
-            width: 100%;
-            padding: 1rem;
-            margin-top: 1rem;
-        }
-        .status-section h3 {
-            color: #94a3b8;
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            margin-bottom: 0.75rem;
-            padding-left: 0.5rem;
-        }
-        .status-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 0.75rem;
-        }
-        .status-item {
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 10px;
-            padding: 1rem 1.25rem;
             display: flex;
             align-items: center;
-            gap: 0.75rem;
-        }
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            flex-shrink: 0;
-        }
-        .status-dot.green { background: #4ade80; box-shadow: 0 0 8px rgba(74, 222, 128, 0.4); }
-        .status-dot.yellow { background: #facc15; box-shadow: 0 0 8px rgba(250, 204, 21, 0.4); }
-        .status-dot.red { background: #f87171; box-shadow: 0 0 8px rgba(248, 113, 113, 0.4); }
-        .status-dot.checking { background: #94a3b8; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        .status-label { color: #cbd5e1; font-size: 0.9rem; }
-        .status-detail { color: #64748b; font-size: 0.8rem; }
-
-        .getting-started {
-            max-width: 900px;
-            width: 100%;
-            padding: 1rem;
-            margin-top: 1rem;
-            margin-bottom: 3rem;
-        }
-        .getting-started h3 {
-            color: #94a3b8;
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            margin-bottom: 0.75rem;
-            padding-left: 0.5rem;
-        }
-        .steps {
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 12px;
-            padding: 1.5rem 2rem;
-        }
-        .step {
-            display: flex;
-            align-items: flex-start;
             gap: 1rem;
-            padding: 0.75rem 0;
+            padding: 2.5rem 0 2rem;
         }
-        .step:not(:last-child) { border-bottom: 1px solid #334155; }
-        .step-num {
-            background: #334155;
-            color: #818cf8;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
+        .header-logo {
+            width: 48px;
+            height: 48px;
+            background: var(--accent);
+            border-radius: var(--radius-md);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 600;
-            font-size: 0.85rem;
+            font-weight: 700;
+            font-size: 1.25rem;
+            color: white;
             flex-shrink: 0;
+            box-shadow: var(--shadow-glow);
         }
-        .step-text { color: #cbd5e1; line-height: 1.6; padding-top: 2px; }
-        .step-text code {
-            background: #334155;
-            color: #a78bfa;
-            padding: 0.15rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.9rem;
+        .header-text h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.2;
+        }
+        .header-text p {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            margin-top: 0.15rem;
         }
 
-        .auth-notify {
+        /* ---- Banners ---- */
+        .banner {
             display: none;
-            justify-content: center;
-            width: 100%;
-            padding: 0 1rem;
-            margin-bottom: 0.5rem;
+            border-radius: var(--radius-md);
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            line-height: 1.5;
         }
-        .auth-notify-inner {
-            background: linear-gradient(135deg, #312e81, #1e1b4b);
-            border: 1px solid #4338ca;
-            border-radius: 12px;
-            padding: 1.25rem 1.5rem;
-            max-width: 900px;
-            width: 100%;
+        .banner-auth {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(99, 102, 241, 0.04));
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+        .banner-auth-inner {
             display: flex;
             align-items: center;
             gap: 1rem;
             flex-wrap: wrap;
         }
-        .auth-notify-icon { font-size: 1.5rem; }
-        .auth-notify-text { flex: 1; min-width: 200px; }
-        .auth-notify-text strong { color: #e0e7ff; display: block; margin-bottom: 0.25rem; }
-        .auth-notify-text span { color: #a5b4fc; font-size: 0.9rem; }
-        .auth-notify-code {
-            background: #1e1b4b;
-            border: 2px solid #6366f1;
-            border-radius: 8px;
-            padding: 0.6rem 1.25rem;
-            font-family: monospace;
-            font-size: 1.75rem;
+        .banner-auth-icon { font-size: 1.5rem; flex-shrink: 0; }
+        .banner-auth-text { flex: 1; min-width: 200px; }
+        .banner-auth-text strong { color: #e0e7ff; display: block; margin-bottom: 0.15rem; font-size: 0.95rem; }
+        .banner-auth-text span { color: #a5b4fc; font-size: 0.85rem; }
+        .banner-auth-code {
+            background: var(--bg-primary);
+            border: 2px solid var(--accent);
+            border-radius: var(--radius-sm);
+            padding: 0.5rem 1rem;
+            font-family: var(--font-mono);
+            font-size: 1.5rem;
             font-weight: 700;
-            color: #a78bfa;
+            color: var(--accent-hover);
             letter-spacing: 0.15em;
             cursor: pointer;
             position: relative;
             user-select: all;
         }
-        .auth-notify-code:hover { border-color: #818cf8; }
-        .auth-notify-code .copy-hint {
+        .banner-auth-code:hover { border-color: var(--accent-hover); }
+        .banner-auth-code .copy-hint {
             position: absolute;
-            top: -1.5rem;
+            top: -1.4rem;
             right: 0;
-            font-size: 0.65rem;
-            color: #6366f1;
+            font-size: 0.6rem;
+            color: var(--text-muted);
             letter-spacing: normal;
             font-weight: 400;
         }
+        .banner-auth-btn {
+            background: var(--accent);
+            color: white;
+            padding: 0.45rem 1rem;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            transition: background 0.15s;
+        }
+        .banner-auth-btn:hover { background: var(--accent-hover); }
+
+        .banner-ssl {
+            background: var(--warning-soft);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+        }
+        .banner-ssl-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            margin-bottom: 0.5rem;
+        }
+        .banner-ssl-header strong { color: #fde68a; }
+        .banner-ssl p { color: #fcd34d; font-size: 0.85rem; line-height: 1.6; margin: 0.3rem 0; }
+        .banner-ssl ol { color: #fed7aa; font-size: 0.8rem; margin: 0.5rem 0 0 1.25rem; }
+        .banner-ssl ol li { margin: 0.3rem 0; }
+        .banner-ssl code {
+            background: rgba(0,0,0,0.25);
+            padding: 0.1rem 0.35rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            color: #fde68a;
+        }
+
         .copy-toast {
             position: fixed;
             top: 1rem;
             right: 1rem;
-            background: #22c55e;
+            background: var(--success);
             color: white;
             padding: 0.5rem 1rem;
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             font-size: 0.85rem;
             font-weight: 600;
             opacity: 0;
@@ -238,225 +185,419 @@
             pointer-events: none;
         }
         .copy-toast.show { opacity: 1; }
-        .auth-notify-btn {
-            background: #6366f1;
-            color: white;
+
+        /* ---- Service Cards ---- */
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+        .card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: var(--radius-lg);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .card:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-lg);
+        }
+        .card:hover::before { opacity: 1; }
+        .card-featured { border-color: rgba(99, 102, 241, 0.3); }
+        .card-featured::before {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), transparent);
+        }
+        .card-featured:hover { border-color: var(--accent); box-shadow: var(--shadow-glow); }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .card-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+        .card-icon-workshop { background: var(--accent-soft); color: var(--accent-hover); }
+        .card-icon-vscode { background: rgba(59, 130, 246, 0.12); color: #60a5fa; }
+        .card-icon-terminal { background: rgba(34, 197, 94, 0.12); color: var(--success); }
+        .card h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .card p {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            line-height: 1.55;
+            flex: 1;
+        }
+        .card-port {
+            display: inline-block;
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            margin-top: 0.75rem;
+            width: fit-content;
+        }
+
+        /* ---- Provider Card ---- */
+        .provider-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .provider-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .provider-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .provider-info { flex: 1; }
+        .provider-info h3 { font-size: 0.95rem; font-weight: 600; }
+        .provider-info p { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.1rem; }
+        .provider-badge {
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            padding: 0.2rem 0.6rem;
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+        }
+
+        .signin-section {
+            display: none;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+        .signin-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .btn {
+            border: none;
+            padding: 0.45rem 1rem;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            font-family: var(--font-sans);
+            transition: background 0.15s;
+        }
+        .btn-accent { background: var(--accent); color: white; }
+        .btn-accent:hover { background: var(--accent-hover); }
+        .signin-hint { color: var(--text-muted); font-size: 0.8rem; }
+        .signin-hint a { color: var(--accent-hover); }
+        .signin-flow {
+            display: none;
+            margin-top: 0.75rem;
+        }
+        .signin-instructions { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.6rem; line-height: 1.5; }
+        .signin-code {
+            display: none;
+            background: var(--bg-primary);
+            border: 2px solid var(--accent);
+            border-radius: var(--radius-sm);
             padding: 0.5rem 1rem;
-            border-radius: 8px;
+            font-family: var(--font-mono);
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-hover);
+            letter-spacing: 0.15em;
+            cursor: pointer;
+            user-select: all;
+        }
+        .signin-link {
+            display: none;
+            background: var(--accent);
+            color: white;
+            padding: 0.35rem 0.85rem;
+            border-radius: var(--radius-sm);
             font-weight: 600;
             text-decoration: none;
-            font-size: 0.9rem;
-            white-space: nowrap;
-        }
-        .auth-notify-btn:hover { background: #4f46e5; }
-
-        .ssl-notice {
-            display: none;
-            justify-content: center;
-            width: 100%;
-            padding: 0 1rem;
-            margin-bottom: 0.5rem;
-        }
-        .ssl-notice-inner {
-            background: linear-gradient(135deg, #78350f, #451a03);
-            border: 1px solid #b45309;
-            border-radius: 12px;
-            padding: 1.25rem 1.5rem;
-            max-width: 900px;
-            width: 100%;
-        }
-        .ssl-notice-header {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin-bottom: 0.75rem;
-        }
-        .ssl-notice-header strong { color: #fde68a; font-size: 1rem; }
-        .ssl-notice p { color: #fcd34d; font-size: 0.9rem; line-height: 1.6; margin: 0.4rem 0; }
-        .ssl-notice .ssl-steps { color: #fed7aa; font-size: 0.85rem; margin-top: 0.75rem; padding-left: 1.25rem; }
-        .ssl-notice .ssl-steps li { margin: 0.35rem 0; }
-        .ssl-notice code {
-            background: rgba(0,0,0,0.3);
-            padding: 0.1rem 0.4rem;
-            border-radius: 4px;
-            font-size: 0.85rem;
-            color: #fde68a;
-        }
-
-        .redirect-banner {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            padding: 0.75rem 1rem 0;
-        }
-        .redirect-inner {
-            background: linear-gradient(135deg, #1e3a5f, #1e293b);
-            border: 1px solid #3b82f6;
-            border-radius: 10px;
-            padding: 0.75rem 1.25rem;
-            max-width: 900px;
-            width: 100%;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            color: #93c5fd;
-            font-size: 0.95rem;
-        }
-        .redirect-spinner {
-            display: inline-block;
-            animation: pulse 1s infinite;
-            color: #3b82f6;
-        }
-        .redirect-stay {
-            margin-left: auto;
-            color: #64748b;
             font-size: 0.8rem;
-            text-decoration: underline;
         }
-        .redirect-stay:hover { color: #94a3b8; }
+        .signin-waiting {
+            display: none;
+            margin-top: 0.6rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+        .signin-waiting .dot { display: inline-block; animation: pulse 1.5s infinite; }
 
-        .usage-section {
-            max-width: 900px;
-            width: 100%;
-            padding: 1rem;
-            margin-top: 1rem;
-        }
-        .usage-section h3 {
-            color: #94a3b8;
-            font-size: 0.85rem;
+        /* ---- Section Headers ---- */
+        .section-label {
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            margin-bottom: 0.75rem;
-            padding-left: 0.5rem;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.6rem;
         }
+
+        /* ---- Status Grid ---- */
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .status-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .status-dot.green { background: var(--success); box-shadow: 0 0 6px rgba(34, 197, 94, 0.4); }
+        .status-dot.yellow { background: var(--warning); box-shadow: 0 0 6px rgba(245, 158, 11, 0.4); }
+        .status-dot.red { background: var(--error); box-shadow: 0 0 6px rgba(239, 68, 68, 0.4); }
+        .status-dot.checking { background: var(--text-muted); animation: pulse 1.5s infinite; }
+        .status-label { color: var(--text-secondary); font-size: 0.85rem; font-weight: 500; }
+        .status-detail { color: var(--text-muted); font-size: 0.75rem; }
+        .status-token { display: none; color: var(--text-muted); font-size: 0.75rem; }
+
+        /* ---- Usage Stats ---- */
         .usage-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 0.75rem;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
         }
         .usage-item {
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 10px;
-            padding: 1.25rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 1rem;
             text-align: center;
         }
         .usage-value {
-            font-size: 1.5rem;
+            font-size: 1.25rem;
             font-weight: 700;
-            background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 0.25rem;
+            color: var(--accent-hover);
+            margin-bottom: 0.15rem;
         }
         .usage-label {
-            color: #64748b;
-            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-size: 0.7rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
+
+        /* ---- Getting Started ---- */
+        .steps-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem 1.5rem;
+        }
+        .step {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.6rem 0;
+        }
+        .step:not(:last-child) { border-bottom: 1px solid var(--border); }
+        .step-num {
+            background: var(--accent-soft);
+            color: var(--accent-hover);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.75rem;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .step-text {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+        .step-text strong { color: var(--text-primary); }
+        .step-text code {
+            background: var(--bg-tertiary);
+            color: var(--accent-hover);
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.825rem;
+            font-family: var(--font-mono);
+        }
+
+        /* ---- Responsive ---- */
+        @media (max-width: 680px) {
+            .cards { grid-template-columns: 1fr; }
+            .usage-grid { grid-template-columns: repeat(2, 1fr); }
+            .header { padding: 1.5rem 0 1.25rem; }
+        }
+
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     </style>
 </head>
 <body>
-    <!-- Copy-to-clipboard toast -->
+
     <div class="copy-toast" id="copyToast">Code copied!</div>
 
-    <!-- Redirect banner (shown briefly before auto-redirect to Workshop) -->
-    <div class="redirect-banner" id="redirectBanner" style="display:none;">
-        <div class="redirect-inner">
-            <span class="redirect-spinner">&#9679;</span>
-            <span>Opening Workshop...</span>
-            <a href="?dashboard" class="redirect-stay">Stay on dashboard</a>
-        </div>
-    </div>
+    <div class="page">
 
-    <div class="header">
-        <h1>Claude Code Docker</h1>
-        <p>Your AI-powered development environment is ready</p>
-    </div>
-
-    <!-- Auth notification (auto-shown when login wizard needs the browser) -->
-    <div class="auth-notify" id="authNotify">
-        <div class="auth-notify-inner">
-            <div class="auth-notify-icon">&#128273;</div>
-            <div class="auth-notify-text">
-                <strong>Sign-in required</strong>
-                <span id="authNotifyDetail">Enter the code at the sign-in page</span>
+        <!-- Header -->
+        <div class="header">
+            <div class="header-logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
             </div>
-            <div class="auth-notify-code" id="authNotifyCode" title="Click to copy">---<span class="copy-hint">click to copy</span></div>
-            <a class="auth-notify-btn" id="authNotifyLink" href="#" target="_blank">Open Sign-in Page</a>
+            <div class="header-text">
+                <h1>Claude Code Docker</h1>
+                <p>Your AI-powered development environment</p>
+            </div>
         </div>
-    </div>
 
-    <!-- SSL proxy / content filter notice (auto-shown when health detects SSL interception) -->
-    <div class="ssl-notice" id="sslNotice">
-        <div class="ssl-notice-inner">
-            <div class="ssl-notice-header">
-                <span style="font-size:1.5rem;">&#9888;</span>
+        <!-- Auth notification banner -->
+        <div class="banner banner-auth" id="authNotify">
+            <div class="banner-auth-inner">
+                <div class="banner-auth-icon">&#128273;</div>
+                <div class="banner-auth-text">
+                    <strong>Sign-in required</strong>
+                    <span id="authNotifyDetail">Enter the code at the sign-in page</span>
+                </div>
+                <div class="banner-auth-code" id="authNotifyCode" title="Click to copy">---<span class="copy-hint">click to copy</span></div>
+                <a class="banner-auth-btn" id="authNotifyLink" href="#" target="_blank">Open Sign-in Page</a>
+            </div>
+        </div>
+
+        <!-- SSL proxy notice -->
+        <div class="banner banner-ssl" id="sslNotice">
+            <div class="banner-ssl-header">
+                <span style="font-size:1.25rem;">&#9888;</span>
                 <strong>Content filter is blocking secure connections</strong>
             </div>
             <p>A network security tool (Zscaler, Netskope, GlobalProtect, or similar) is intercepting HTTPS traffic. This prevents VS Code extensions, AI connections, and software downloads from working.</p>
-            <ol class="ssl-steps">
+            <ol>
                 <li>Find the security app in your <strong>menu bar</strong> or <strong>system tray</strong></li>
                 <li>Choose <strong>Disable</strong> or <strong>Pause</strong> and pick the longest time option</li>
                 <li>This page will update automatically when the connection is restored</li>
                 <li>Re-enable the security tool when you are done installing or downloading</li>
             </ol>
         </div>
-    </div>
 
-    <div class="cards">
-        <a class="card" href="" id="workshop-link" style="border-color: #a78bfa;">
-            <div class="card-icon">&#9881;</div>
-            <h2>Workshop</h2>
-            <p>Build apps without touching a terminal. Describe your idea, watch it come to life, and ship it.</p>
-            <span class="port">localhost:9200</span>
-        </a>
-        <a class="card" href="" id="vscode-link">
-            <div class="card-icon">&#128187;</div>
-            <h2>VS Code</h2>
-            <p>Full IDE with file explorer, extensions, and integrated terminal. No password needed.</p>
-            <span class="port">localhost:8080</span>
-        </a>
-        <a class="card" href="" id="terminal-link">
-            <div class="card-icon">&#9000;</div>
-            <h2>Web Terminal</h2>
-            <p>Open Claude Code in a browser-based terminal. Start building with <code>/make-it</code>.</p>
-            <span class="port">localhost:7681</span>
-        </a>
-    </div>
-
-    <div class="cards" style="margin-top: -0.5rem;">
-        <div class="card" id="providerCard" style="min-width:280px;max-width:900px;flex:none;width:calc(100% - 2rem);border-color:#334155;cursor:default;">
-            <div style="display:flex;align-items:center;gap:1rem;">
-                <div class="card-icon" style="margin-bottom:0;">&#9881;</div>
-                <div style="flex:1;">
-                    <h2 style="font-size:1.1rem;">AI Provider</h2>
-                    <p style="font-size:0.85rem;" id="setup-detail">Configured during installation. To change, re-run the installer.</p>
-                </div>
-                <span class="port" id="setup-badge" style="margin-left:auto;margin-top:0;">checking...</span>
-            </div>
-            <div id="signinSection" style="display:none;margin-top:1rem;padding-top:1rem;border-top:1px solid #334155;">
-                <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
-                    <button id="btnSignIn" style="background:#6366f1;color:white;border:none;padding:0.5rem 1.25rem;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.9rem;">Sign in</button>
-                    <span id="signinHint" style="color:#94a3b8;font-size:0.85rem;"></span>
-                </div>
-                <div id="signinFlow" style="display:none;margin-top:1rem;">
-                    <p id="signinInstructions" style="color:#94a3b8;font-size:0.85rem;margin-bottom:0.75rem;"></p>
-                    <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-                        <span id="signinCode" style="display:none;background:#1e1b4b;border:2px solid #6366f1;border-radius:8px;padding:0.6rem 1.25rem;font-family:monospace;font-size:1.75rem;font-weight:700;color:#a78bfa;letter-spacing:0.15em;cursor:pointer;user-select:all;" title="Click to copy"></span>
-                        <a id="signinLink" href="#" target="_blank" style="display:none;background:#6366f1;color:white;padding:0.4rem 1rem;border-radius:6px;font-weight:600;text-decoration:none;font-size:0.85rem;">Open sign-in page</a>
+        <!-- Service Cards -->
+        <div class="cards">
+            <a class="card card-featured" href="" id="workshop-link">
+                <div class="card-header">
+                    <div class="card-icon card-icon-workshop">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     </div>
-                    <div id="signinWaiting" style="display:none;margin-top:0.75rem;color:#94a3b8;font-size:0.85rem;">
-                        <span style="display:inline-block;animation:pulse 1.5s infinite;">&#9679;</span> Waiting for you to complete sign-in...
+                    <h2>Workshop</h2>
+                </div>
+                <p>Build apps without touching a terminal. Describe your idea, watch it come to life.</p>
+                <span class="card-port">:9200</span>
+            </a>
+            <a class="card" href="" id="vscode-link">
+                <div class="card-header">
+                    <div class="card-icon card-icon-vscode">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    </div>
+                    <h2>VS Code</h2>
+                </div>
+                <p>Full IDE with file explorer, extensions, and integrated terminal.</p>
+                <span class="card-port">:8080</span>
+            </a>
+            <a class="card" href="" id="terminal-link">
+                <div class="card-header">
+                    <div class="card-icon card-icon-terminal">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    </div>
+                    <h2>Web Terminal</h2>
+                </div>
+                <p>Claude Code in a browser terminal. Start with <code>/make-it</code>.</p>
+                <span class="card-port">:7681</span>
+            </a>
+        </div>
+
+        <!-- AI Provider Card -->
+        <div class="provider-card" id="providerCard">
+            <div class="provider-row">
+                <div class="provider-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </div>
+                <div class="provider-info">
+                    <h3>AI Provider</h3>
+                    <p id="setup-detail">Configured during installation</p>
+                </div>
+                <span class="provider-badge" id="setup-badge">checking...</span>
+            </div>
+            <div class="signin-section" id="signinSection">
+                <div class="signin-row">
+                    <button class="btn btn-accent" id="btnSignIn">Sign in</button>
+                    <span class="signin-hint" id="signinHint"></span>
+                </div>
+                <div class="signin-flow" id="signinFlow">
+                    <p class="signin-instructions" id="signinInstructions"></p>
+                    <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                        <span class="signin-code" id="signinCode" title="Click to copy"></span>
+                        <a class="signin-link" id="signinLink" href="#" target="_blank">Open sign-in page</a>
+                    </div>
+                    <div class="signin-waiting" id="signinWaiting">
+                        <span class="dot">&#9679;</span> Waiting for sign-in...
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="status-section">
-        <h3>System Status</h3>
+        <!-- System Status -->
+        <div class="section-label">System Status</div>
         <div class="status-grid">
             <div class="status-item">
                 <div class="status-dot checking" id="dot-workshop"></div>
@@ -475,7 +616,7 @@
             <div class="status-item">
                 <div class="status-dot checking" id="dot-terminal"></div>
                 <div>
-                    <div class="status-label">Web Terminal</div>
+                    <div class="status-label">Terminal</div>
                     <div class="status-detail" id="status-terminal">Checking...</div>
                 </div>
             </div>
@@ -491,40 +632,40 @@
                 <div>
                     <div class="status-label">AI Provider</div>
                     <div class="status-detail" id="status-ai">Checking...</div>
-                    <div class="status-detail" id="status-token" style="display:none;"></div>
+                    <div class="status-token" id="status-token"></div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="usage-section" id="usage-section" style="display: none;">
-        <h3>Usage Stats</h3>
-        <div class="usage-grid">
-            <div class="usage-item">
-                <div class="usage-value" id="usage-tokens">--</div>
-                <div class="usage-label">Total Tokens</div>
-            </div>
-            <div class="usage-item">
-                <div class="usage-value" id="usage-cost">--</div>
-                <div class="usage-label">Est. Cost</div>
-            </div>
-            <div class="usage-item">
-                <div class="usage-value" id="usage-duration">--</div>
-                <div class="usage-label">Session Time</div>
-            </div>
-            <div class="usage-item">
-                <div class="usage-value" id="usage-model">--</div>
-                <div class="usage-label">Model</div>
+        <!-- Usage Stats -->
+        <div id="usage-section" style="display:none;">
+            <div class="section-label">Usage</div>
+            <div class="usage-grid">
+                <div class="usage-item">
+                    <div class="usage-value" id="usage-tokens">--</div>
+                    <div class="usage-label">Tokens</div>
+                </div>
+                <div class="usage-item">
+                    <div class="usage-value" id="usage-cost">--</div>
+                    <div class="usage-label">Est. Cost</div>
+                </div>
+                <div class="usage-item">
+                    <div class="usage-value" id="usage-duration">--</div>
+                    <div class="usage-label">Session</div>
+                </div>
+                <div class="usage-item">
+                    <div class="usage-value" id="usage-model">--</div>
+                    <div class="usage-label">Model</div>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="getting-started">
-        <h3>Getting Started</h3>
-        <div class="steps">
+        <!-- Getting Started -->
+        <div class="section-label">Getting Started</div>
+        <div class="steps-card">
             <div class="step">
                 <div class="step-num">1</div>
-                <div class="step-text">Click <strong>Workshop</strong> above to build an app without touching a terminal</div>
+                <div class="step-text">Click <strong>Workshop</strong> to build an app without touching a terminal</div>
             </div>
             <div class="step">
                 <div class="step-num">2</div>
@@ -532,17 +673,17 @@
             </div>
             <div class="step">
                 <div class="step-num">3</div>
-                <div class="step-text">Watch your app being built in real-time, then explore and test it</div>
+                <div class="step-text">Watch your app built in real-time, then explore and test it</div>
             </div>
             <div class="step">
                 <div class="step-num">4</div>
-                <div class="step-text">Need more control? Open <strong>VS Code</strong> or <strong>Web Terminal</strong> for full access</div>
+                <div class="step-text">Need more control? Open <strong>VS Code</strong> or <strong>Web Terminal</strong></div>
             </div>
         </div>
+
     </div>
 
     <script>
-        // Copy-to-clipboard for auth codes
         function copyCode(el) {
             var text = el.textContent.replace('click to copy', '').trim();
             if (!text || text === '---') return;
@@ -555,44 +696,41 @@
         document.getElementById('authNotifyCode').addEventListener('click', function() { copyCode(this); });
         document.getElementById('signinCode').addEventListener('click', function() { copyCode(this); });
 
-        // Set correct links based on current hostname
-        const host = window.location.hostname;
+        var host = window.location.hostname;
         document.getElementById('workshop-link').href = 'http://' + host + ':9200';
         document.getElementById('terminal-link').href = 'http://' + host + ':7681';
         document.getElementById('vscode-link').href = 'http://' + host + ':8080';
 
-        const setupBadge = document.getElementById('setup-badge');
+        var setupBadge = document.getElementById('setup-badge');
 
-        // Format helpers for usage stats
         function formatTokens(n) {
-            if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-            if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
             return n.toString();
         }
         function formatDuration(ms) {
             if (!ms || ms <= 0) return '--';
-            const totalSec = Math.floor(ms / 1000);
-            const hours = Math.floor(totalSec / 3600);
-            const minutes = Math.floor((totalSec % 3600) / 60);
+            var totalSec = Math.floor(ms / 1000);
+            var hours = Math.floor(totalSec / 3600);
+            var minutes = Math.floor((totalSec % 3600) / 60);
             if (hours > 0) return hours + 'h ' + minutes + 'm';
             if (minutes > 0) return minutes + 'm';
             return '<1m';
         }
         function formatModel(model) {
             if (!model) return '--';
-            const m = model.match(/claude-(\w+)-(\d+)/);
+            var m = model.match(/claude-(\w+)-(\d+)/);
             if (m) return m[1].charAt(0).toUpperCase() + m[1].slice(1) + ' ' + m[2];
             return model;
         }
 
-        // Health check function
-        async function checkService(url, dotId, statusId, label) {
-            const dot = document.getElementById(dotId);
-            const status = document.getElementById(statusId);
+        async function checkService(url, dotId, statusId) {
+            var dot = document.getElementById(dotId);
+            var status = document.getElementById(statusId);
             try {
-                const controller = new AbortController();
-                setTimeout(() => controller.abort(), 5000);
-                const resp = await fetch(url, { mode: 'no-cors', signal: controller.signal });
+                var controller = new AbortController();
+                setTimeout(function() { controller.abort(); }, 5000);
+                await fetch(url, { mode: 'no-cors', signal: controller.signal });
                 dot.className = 'status-dot green';
                 status.textContent = 'Running';
             } catch (e) {
@@ -601,53 +739,49 @@
             }
         }
 
-        // Check status on load and every 30s
         async function checkAll() {
-            const h = window.location.hostname;
-            checkService('http://' + h + ':9200', 'dot-workshop', 'status-workshop', 'Workshop');
-            checkService('http://' + h + ':7681', 'dot-terminal', 'status-terminal', 'Terminal');
-            checkService('http://' + h + ':8080', 'dot-vscode', 'status-vscode', 'VS Code');
+            var h = window.location.hostname;
+            checkService('http://' + h + ':9200', 'dot-workshop', 'status-workshop');
+            checkService('http://' + h + ':7681', 'dot-terminal', 'status-terminal');
+            checkService('http://' + h + ':8080', 'dot-vscode', 'status-vscode');
 
-            // Docker and AI provider are checked via the status API
             try {
-                const resp = await fetch('/api/status');
+                var resp = await fetch('/api/status');
                 if (resp.ok) {
-                    const data = await resp.json();
-                    const dockerDot = document.getElementById('dot-docker');
-                    const dockerStatus = document.getElementById('status-docker');
-                    const aiDot = document.getElementById('dot-ai');
-                    const aiStatus = document.getElementById('status-ai');
+                    var data = await resp.json();
+                    var dockerDot = document.getElementById('dot-docker');
+                    var dockerStatus = document.getElementById('status-docker');
+                    var aiDot = document.getElementById('dot-ai');
+                    var aiStatus = document.getElementById('status-ai');
+                    var tokenEl = document.getElementById('status-token');
 
                     dockerDot.className = 'status-dot ' + (data.docker === 'ok' ? 'green' : 'yellow');
                     dockerStatus.textContent = data.docker === 'ok' ? 'Connected' : 'Not available';
-
-                    var tokenEl = document.getElementById('status-token');
 
                     if (data.ai_provider === 'none') {
                         aiDot.className = 'status-dot yellow';
                         aiStatus.textContent = 'Not configured';
                         setupBadge.textContent = 'not configured';
-                        setupBadge.style.color = '#facc15';
+                        setupBadge.style.color = 'var(--warning)';
                         tokenEl.style.display = 'none';
                     } else if (data.ai_status === 'ok') {
                         aiDot.className = 'status-dot green';
                         aiStatus.textContent = data.ai_provider;
                         setupBadge.textContent = data.ai_provider;
-                        setupBadge.style.color = '#4ade80';
+                        setupBadge.style.color = 'var(--success)';
 
                         if (data.token_minutes_remaining != null) {
                             tokenEl.style.display = '';
                             var mins = data.token_minutes_remaining;
                             if (mins > 60) {
-                                var h = Math.floor(mins / 60);
-                                tokenEl.textContent = 'Session: ' + h + 'h ' + (mins % 60) + 'm remaining';
-                                tokenEl.style.color = '#4ade80';
+                                tokenEl.textContent = 'Session: ' + Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm remaining';
+                                tokenEl.style.color = 'var(--success)';
                             } else if (mins > 15) {
                                 tokenEl.textContent = 'Session: ' + mins + ' min remaining';
-                                tokenEl.style.color = '#facc15';
+                                tokenEl.style.color = 'var(--warning)';
                             } else if (mins > 0) {
-                                tokenEl.textContent = 'Session expiring in ' + mins + ' min!';
-                                tokenEl.style.color = '#f87171';
+                                tokenEl.textContent = 'Expiring in ' + mins + ' min!';
+                                tokenEl.style.color = 'var(--error)';
                             }
                         } else {
                             tokenEl.style.display = 'none';
@@ -656,13 +790,12 @@
                         aiDot.className = 'status-dot red';
                         aiStatus.textContent = data.ai_provider + ' - ' + data.ai_status;
                         setupBadge.textContent = data.ai_provider;
-                        setupBadge.style.color = '#f87171';
+                        setupBadge.style.color = 'var(--error)';
                         tokenEl.style.display = '';
-                        tokenEl.innerHTML = '<span style="color:#f87171;">Sign in needed</span>';
+                        tokenEl.innerHTML = '<span style="color:var(--error);">Sign in needed</span>';
                     }
                 }
             } catch (e) {
-                // Status API not available -- show as unknown
                 document.getElementById('dot-docker').className = 'status-dot yellow';
                 document.getElementById('status-docker').textContent = 'Unknown';
                 document.getElementById('dot-ai').className = 'status-dot yellow';
@@ -672,9 +805,9 @@
 
         async function checkUsage() {
             try {
-                const resp = await fetch('/api/usage');
+                var resp = await fetch('/api/usage');
                 if (resp.ok) {
-                    const usage = await resp.json();
+                    var usage = await resp.json();
                     if (usage.has_data) {
                         document.getElementById('usage-section').style.display = '';
                         document.getElementById('usage-tokens').textContent = formatTokens(usage.total_tokens);
@@ -693,7 +826,7 @@
                 var data = await resp.json();
                 var notice = document.getElementById('sslNotice');
                 if (data.ssl_proxy || data.failure_type === 'ssl_proxy') {
-                    notice.style.display = 'flex';
+                    notice.style.display = 'block';
                 } else {
                     notice.style.display = 'none';
                 }
@@ -707,14 +840,13 @@
         setInterval(checkUsage, 30000);
         setInterval(checkSslProxy, 30000);
 
-        // Auth-pending polling: auto-open login page when the login wizard requests it
-        let authAutoOpened = false;
+        var authAutoOpened = false;
         async function checkAuthPending() {
             try {
-                const resp = await fetch('/auth/pending');
+                var resp = await fetch('/auth/pending');
                 if (!resp.ok) return;
-                const data = await resp.json();
-                const banner = document.getElementById('authNotify');
+                var data = await resp.json();
+                var banner = document.getElementById('authNotify');
                 if (!data.pending) {
                     banner.style.display = 'none';
                     authAutoOpened = false;
@@ -722,10 +854,10 @@
                 }
                 document.getElementById('authNotifyCode').textContent = data.code || '---';
                 document.getElementById('authNotifyLink').href = data.url;
-                const provider = data.provider === 'azure' ? 'Microsoft' : 'AWS';
+                var provider = data.provider === 'azure' ? 'Microsoft' : 'AWS';
                 document.getElementById('authNotifyDetail').textContent =
                     'Enter the code at the ' + provider + ' sign-in page';
-                banner.style.display = 'flex';
+                banner.style.display = 'block';
                 if (!authAutoOpened) {
                     authAutoOpened = true;
                     window.open(data.url, '_blank');
@@ -735,17 +867,16 @@
         setInterval(checkAuthPending, 3000);
         checkAuthPending();
 
-        // Provider-aware sign-in from the dashboard
-        let signinPolling = null;
+        var signinPolling = null;
 
         async function checkSigninNeeded() {
             try {
-                const resp = await fetch('/api/status');
+                var resp = await fetch('/api/status');
                 if (!resp.ok) return;
-                const data = await resp.json();
-                const section = document.getElementById('signinSection');
-                const btn = document.getElementById('btnSignIn');
-                const hint = document.getElementById('signinHint');
+                var data = await resp.json();
+                var section = document.getElementById('signinSection');
+                var btn = document.getElementById('btnSignIn');
+                var hint = document.getElementById('signinHint');
 
                 if (data.ai_provider === 'none' || data.ai_status === 'ok') {
                     section.style.display = 'none';
@@ -756,14 +887,14 @@
                     return;
                 }
 
-                const isAzure = data.ai_provider.includes('Azure') || data.ai_provider.includes('Foundry');
+                var isAzure = data.ai_provider.includes('Azure') || data.ai_provider.includes('Foundry');
                 if (isAzure) {
                     btn.textContent = 'Sign in to Azure';
                     btn.style.display = '';
                     hint.textContent = 'Uses device-code login -- the sign-in page opens automatically';
                 } else {
                     btn.style.display = 'none';
-                    hint.innerHTML = 'Open the <a href="http://' + window.location.hostname + ':7681" style="color:#818cf8;">Web Terminal</a> to sign in to AWS SSO';
+                    hint.innerHTML = 'Open the <a href="http://' + window.location.hostname + ':7681" style="color:var(--accent-hover);">Web Terminal</a> to sign in to AWS SSO';
                 }
                 section.style.display = '';
             } catch(e) {}
@@ -789,14 +920,14 @@
 
                 if (!data.needed) {
                     btn.textContent = 'Already signed in';
-                    btn.style.background = '#22c55e';
+                    btn.style.background = 'var(--success)';
                     flow.style.display = 'none';
                     setTimeout(function() { checkAll(); checkSigninNeeded(); }, 1000);
                     return;
                 }
 
                 if (data.status === 'use-terminal') {
-                    instructions.innerHTML = 'Sign in via the <a href="http://' + window.location.hostname + ':7681" target="_blank" style="color:#818cf8;">Web Terminal</a>. The login wizard will guide you through AWS SSO.';
+                    instructions.innerHTML = 'Sign in via the <a href="http://' + window.location.hostname + ':7681" target="_blank" style="color:var(--accent-hover);">Web Terminal</a>. The login wizard will guide you through AWS SSO.';
                     btn.style.display = 'none';
                     waiting.style.display = '';
 
@@ -817,8 +948,8 @@
                 }
 
                 if (data.provider === 'azure') {
-                    instructions.innerHTML = '<strong>Step 1:</strong> Click the button below to open the Microsoft sign-in page.<br>' +
-                        '<strong>Step 2:</strong> Enter the code shown here (click to copy it).<br>' +
+                    instructions.innerHTML = '<strong>Step 1:</strong> Click below to open Microsoft sign-in page.<br>' +
+                        '<strong>Step 2:</strong> Enter code shown here (click to copy).<br>' +
                         '<strong>Step 3:</strong> Sign in with your work email. This page updates automatically.';
                     if (data.code) { codeEl.textContent = data.code; codeEl.style.display = ''; }
                     if (data.url) {
@@ -843,7 +974,7 @@
                             btn.style.display = '';
                             btn.disabled = false;
                             btn.textContent = 'Signed in!';
-                            btn.style.background = '#22c55e';
+                            btn.style.background = 'var(--success)';
                             document.getElementById('signinSection').style.display = 'none';
                             fetch('/auth/clear', { method: 'POST' });
                             checkAll();
@@ -858,50 +989,6 @@
         });
 
         setTimeout(checkSigninNeeded, 2000);
-
-        // Auto-redirect to Workshop when everything is healthy.
-        // Stay on dashboard if: ?dashboard in URL, auth issues, SSL issues, Workshop down.
-        const stayOnDashboard = window.location.search.includes('dashboard');
-
-        async function maybeRedirectToWorkshop() {
-            if (stayOnDashboard) return;
-
-            // Check Workshop is responding
-            try {
-                const ctrl = new AbortController();
-                setTimeout(() => ctrl.abort(), 3000);
-                await fetch('http://' + host + ':9200', { mode: 'no-cors', signal: ctrl.signal });
-            } catch (e) {
-                return;
-            }
-
-            // Check for auth problems that need dashboard attention
-            try {
-                const resp = await fetch('/api/status');
-                if (resp.ok) {
-                    const data = await resp.json();
-                    if (data.ai_provider !== 'none' && data.ai_status !== 'ok') return;
-                    if (data.ai_provider === 'none') return;
-                }
-            } catch (e) { return; }
-
-            // Check for SSL proxy issues
-            try {
-                const resp = await fetch('/api/health');
-                if (resp.ok) {
-                    const data = await resp.json();
-                    if (data.ssl_proxy || data.failure_type === 'ssl_proxy') return;
-                }
-            } catch (e) {}
-
-            // All clear -- show banner and redirect
-            document.getElementById('redirectBanner').style.display = 'flex';
-            setTimeout(function() {
-                window.location.href = 'http://' + host + ':9200';
-            }, 1500);
-        }
-
-        setTimeout(maybeRedirectToWorkshop, 2500);
     </script>
 </body>
 </html>
