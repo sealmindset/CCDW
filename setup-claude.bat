@@ -542,6 +542,39 @@ REM Verify Docker is actually running
 docker info >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :docker_running
 
+REM Docker not running -- check VT-x before spending time on other diagnostics.
+REM WSL2 can install fine with VT-x off, but Docker/Rancher can't run VMs without it.
+powershell -NoProfile -Command ^
+    "$p = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue; " ^
+    "if ($p.VirtualizationFirmwareEnabled -eq $true) { exit 0 } " ^
+    "elseif ($p.VirtualizationFirmwareEnabled -eq $false) { exit 1 } " ^
+    "else { exit 0 }" >nul 2>nul
+if !ERRORLEVEL! equ 1 (
+    echo.
+    echo ========================================
+    echo   CPU virtualization is disabled
+    echo ========================================
+    echo.
+    echo   Docker needs hardware virtualization ^(VT-x / AMD-V^)
+    echo   which is turned off in your computer's BIOS settings.
+    echo.
+    echo   To fix this:
+    echo     1. Restart your computer
+    echo     2. During boot, press F2 ^(or F12/Del^) to enter BIOS Setup
+    echo     3. Look for "Intel Virtualization Technology" or "VT-x"
+    echo        ^(often under Security, Advanced, or CPU settings^)
+    echo     4. Change it to Enabled
+    echo     5. Save and exit ^(usually F10^)
+    echo.
+    echo   If you're not sure how to do this, ask IT for help --
+    echo   tell them "I need VT-x enabled in BIOS for Docker/WSL2."
+    echo.
+    echo   After enabling it, run this setup again.
+    echo.
+    pause
+    exit /b 1
+)
+
 REM Docker not running -- try to find and launch Rancher Desktop
 set "RD_EXE="
 if exist "%LOCALAPPDATA%\Programs\Rancher Desktop\Rancher Desktop.exe" (
