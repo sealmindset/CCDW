@@ -207,12 +207,24 @@ if !ERRORLEVEL! equ 1 (
     echo.
 )
 
-REM First check if WSL2 is already working
+REM First check if WSL2 is already working.
+REM wsl --status returns non-zero on some machines even when WSL works fine
+REM (e.g., features enabled but no default distro). Check multiple signals.
 wsl --status >nul 2>nul
 if !ERRORLEVEL! equ 0 (
     echo [OK]  WSL2 is installed.
     >> "!STATE_FILE!" echo WSL=1
     goto :wsl_ok
+)
+REM Fallback: if wsl.exe exists and a distro is installed, WSL is working.
+where wsl >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    wsl -l -q >nul 2>nul
+    if !ERRORLEVEL! equ 0 (
+        echo [OK]  WSL2 is installed.
+        >> "!STATE_FILE!" echo WSL=1
+        goto :wsl_ok
+    )
 )
 
 REM WSL2 not working -- check if the required Windows features are enabled.
@@ -251,8 +263,11 @@ echo.
 echo   Docker needs two Windows features that aren't turned on yet.
 echo   This is normal on older machines or corporate-managed PCs.
 echo.
-echo   Windows will pop up asking for an admin password.
-echo   Use your SSMITH Local Admin credentials. To find them:
+echo   Windows may ask for an admin password.
+echo   If a popup appears, use your SSMITH Local Admin credentials.
+echo   ^(If no popup appears, that's fine -- your system may not need one.^)
+echo.
+echo   To find your SSMITH credentials:
 echo     - Search your email for "Local Admin" or "SSMITH"
 echo     - The username is usually SSMITH ^(all caps^)
 echo     - The password was in that email
@@ -318,26 +333,19 @@ exit /b 0
 REM Features are enabled but WSL still not working -- try wsl --install
 echo.
 echo ========================================
-echo   WSL2 needs to be installed
+echo   Installing WSL2
 echo ========================================
 echo.
-echo   The Windows features are enabled, but WSL2 itself
-echo   needs to be downloaded and installed.
+echo   The Windows features are ready. Now downloading and
+echo   installing WSL2 -- this may take a few minutes.
 echo.
-echo   Windows may pop up asking for an admin password.
-echo   Use your SSMITH Local Admin credentials. To find them:
-echo     - Search your email for "Local Admin" or "SSMITH"
-echo     - The username is usually SSMITH ^(all caps^)
-echo     - The password was in that email
+echo   If Windows asks for an admin password, use your
+echo   SSMITH Local Admin credentials.
+echo   ^(If no popup appears, that's fine -- it means
+echo    your system doesn't need one.^)
 echo.
-echo   If you can't find the email, contact the IT Service Desk.
-echo.
-echo   After installing, your computer must restart.
-echo   Then double-click this file again to continue.
-echo.
-pause
 
-wsl --install
+wsl --install --no-launch
 if !ERRORLEVEL! neq 0 (
     REM wsl --install may fail but still succeed (Windows quirk).
     REM Also try wsl --update as a fallback.
