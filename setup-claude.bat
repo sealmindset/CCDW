@@ -193,36 +193,18 @@ if defined WIN_BUILD (
 )
 
 REM --- Pre-flight: CPU virtualization check (VT-x / AMD-V) ---
-REM If disabled in BIOS/UEFI, WSL2 will crash even with features enabled.
+REM Advisory only -- some vPro/enterprise systems report false even when working.
 powershell -NoProfile -Command ^
     "$p = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue; " ^
     "if ($p.VirtualizationFirmwareEnabled -eq $true) { exit 0 } " ^
     "elseif ($p.VirtualizationFirmwareEnabled -eq $false) { exit 1 } " ^
     "else { exit 0 }" >nul 2>nul
 if !ERRORLEVEL! equ 1 (
+    echo [NOTE] VT-x check could not confirm hardware virtualization is enabled.
+    echo        This is normal on some corporate/vPro systems.
+    echo        If Docker has trouble starting later, VT-x may need to be
+    echo        enabled in BIOS -- ask IT for help if that happens.
     echo.
-    echo ========================================
-    echo   CPU virtualization is disabled
-    echo ========================================
-    echo.
-    echo   WSL2 and Docker need hardware virtualization ^(VT-x / AMD-V^)
-    echo   which is turned off in your computer's BIOS settings.
-    echo.
-    echo   To fix this:
-    echo     1. Restart your computer
-    echo     2. During boot, press F2 ^(or F12/Del^) to enter BIOS Setup
-    echo     3. Look for "Intel Virtualization Technology" or "VT-x"
-    echo        ^(often under Security, Advanced, or CPU settings^)
-    echo     4. Change it to Enabled
-    echo     5. Save and exit ^(usually F10^)
-    echo.
-    echo   If you're not sure how to do this, ask IT for help --
-    echo   tell them "I need VT-x enabled in BIOS for Docker/WSL2."
-    echo.
-    echo   After enabling it, run this setup again.
-    echo.
-    pause
-    exit /b 1
 )
 
 REM First check if WSL2 is already working
@@ -542,8 +524,8 @@ REM Verify Docker is actually running
 docker info >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :docker_running
 
-REM Docker not running -- check VT-x before spending time on other diagnostics.
-REM WSL2 can install fine with VT-x off, but Docker/Rancher can't run VMs without it.
+REM Docker not running -- check VT-x as a diagnostic hint (not a blocker).
+REM Some vPro/enterprise systems report VT-x as disabled even when working.
 powershell -NoProfile -Command ^
     "$p = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue; " ^
     "if ($p.VirtualizationFirmwareEnabled -eq $true) { exit 0 } " ^
@@ -551,28 +533,10 @@ powershell -NoProfile -Command ^
     "else { exit 0 }" >nul 2>nul
 if !ERRORLEVEL! equ 1 (
     echo.
-    echo ========================================
-    echo   CPU virtualization is disabled
-    echo ========================================
+    echo [NOTE] VT-x check could not confirm hardware virtualization.
+    echo        If Docker fails to start, this might be why.
+    echo        Ask IT to enable VT-x in BIOS if problems persist.
     echo.
-    echo   Docker needs hardware virtualization ^(VT-x / AMD-V^)
-    echo   which is turned off in your computer's BIOS settings.
-    echo.
-    echo   To fix this:
-    echo     1. Restart your computer
-    echo     2. During boot, press F2 ^(or F12/Del^) to enter BIOS Setup
-    echo     3. Look for "Intel Virtualization Technology" or "VT-x"
-    echo        ^(often under Security, Advanced, or CPU settings^)
-    echo     4. Change it to Enabled
-    echo     5. Save and exit ^(usually F10^)
-    echo.
-    echo   If you're not sure how to do this, ask IT for help --
-    echo   tell them "I need VT-x enabled in BIOS for Docker/WSL2."
-    echo.
-    echo   After enabling it, run this setup again.
-    echo.
-    pause
-    exit /b 1
 )
 
 REM Docker not running -- try to find and launch Rancher Desktop
