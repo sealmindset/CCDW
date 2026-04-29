@@ -256,33 +256,42 @@ if !ERRORLEVEL! neq 0 (
     wsl --update >nul 2>nul
 )
 
-REM Verify WSL is now working
+REM Check if WSL is now functional (may work without reboot on newer Windows)
 wsl --status >nul 2>nul
 if !ERRORLEVEL! equ 0 (
-    echo [OK]  WSL2 installed.
+    echo [OK]  WSL2 installed and ready.
     >> "!STATE_FILE!" echo WSL=1
-    goto :wsl_check_reboot
+    goto :wsl_ok
+)
+wsl --version >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    echo [OK]  WSL2 installed and ready.
+    >> "!STATE_FILE!" echo WSL=1
+    goto :wsl_ok
 )
 
-REM Still not working -- may need reboot for features to take effect
-echo.
-echo [INFO] WSL2 install ran. A restart may be needed to finish.
-
-:wsl_check_reboot
+REM WSL installed but not responding yet -- let user decide
 echo.
 echo ========================================
-echo   Restart required
+echo   WSL2 installed -- restart may help
 echo ========================================
 echo.
-echo   WSL2 was installed successfully.
-echo.
-echo   Your computer needs to restart.
-echo   Setup will continue automatically after restart.
+echo   WSL2 was installed but isn't responding yet.
+echo   A restart usually fixes this, but it may also
+echo   work if you continue ^(especially if Docker
+echo   manages its own WSL setup^).
 echo.
 >> "!STATE_FILE!" echo WSL=1
-call :schedule_resume
-pause
-exit /b 0
+choice /c CR /n /m "  [C]ontinue anyway  [R]estart now: "
+if !ERRORLEVEL! equ 2 (
+    call :schedule_resume
+    echo.
+    echo   Restarting in 10 seconds...
+    echo   Setup will resume automatically after restart.
+    shutdown /r /t 10 /c "Restarting to complete WSL2 setup..."
+    exit /b 0
+)
+echo [WARN] Continuing without confirmed WSL2. Docker may handle it.
 
 :wsl_ok
 
@@ -380,9 +389,20 @@ for /L %%I in (1,1,12) do (
 )
 if "!RD_VERIFY!"=="0" (
     echo [WARN] Could not verify Rancher Desktop installed.
-    echo        It may still be finishing. Restart and re-run this file.
-    pause
-    exit /b 1
+    echo        It may still be finishing.
+    echo.
+    choice /c CR /n /m "  [C]ontinue anyway  [R]etry: "
+    if !ERRORLEVEL! equ 2 (
+        echo [...]  Re-checking...
+        if exist "%LOCALAPPDATA%\Programs\Rancher Desktop\Rancher Desktop.exe" set "RD_VERIFY=1"
+        if exist "%ProgramFiles%\Rancher Desktop\Rancher Desktop.exe" set "RD_VERIFY=1"
+        if exist "%USERPROFILE%\.rd\bin\docker.exe" set "RD_VERIFY=1"
+        if "!RD_VERIFY!"=="0" (
+            echo [WARN] Still not found. Continuing anyway...
+        ) else (
+            echo [OK]  Found it.
+        )
+    )
 )
 goto :rancher_installed
 
@@ -421,13 +441,24 @@ if not exist "!RD_SETTINGS_DIR!\settings.json" (
 )
 
 echo.
-echo   Please restart your computer now.
-echo   Setup will continue automatically after restart.
-echo.
 >> "!STATE_FILE!" echo DOCKER=1
-call :schedule_resume
-pause
-exit /b 0
+echo ========================================
+echo   Rancher Desktop installed
+echo ========================================
+echo.
+echo   A restart is recommended but you can try
+echo   continuing -- Rancher may work without one.
+echo.
+choice /c CR /n /m "  [C]ontinue anyway  [R]estart now: "
+if !ERRORLEVEL! equ 2 (
+    call :schedule_resume
+    echo.
+    echo   Restarting in 10 seconds...
+    echo   Setup will resume automatically after restart.
+    shutdown /r /t 10 /c "Restarting to complete Rancher Desktop setup..."
+    exit /b 0
+)
+echo [...]  Continuing without restart...
 
 :docker_ok
 
@@ -517,10 +548,19 @@ echo.
 pause
 docker info >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :docker_running
-echo [ERROR] Docker still not running.
-echo         Try restarting your computer and running this file again.
-pause
-exit /b 1
+echo.
+echo [WARN] Docker still not responding.
+echo.
+choice /c CR /n /m "  [C]ontinue to clone step anyway  [R]etry Docker check: "
+if !ERRORLEVEL! equ 2 (
+    docker info >nul 2>nul
+    if !ERRORLEVEL! equ 0 goto :docker_running
+    echo [ERROR] Docker still not running.
+    echo         Try restarting your computer and running this file again.
+    pause
+    exit /b 1
+)
+echo [WARN] Proceeding without Docker -- install step may fail.
 :docker_running
 echo [OK]  Docker is running.
 >> "!STATE_FILE!" echo DOCKER=1
