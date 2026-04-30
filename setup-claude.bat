@@ -403,10 +403,12 @@ winget source update --name winget >nul 2>nul
 echo [...]  Installing Rancher Desktop via winget...
 echo         (this may take a few minutes)
 winget install --id suse.RancherDesktop -e --source winget --accept-package-agreements --accept-source-agreements >nul 2>nul
-if !ERRORLEVEL! equ 0 goto :rancher_installed
+set "WINGET_ERR=!ERRORLEVEL!"
+if "!WINGET_ERR!"=="0" goto :rancher_installed
 
 winget install --id SUSE.RancherDesktop -e --accept-package-agreements --accept-source-agreements >nul 2>nul
-if !ERRORLEVEL! equ 0 goto :rancher_installed
+set "WINGET_ERR=!ERRORLEVEL!"
+if "!WINGET_ERR!"=="0" goto :rancher_installed
 
 echo [...]  Winget install did not work -- downloading directly...
 
@@ -432,9 +434,22 @@ echo [...]  Installing (this may take a minute or two)...
 echo         Please wait -- do not close this window.
 REM ALLUSERS=0 = per-user install, no admin needed
 start /wait msiexec /i "!RD_INSTALLER!" /passive /norestart ALLUSERS=0
-if !ERRORLEVEL! neq 0 (
+set "MSI_ERR=!ERRORLEVEL!"
+
+REM 1625 = ERROR_INSTALL_PACKAGE_REJECTED (Group Policy block)
+REM 1624 = ERROR_INSTALL_TRANSFORM_REJECTED
+REM 1530 = ERROR_INSTALL_POLICY
+if "!MSI_ERR!"=="1625" goto :policy_blocked
+if "!MSI_ERR!"=="1624" goto :policy_blocked
+if "!MSI_ERR!"=="1530" goto :policy_blocked
+
+if "!MSI_ERR!" neq "0" (
     echo [...]  Passive install did not work -- trying with installer UI...
     start /wait msiexec /i "!RD_INSTALLER!" /norestart ALLUSERS=0
+    set "MSI_ERR=!ERRORLEVEL!"
+    if "!MSI_ERR!"=="1625" goto :policy_blocked
+    if "!MSI_ERR!"=="1624" goto :policy_blocked
+    if "!MSI_ERR!"=="1530" goto :policy_blocked
 )
 del "!RD_INSTALLER!" >nul 2>nul
 
@@ -469,6 +484,40 @@ if "!RD_VERIFY!"=="0" (
     )
 )
 goto :rancher_installed
+
+:policy_blocked
+del "!RD_INSTALLER!" >nul 2>nul
+echo.
+echo ========================================
+echo   Windows policy is blocking install
+echo ========================================
+echo.
+echo   Your system administrator has set policies that
+echo   prevent installing new software ^(MSI packages^).
+echo.
+echo   This is a corporate security restriction, not a
+echo   problem with Rancher Desktop itself.
+echo.
+echo   To resolve this, contact IT and request one of:
+echo.
+echo     Option A: Have IT install Rancher Desktop for you
+echo       - Tell them: "I need Rancher Desktop installed
+echo         for Docker container development"
+echo       - Package: SUSE Rancher Desktop ^(free/open-source^)
+echo.
+echo     Option B: Ask IT to whitelist Rancher Desktop
+echo       - MSI package: Rancher.Desktop.Setup.*.msi
+echo       - Publisher: SUSE LLC
+echo       - This lets you install it yourself
+echo.
+echo     Option C: Temporary policy exemption
+echo       - IT can grant a time-limited exception to
+echo         the software restriction policy
+echo.
+echo   After IT resolves this, run this setup again.
+echo.
+pause
+exit /b 1
 
 :download_failed
 REM --- Strategy 3: Open browser to download page (last resort) ---
