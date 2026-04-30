@@ -1,5 +1,4 @@
 @echo off
-setlocal EnableDelayedExpansion
 REM =============================================================================
 REM Claude Code - One-Click Setup
 REM
@@ -14,6 +13,15 @@ REM You do NOT need to open a terminal or know any commands.
 REM Just double-click this file and follow the prompts.
 REM =============================================================================
 
+REM --- Keep window alive: some installers (winget, msiexec) kill the parent ---
+REM Re-launch inside cmd /k so the outer shell survives even if the inner dies.
+if not defined CLAUDE_SETUP_WRAPPED (
+    set "CLAUDE_SETUP_WRAPPED=1"
+    cmd /k ""%~f0" %* & pause & exit"
+    exit /b
+)
+
+setlocal EnableDelayedExpansion
 title Claude Code - Setup
 
 echo.
