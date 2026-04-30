@@ -14,32 +14,36 @@ REM You do NOT need to open a terminal or know any commands.
 REM Just double-click this file and follow the prompts.
 REM =============================================================================
 
-REM --- Top-level wrapper: call :main, then always pause before window closes ---
-REM This ensures the window never vanishes even if an installer kills a subprocess.
-call :main %*
+REM --- Prevent window from closing: re-launch in a persistent cmd /k shell ---
+REM Double-clicking a .bat runs it under cmd /c which closes on exit.
+REM We re-launch under cmd /k (same window) so the window stays open.
+REM The --wrapped flag prevents infinite re-launch loop.
+if "%~1"=="--wrapped" goto :start_main
+cmd /k call "%~f0" --wrapped
 echo.
-echo ========================================
-echo   Setup has finished. See messages above
-echo   for any errors or next steps.
-echo ========================================
-echo.
-echo   Press any key to close this window...
+echo   Window kept open for review. Press any key to close...
 pause >nul
 exit
 
-REM ===== All logic below runs inside :main =====
-:main
+:start_main
 setlocal EnableDelayedExpansion
+
+REM --- Log file: captures progress so we can diagnose if window closes ---
+set "SETUP_LOG=%TEMP%\claude-setup-log.txt"
+echo [%date% %time%] Claude Code Setup started > "!SETUP_LOG!"
 
 echo.
 echo ========================================
 echo   Claude Code - Setup
 echo ========================================
 echo.
+echo   Log file: !SETUP_LOG!
+echo.
 
 REM ---------------------------------------------------------------------------
 REM Determine install location (user's Documents folder, auto-detected)
 REM ---------------------------------------------------------------------------
+echo [%date% %time%] Determining install location >> "!SETUP_LOG!"
 set "INSTALL_DIR=%USERPROFILE%\Documents\CCDW"
 echo   Install location: !INSTALL_DIR!
 echo.
@@ -66,6 +70,7 @@ if exist "!STATE_FILE!" (
 REM ---------------------------------------------------------------------------
 REM Step 0: Connectivity check (catch VPN/network issues before anything else)
 REM ---------------------------------------------------------------------------
+echo [%date% %time%] Step 0: Connectivity check >> "!SETUP_LOG!"
 echo [...]  Checking internet connection...
 curl.exe -s --connect-timeout 5 -o nul https://github.com 2>nul
 if !ERRORLEVEL! equ 0 (
@@ -129,6 +134,7 @@ if !ERRORLEVEL! equ 0 (
 REM ---------------------------------------------------------------------------
 REM Step 1: Check for Git
 REM ---------------------------------------------------------------------------
+echo [%date% %time%] Step 1: Git check >> "!SETUP_LOG!"
 if "!S_GIT!"=="1" (
     echo [OK]  Git ^(already done^)
     goto :git_ok
@@ -177,6 +183,7 @@ echo [OK]  Git installed.
 REM ---------------------------------------------------------------------------
 REM Step 2: Check for WSL2 (includes Windows feature enablement)
 REM ---------------------------------------------------------------------------
+echo [%date% %time%] Step 2: WSL2 check >> "!SETUP_LOG!"
 if "!S_WSL!"=="1" (
     echo [OK]  WSL2 ^(already done^)
     goto :wsl_ok
@@ -313,6 +320,7 @@ echo [WARN] Continuing without confirmed WSL2. Docker may handle it.
 REM ---------------------------------------------------------------------------
 REM Step 3: Check for Docker (Rancher Desktop)
 REM ---------------------------------------------------------------------------
+echo [%date% %time%] Step 3: Docker check >> "!SETUP_LOG!"
 if "!S_DOCKER!"=="1" (
     echo [OK]  Rancher Desktop ^(already installed^)
     goto :docker_ok
@@ -352,6 +360,7 @@ if "!DD_RUNNING!"=="1" (
         exit /b 1
     )
     echo.
+    echo [%date% %time%] Stopping Docker Desktop >> "!SETUP_LOG!"
     echo [...]  Stopping Docker Desktop...
     taskkill /im "Docker Desktop.exe" /f >nul 2>nul
     taskkill /im "com.docker.backend.exe" /f >nul 2>nul
@@ -415,6 +424,7 @@ if !ERRORLEVEL! neq 0 goto :try_direct_download
 echo [...]  Updating package sources...
 winget source update --name winget >nul 2>nul
 
+echo [%date% %time%] Installing via winget >> "!SETUP_LOG!"
 echo [...]  Installing Rancher Desktop via winget...
 echo         This may take a few minutes -- you will see
 echo         progress from the Windows package manager below.
@@ -459,8 +469,10 @@ echo         If nothing appears after 30 seconds, check your
 echo         taskbar for the installer window.
 echo.
 REM ALLUSERS=0 = per-user install, no admin needed
+echo [%date% %time%] Running msiexec /passive >> "!SETUP_LOG!"
 start /wait msiexec /i "!RD_INSTALLER!" /passive /norestart ALLUSERS=0
 set "MSI_ERR=!ERRORLEVEL!"
+echo [%date% %time%] msiexec returned: !MSI_ERR! >> "!SETUP_LOG!"
 
 REM 1625 = ERROR_INSTALL_PACKAGE_REJECTED (Group Policy block)
 REM 1624 = ERROR_INSTALL_TRANSFORM_REJECTED
@@ -514,6 +526,7 @@ if "!RD_VERIFY!"=="0" (
 goto :rancher_installed
 
 :policy_blocked
+echo [%date% %time%] POLICY BLOCKED - MSI error !MSI_ERR! >> "!SETUP_LOG!"
 del "!RD_INSTALLER!" >nul 2>nul
 echo.
 echo ========================================
@@ -709,6 +722,7 @@ echo [OK]  Docker is running.
 REM ---------------------------------------------------------------------------
 REM Step 4: Download or update Claude Code Docker
 REM ---------------------------------------------------------------------------
+echo [%date% %time%] Step 4: Clone/update >> "!SETUP_LOG!"
 echo [...]  Getting Claude Code Docker...
 
 if "!S_CLONE!"=="1" if exist "!INSTALL_DIR!\install.bat" goto :ccdw_update
@@ -748,6 +762,7 @@ echo [OK]  Ready.
 REM ---------------------------------------------------------------------------
 REM Step 5: Run the installer (clean up state file -- setup is complete)
 REM ---------------------------------------------------------------------------
+echo [%date% %time%] Step 5: Running installer >> "!SETUP_LOG!"
 if exist "!STATE_FILE!" del "!STATE_FILE!" >nul 2>nul
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce" /v "ClaudeCodeSetup" /f >nul 2>nul
 echo.
