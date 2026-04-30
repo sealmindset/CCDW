@@ -305,18 +305,82 @@ if "!S_DOCKER!"=="1" (
 
 echo [...]  Checking for Docker...
 
+REM --- Check if Docker Desktop is running (conflicts with Rancher Desktop) ---
+set "DD_RUNNING=0"
+tasklist /fi "imagename eq Docker Desktop.exe" 2>nul | find /i "Docker Desktop" >nul 2>nul
+if !ERRORLEVEL! equ 0 set "DD_RUNNING=1"
+REM com.docker.backend is the Docker Desktop engine process
+tasklist /fi "imagename eq com.docker.backend.exe" 2>nul | find /i "com.docker.backend" >nul 2>nul
+if !ERRORLEVEL! equ 0 set "DD_RUNNING=1"
+
+if "!DD_RUNNING!"=="1" (
+    echo.
+    echo ========================================
+    echo   Docker Desktop is running
+    echo ========================================
+    echo.
+    echo   Docker Desktop and Rancher Desktop cannot run at
+    echo   the same time -- both try to control the Docker
+    echo   engine and WSL2 integration.
+    echo.
+    echo   Claude Code uses Rancher Desktop.
+    echo   Docker Desktop needs to be closed first.
+    echo.
+    choice /c SQ /n /m "  [S]top Docker Desktop automatically  [Q]uit and close it yourself: "
+    if !ERRORLEVEL! equ 2 (
+        echo.
+        echo   Close Docker Desktop ^(right-click its icon in the
+        echo   system tray near the clock, click "Quit Docker Desktop"^),
+        echo   then run this setup again.
+        echo.
+        pause
+        exit /b 1
+    )
+    echo.
+    echo [...]  Stopping Docker Desktop...
+    taskkill /im "Docker Desktop.exe" /f >nul 2>nul
+    taskkill /im "com.docker.backend.exe" /f >nul 2>nul
+    taskkill /im "com.docker.service" /f >nul 2>nul
+    timeout /t 3 /nobreak >nul
+    REM Verify it stopped
+    tasklist /fi "imagename eq com.docker.backend.exe" 2>nul | find /i "com.docker.backend" >nul 2>nul
+    if !ERRORLEVEL! equ 0 (
+        echo [WARN] Could not fully stop Docker Desktop.
+        echo        Right-click its tray icon and "Quit Docker Desktop",
+        echo        then run this setup again.
+        echo.
+        pause
+        exit /b 1
+    )
+    echo [OK]  Docker Desktop stopped.
+    echo.
+)
+
+REM --- Look for Rancher Desktop's docker (not Docker Desktop's) ---
 set "DOCKER_FOUND=0"
-where docker >nul 2>nul && set "DOCKER_FOUND=1"
-if "!DOCKER_FOUND!"=="1" goto :docker_found
 if exist "%USERPROFILE%\.rd\bin\docker.exe" set "DOCKER_FOUND=1" & set "PATH=%USERPROFILE%\.rd\bin;!PATH!"
 if "!DOCKER_FOUND!"=="1" goto :docker_found
 if exist "%LOCALAPPDATA%\Programs\Rancher Desktop\resources\resources\win32\bin\docker.exe" set "DOCKER_FOUND=1" & set "PATH=%LOCALAPPDATA%\Programs\Rancher Desktop\resources\resources\win32\bin;!PATH!"
 if "!DOCKER_FOUND!"=="1" goto :docker_found
 if exist "%ProgramFiles%\Rancher Desktop\resources\resources\win32\bin\docker.exe" set "DOCKER_FOUND=1" & set "PATH=%ProgramFiles%\Rancher Desktop\resources\resources\win32\bin;!PATH!"
+if "!DOCKER_FOUND!"=="1" goto :docker_found
+REM Only fall back to generic docker if it's NOT Docker Desktop's
+where docker >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    for /f "delims=" %%P in ('where docker 2^>nul') do (
+        echo "%%P" | find /i "Docker Desktop" >nul 2>nul
+        if !ERRORLEVEL! neq 0 (
+            echo "%%P" | find /i "\Docker\" >nul 2>nul
+            if !ERRORLEVEL! neq 0 (
+                set "DOCKER_FOUND=1"
+            )
+        )
+    )
+)
 :docker_found
 
 if "!DOCKER_FOUND!"=="1" (
-    echo [OK]  Docker is available.
+    echo [OK]  Docker is available ^(Rancher Desktop^).
     goto :docker_ok
 )
 
