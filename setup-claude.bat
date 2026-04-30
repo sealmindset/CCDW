@@ -401,15 +401,18 @@ echo [...]  Updating package sources...
 winget source update --name winget >nul 2>nul
 
 echo [...]  Installing Rancher Desktop via winget...
-echo         (this may take a few minutes)
-winget install --id suse.RancherDesktop -e --source winget --accept-package-agreements --accept-source-agreements >nul 2>nul
+echo         This may take a few minutes -- you will see
+echo         progress from the Windows package manager below.
+echo.
+winget install --id suse.RancherDesktop -e --source winget --accept-package-agreements --accept-source-agreements
 set "WINGET_ERR=!ERRORLEVEL!"
 if "!WINGET_ERR!"=="0" goto :rancher_installed
 
-winget install --id SUSE.RancherDesktop -e --accept-package-agreements --accept-source-agreements >nul 2>nul
+winget install --id SUSE.RancherDesktop -e --accept-package-agreements --accept-source-agreements
 set "WINGET_ERR=!ERRORLEVEL!"
 if "!WINGET_ERR!"=="0" goto :rancher_installed
 
+echo.
 echo [...]  Winget install did not work -- downloading directly...
 
 REM --- Strategy 2: Direct download from GitHub releases ---
@@ -430,8 +433,16 @@ powershell -NoProfile -Command ^
     "} catch { Write-Host ('Download failed: ' + $_.Exception.Message); exit 1 }"
 if !ERRORLEVEL! neq 0 goto :download_failed
 
-echo [...]  Installing (this may take a minute or two)...
-echo         Please wait -- do not close this window.
+echo.
+echo [...]  Installing Rancher Desktop...
+echo.
+echo         A separate installer window will appear.
+echo         DO NOT close this window -- it will continue
+echo         automatically when the installer finishes.
+echo.
+echo         If nothing appears after 30 seconds, check your
+echo         taskbar for the installer window.
+echo.
 REM ALLUSERS=0 = per-user install, no admin needed
 start /wait msiexec /i "!RD_INSTALLER!" /passive /norestart ALLUSERS=0
 set "MSI_ERR=!ERRORLEVEL!"
@@ -444,7 +455,9 @@ if "!MSI_ERR!"=="1624" goto :policy_blocked
 if "!MSI_ERR!"=="1530" goto :policy_blocked
 
 if "!MSI_ERR!" neq "0" (
-    echo [...]  Passive install did not work -- trying with installer UI...
+    echo [...]  Passive install returned error !MSI_ERR! -- retrying with full UI...
+    echo         Follow the installer prompts in the new window.
+    echo.
     start /wait msiexec /i "!RD_INSTALLER!" /norestart ALLUSERS=0
     set "MSI_ERR=!ERRORLEVEL!"
     if "!MSI_ERR!"=="1625" goto :policy_blocked
