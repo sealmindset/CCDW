@@ -1,0 +1,39 @@
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+
+# Test artifacts
+test-results/
+tests/
+playwright.config.js
+package.json
+package-lock.json
+
+# Documentation
+*.md
+!README.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Make-it state
+.make-it/
+.make-it-state.md
+.try-it/
+.claude/
+
+# Build artifacts
+*.ico
+*.log
+node_modules/

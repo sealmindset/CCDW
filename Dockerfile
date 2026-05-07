@@ -8,9 +8,9 @@
 ARG REGISTRY_MIRROR=
 FROM ${REGISTRY_MIRROR}node:20-alpine
 
-LABEL org.opencontainers.image.title="Claude Code Docker"
-LABEL org.opencontainers.image.description="Claude Code CLI + Web UI + /make-it skills in a single container"
-LABEL org.opencontainers.image.source="https://github.com/sealmindset/claude-code-docker"
+LABEL org.opencontainers.image.title="Security Workstation"
+LABEL org.opencontainers.image.description="AI-powered dev tools + GitHub security scanning in a single workstation"
+LABEL org.opencontainers.image.source="https://github.com/SleepNumberInc/security-workstation"
 
 # ---------------------------------------------------------------------------
 # System dependencies

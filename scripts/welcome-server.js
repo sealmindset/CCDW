@@ -4,12 +4,23 @@
 // =============================================================================
 
 const http = require('http');
+const net = require('net');
 const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
 
 const welcomeDir = process.env.WELCOME_DIR || '/opt/claude-code-docker/welcome';
 const port = parseInt(process.env.WELCOME_PORT, 10) || 3000;
+
+// AuditGH service endpoints (resolved via Docker network DNS)
+const AUDITGH_API_URL = process.env.AUDITGH_API_URL || 'http://api:8000';
+const AUDITGH_UI_INTERNAL = process.env.AUDITGH_UI_INTERNAL_URL || 'http://web-ui:3000';
+const AUDITGH_UI_PORT = process.env.AUDITGH_UI_PORT || '3001';
+const AUDITGH_DB_HOST = process.env.AUDITGH_DB_HOST || 'db';
+const AUDITGH_DB_PORT = parseInt(process.env.AUDITGH_DB_PORT || '5432', 10);
+const AUDITGH_REDIS_HOST = process.env.AUDITGH_REDIS_HOST || 'redis';
+const AUDITGH_REDIS_PORT = parseInt(process.env.AUDITGH_REDIS_PORT || '6379', 10);
+const AUDITGH_MINIO_URL = process.env.AUDITGH_MINIO_URL || 'http://minio:9000';
 
 const mimeTypes = {
     '.html': 'text/html',
@@ -19,6 +30,44 @@ const mimeTypes = {
     '.svg': 'image/svg+xml',
     '.ico': 'image/x-icon'
 };
+
+// ---------------------------------------------------------------------------
+// AuditGH service health probes
+// ---------------------------------------------------------------------------
+
+function httpProbe(url, timeoutMs) {
+    return new Promise((resolve) => {
+        const req = http.get(url, { timeout: timeoutMs }, (res) => {
+            resolve(res.statusCode >= 200 && res.statusCode < 500 ? 'ok' : 'error');
+            res.resume();
+        });
+        req.on('error', () => resolve('unavailable'));
+        req.on('timeout', () => { req.destroy(); resolve('unavailable'); });
+    });
+}
+
+function tcpProbe(host, port, timeoutMs) {
+    return new Promise((resolve) => {
+        const sock = net.createConnection({ host, port }, () => {
+            sock.destroy();
+            resolve('ok');
+        });
+        sock.setTimeout(timeoutMs);
+        sock.on('error', () => resolve('unavailable'));
+        sock.on('timeout', () => { sock.destroy(); resolve('unavailable'); });
+    });
+}
+
+async function getAuditGhStatus() {
+    const [api, ui, db, redis, minio] = await Promise.all([
+        httpProbe(AUDITGH_API_URL + '/health', 5000),
+        httpProbe(AUDITGH_UI_INTERNAL, 5000),
+        tcpProbe(AUDITGH_DB_HOST, AUDITGH_DB_PORT, 3000),
+        tcpProbe(AUDITGH_REDIS_HOST, AUDITGH_REDIS_PORT, 3000),
+        httpProbe(AUDITGH_MINIO_URL + '/minio/health/live', 5000)
+    ]);
+    return { api, ui, db, redis, minio, ui_port: AUDITGH_UI_PORT };
+}
 
 function getStatus() {
     const status = { docker: 'unavailable', ai_provider: 'none', ai_status: 'unknown', token_minutes_remaining: null };
@@ -219,6 +268,18 @@ let pendingAuth = null;
 let loginProcess = null;
 
 const server = http.createServer((req, res) => {
+    if (req.url === '/api/auditgh/status') {
+        const corsH = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+        getAuditGhStatus().then(data => {
+            res.writeHead(200, corsH);
+            res.end(JSON.stringify(data));
+        }).catch(() => {
+            res.writeHead(200, corsH);
+            res.end(JSON.stringify({ api: 'unavailable', ui: 'unavailable', db: 'unavailable', redis: 'unavailable', minio: 'unavailable' }));
+        });
+        return;
+    }
+
     if (req.url === '/api/status') {
         res.writeHead(200, {
             'Content-Type': 'application/json',

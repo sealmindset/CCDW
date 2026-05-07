@@ -19,7 +19,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  Claude Code Docker${NC}"
+echo -e "${BLUE}  Security Workstation${NC}"
 echo -e "${BLUE}========================================${NC}"
 
 # ---------------------------------------------------------------------------
@@ -217,17 +217,22 @@ echo -e "${GREEN}[OK]${NC} Health monitor started (self-healing enabled)."
 # ---------------------------------------------------------------------------
 echo -e "${GREEN}[OK]${NC} Starting web terminal on port 7681..."
 echo ""
-echo -e "${BLUE}========================================${NC}"
-echo -e "  Workshop:      ${GREEN}http://localhost:${WORKSHOP_PORT:-9200}${NC}"
-echo -e "  Dashboard:     ${GREEN}http://localhost:${WELCOME_PORT:-3000}${NC}"
-echo -e "  Web Terminal:  ${GREEN}http://localhost:${TTYD_PORT:-7681}${NC}"
-echo -e "  VS Code:       ${GREEN}http://localhost:${CODE_SERVER_PORT:-8080}${NC}"
+echo -e "${BLUE}===========================================${NC}"
+echo -e "  ${BLUE}Development Tools${NC}"
+echo -e "  Dashboard:       ${GREEN}http://localhost:${WELCOME_PORT:-3000}${NC}"
+echo -e "  Workshop:        ${GREEN}http://localhost:${WORKSHOP_PORT:-9200}${NC}"
+echo -e "  Web Terminal:    ${GREEN}http://localhost:${TTYD_PORT:-7681}${NC}"
+echo -e "  VS Code:         ${GREEN}http://localhost:${CODE_SERVER_PORT:-8080}${NC}"
 if [ "$CS_AUTH" = "password" ]; then
-    echo -e "  VS Code Pass:  ${GREEN}${CODE_SERVER_PASSWORD}${NC}"
+    echo -e "  VS Code Pass:    ${GREEN}${CODE_SERVER_PASSWORD}${NC}"
 else
-    echo -e "  VS Code Auth:  ${GREEN}None (local access)${NC}"
+    echo -e "  VS Code Auth:    ${GREEN}None (local access)${NC}"
 fi
-echo -e "${BLUE}========================================${NC}"
+echo -e ""
+echo -e "  ${BLUE}Security Platform${NC}"
+echo -e "  Security Portal: ${GREEN}http://localhost:${AUDITGH_UI_PORT:-3001}${NC}"
+echo -e "  Security API:    ${GREEN}http://localhost:8000${NC}"
+echo -e "${BLUE}===========================================${NC}"
 echo ""
 
 # ttyd connects to a tmux session so closing the browser tab and
