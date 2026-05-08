@@ -184,11 +184,48 @@ REM ---------------------------------------------------------------------------
 REM Step 2: Check for WSL2 (includes Windows feature enablement)
 REM ---------------------------------------------------------------------------
 echo [%date% %time%] Step 2: WSL2 check >> "!SETUP_LOG!"
-if "!S_WSL!"=="1" (
-    echo [OK]  WSL2 ^(already done^)
-    goto :wsl_ok
-)
+if "!S_WSL!"=="0" goto :wsl_check_fresh
+REM --- WSL resume: verify it actually works (restart may not have happened) ---
+wsl --status >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :wsl_resume_ok
+wsl -l -q >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :wsl_resume_ok
+wsl --version >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :wsl_resume_ok
+goto :wsl_needs_restart
 
+:wsl_resume_ok
+echo [OK]  WSL2 ^(verified^)
+goto :wsl_ok
+
+:wsl_needs_restart
+echo.
+echo ========================================
+echo   WSL2 needs a restart to finish
+echo ========================================
+echo.
+echo   WSL2 was installed earlier but is not responding.
+echo   A Windows restart is needed to activate it.
+echo.
+echo   This is the most common issue -- once you restart,
+echo   everything else installs smoothly.
+echo.
+choice /c RQ /n /m "  [R]estart now  [Q]uit and restart later: "
+if !ERRORLEVEL! equ 1 (
+    call :schedule_resume
+    echo.
+    echo   Restarting in 10 seconds...
+    echo   Setup will resume automatically after restart.
+    shutdown /r /t 10 /c "Restarting to complete WSL2 setup..."
+    exit /b 0
+)
+echo.
+echo   After restarting Windows, double-click this file again.
+echo.
+pause
+exit /b 0
+
+:wsl_check_fresh
 echo [...]  Checking for WSL2...
 
 REM --- Pre-flight: Windows build check (WSL2 needs build 18362+) ---
@@ -263,11 +300,15 @@ echo   everything automatically -- features, downloads, install.
 echo.
 echo   If Windows asks for an admin password, use your
 echo   SSMITH Local Admin credentials:
-echo     - Search your email for "Local Admin" or "SSMITH"
-echo     - The username is usually SSMITH ^(all caps^)
-echo     - The password was in that email
+echo     Username:  SSMITH  ^(all caps, exactly as shown^)
+echo     Password:  from your "Local Admin" email or CyberArk
 echo.
-echo   If you can't find the email, contact the IT Service Desk.
+echo   To find the password: search email for "Local Admin"
+echo   or "SSMITH". If you can't find it, check CyberArk or
+echo   contact IT Service Desk.
+echo.
+echo   Wrong password or not sure? Click "No" on the prompt --
+echo   setup will try a workaround that may not need admin.
 echo.
 
 wsl --install --no-launch
@@ -295,17 +336,19 @@ if !ERRORLEVEL! equ 0 (
 REM WSL installed but not responding yet -- let user decide
 echo.
 echo ========================================
-echo   WSL2 installed -- restart may help
+echo   WSL2 installed -- restart required
 echo ========================================
 echo.
-echo   WSL2 was installed but isn't responding yet.
-echo   A restart usually fixes this, but it may also
-echo   work if you continue ^(especially if Docker
-echo   manages its own WSL setup^).
+echo   WSL2 was installed but needs a Windows restart
+echo   to become active. Rancher Desktop cannot install
+echo   without a working WSL2.
+echo.
+echo   This restart is the most important step -- once done,
+echo   everything else installs smoothly.
 echo.
 >> "!STATE_FILE!" echo WSL=1
-choice /c CR /n /m "  [C]ontinue anyway  [R]estart now: "
-if !ERRORLEVEL! equ 2 (
+choice /c RC /n /m "  [R]estart now (recommended)  [C]ontinue (will likely need restart later): "
+if !ERRORLEVEL! equ 1 (
     call :schedule_resume
     echo.
     echo   Restarting in 10 seconds...
@@ -313,7 +356,7 @@ if !ERRORLEVEL! equ 2 (
     shutdown /r /t 10 /c "Restarting to complete WSL2 setup..."
     exit /b 0
 )
-echo [WARN] Continuing without confirmed WSL2. Docker may handle it.
+echo [WARN] Continuing without confirmed WSL2. Rancher Desktop may fail to install.
 
 :wsl_ok
 
@@ -322,8 +365,21 @@ REM Step 3: Check for Docker (Rancher Desktop)
 REM ---------------------------------------------------------------------------
 echo [%date% %time%] Step 3: Docker check >> "!SETUP_LOG!"
 if "!S_DOCKER!"=="1" (
-    echo [OK]  Rancher Desktop ^(already installed^)
-    goto :docker_ok
+    if exist "%LOCALAPPDATA%\Programs\Rancher Desktop\Rancher Desktop.exe" (
+        echo [OK]  Rancher Desktop ^(verified^)
+        goto :docker_ok
+    )
+    if exist "%ProgramFiles%\Rancher Desktop\Rancher Desktop.exe" (
+        echo [OK]  Rancher Desktop ^(verified^)
+        goto :docker_ok
+    )
+    if exist "%USERPROFILE%\.rd\bin\docker.exe" (
+        echo [OK]  Rancher Desktop ^(verified^)
+        goto :docker_ok
+    )
+    echo [WARN] Rancher Desktop was marked installed but not found on disk.
+    echo        Re-running installation step...
+    echo.
 )
 
 echo [...]  Checking for Docker...
@@ -416,6 +472,46 @@ echo.
 echo   Rancher Desktop provides Docker for your computer.
 echo   It's free and installs under your own account (no admin needed).
 echo.
+
+REM --- Pre-check: WSL2 must be functional before Rancher Desktop can install ---
+set "WSL_GATE=0"
+wsl --status >nul 2>nul
+if !ERRORLEVEL! equ 0 set "WSL_GATE=1"
+if "!WSL_GATE!"=="0" (
+    wsl -l -q >nul 2>nul
+    if !ERRORLEVEL! equ 0 set "WSL_GATE=1"
+)
+if "!WSL_GATE!"=="0" (
+    wsl --version >nul 2>nul
+    if !ERRORLEVEL! equ 0 set "WSL_GATE=1"
+)
+if "!WSL_GATE!"=="1" goto :wsl_gate_passed
+echo.
+echo ========================================
+echo   Restart needed before Rancher Desktop
+echo ========================================
+echo.
+echo   Rancher Desktop requires WSL2, but WSL2 is not
+echo   responding yet. A Windows restart is needed to
+echo   activate the WSL2 features that were installed.
+echo.
+>> "!STATE_FILE!" echo WSL=1
+choice /c RQ /n /m "  [R]estart now  [Q]uit and restart later: "
+if !ERRORLEVEL! equ 1 (
+    call :schedule_resume
+    echo.
+    echo   Restarting in 10 seconds...
+    echo   Setup will resume automatically after restart.
+    shutdown /r /t 10 /c "Restarting to activate WSL2..."
+    exit /b 0
+)
+echo.
+echo   After restarting Windows, double-click this file again.
+echo.
+pause
+exit /b 0
+
+:wsl_gate_passed
 
 REM --- Strategy 1: Try winget (with source refresh, output suppressed) ---
 where winget >nul 2>nul
