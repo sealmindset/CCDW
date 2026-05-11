@@ -595,6 +595,22 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Fix host-side VSCode certificate errors (NODE_EXTRA_CA_CERTS)
+# Same proxy CAs that break Docker also break VSCode extensions (Claude, etc.)
+# Sets NODE_EXTRA_CA_CERTS so Node.js trusts the proxy's re-signed certs.
+# ---------------------------------------------------------------------------
+if [ "$PROXY_CERT_COUNT" -gt 0 ]; then
+    echo ""
+    echo -e "${YELLOW}[...]${NC} Configuring VSCode to trust proxy certificates..."
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    if [ -f "$SCRIPT_DIR/scripts/fix-vscode-certs.sh" ]; then
+        bash "$SCRIPT_DIR/scripts/fix-vscode-certs.sh" 2>/dev/null && \
+            echo -e "${GREEN}[OK]${NC} VSCode certificate fix applied" || \
+            echo -e "${YELLOW}[WARN]${NC} VSCode cert fix had issues (non-fatal)"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # ACR pull-through cache (bypasses Zscaler / SSL inspection entirely)
 # If REGISTRY_MIRROR is set in .env, authenticate and use it for base images.
 # ---------------------------------------------------------------------------

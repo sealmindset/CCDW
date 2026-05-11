@@ -956,6 +956,16 @@ echo [...]  Checking for SSL inspection proxy certificates...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\extract-certs.ps1" -CertsDir "%~dp0certs"
 
 REM ---------------------------------------------------------------------------
+REM Fix host-side VSCode certificate errors (NODE_EXTRA_CA_CERTS)
+REM Same proxy CAs that break Docker also break VSCode extensions (Claude, etc.)
+REM Sets NODE_EXTRA_CA_CERTS so Node.js trusts the proxy's re-signed certs.
+REM ---------------------------------------------------------------------------
+echo.
+echo [...]  Configuring VSCode to trust proxy certificates...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\fix-vscode-certs.ps1"
+echo.
+
+REM ---------------------------------------------------------------------------
 REM ACR image registry (bypasses Zscaler / SSL inspection entirely)
 REM If REGISTRY_MIRROR is set in .env, use it for base images and pre-built pulls.
 REM Images are pre-imported into ACR via az acr import (not cache proxied).
