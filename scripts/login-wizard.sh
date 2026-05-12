@@ -228,10 +228,30 @@ draw_progress() {
     echo ""
 }
 
+copy_to_clipboard() {
+    local text="$1"
+    local encoded
+    encoded=$(printf '%s' "$text" | base64 2>/dev/null | tr -d '\n')
+    # OSC 52: terminal clipboard escape sequence (supported by ttyd, xterm, etc.)
+    printf '\033]52;c;%s\a' "$encoded" 2>/dev/null
+}
+
+clickable_url() {
+    local url="$1" label="${2:-$1}"
+    # OSC 8: terminal hyperlink (click to open in browser)
+    printf '\033]8;;%s\a%s\033]8;;\a' "$url" "$label"
+}
+
 draw_code_box() {
     local code="$1"
+    local url="$2"
+    local url_label="${3:-$url}"
     local inner_w=$(( ${#code} + 6 ))
 
+    copy_to_clipboard "$code"
+
+    echo ""
+    echo -e "  ${BOLD}Your sign-in code:${NC}"
     echo ""
     printf "  ┌"
     printf '─%.0s' $(seq 1 $inner_w)
@@ -240,6 +260,19 @@ draw_code_box() {
     printf "  └"
     printf '─%.0s' $(seq 1 $inner_w)
     printf "┘\n"
+    echo ""
+    echo -e "  ${GREEN}✓${NC} Code copied to your clipboard."
+    echo ""
+    echo -e "  ${BOLD}Next steps:${NC}"
+    echo -e "    1. Click the link below to open the sign-in page"
+    echo -e "    2. Paste the code (Ctrl+V) into the sign-in page and follow the prompts"
+    echo -e "    3. Come back here when done — it will continue automatically"
+    echo ""
+    printf "  ${BOLD}▸${NC} ${BOLD}"
+    clickable_url "$url" "$url_label"
+    printf "${NC}\n"
+    echo ""
+    echo -e "  ${DIM}Code not pasting? Select it above, then right-click → Copy${NC}"
     echo ""
 }
 
@@ -403,10 +436,7 @@ azure_signin() {
     draw_header "Azure Sign In" 2 3
     draw_progress 2 3
 
-    echo -e "  Enter this code at the Microsoft sign-in page:"
-    draw_code_box "$device_code"
-    echo -e "  ${BOLD}▸${NC} ${BOLD}${login_url}${NC}"
-    echo -e "    ${DIM}(Auto-opening if the dashboard is open in your browser)${NC}"
+    draw_code_box "$device_code" "$login_url"
     notify_browser "$login_url" "$device_code" "azure"
     show_qr "$login_url"
 
@@ -616,11 +646,13 @@ bedrock_signin() {
         draw_progress 2 3
 
         if [ -n "$sso_code" ]; then
-            echo -e "  Enter this code at the AWS sign-in page:"
-            draw_code_box "$sso_code"
+            draw_code_box "$sso_code" "$sso_url"
+        else
+            printf "  ${BOLD}▸${NC} ${BOLD}"
+            clickable_url "$sso_url" "$sso_url"
+            printf "${NC}\n"
+            echo ""
         fi
-        echo -e "  ${BOLD}▸${NC} ${BOLD}${sso_url}${NC}"
-        echo -e "    ${DIM}(Auto-opening if the dashboard is open in your browser)${NC}"
         notify_browser "$sso_url" "${sso_code:-}" "bedrock"
         show_qr "$sso_url"
     fi
@@ -738,10 +770,7 @@ github_signin() {
     draw_header "GitHub Sign In" 1 1
     draw_progress 1 1
 
-    echo -e "  Enter this code at the GitHub sign-in page:"
-    draw_code_box "$device_code"
-    echo -e "  ${BOLD}▸${NC} ${BOLD}https://github.com/login/device${NC}"
-    echo -e "    ${DIM}(Auto-opening if the dashboard is open in your browser)${NC}"
+    draw_code_box "$device_code" "https://github.com/login/device"
     notify_browser "https://github.com/login/device" "$device_code" "github"
     show_qr "https://github.com/login/device"
 

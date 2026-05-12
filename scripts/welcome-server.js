@@ -224,6 +224,40 @@ function getHealth() {
 
 let pendingAuth = null;
 let loginProcess = null;
+let registeredApps = [];
+
+function getRunningApps() {
+    const apps = [];
+    try {
+        const out = execSync(
+            'docker ps --format "{{.Names}}\\t{{.Ports}}\\t{{.Status}}\\t{{.Image}}" --filter "status=running" 2>/dev/null',
+            { timeout: 5000 }
+        ).toString().trim();
+        if (!out) return apps;
+        for (const line of out.split('\n')) {
+            const [name, ports, status, image] = line.split('\t');
+            if (!name || name === 'claude-code') continue;
+            const portMatches = (ports || '').match(/0\.0\.0\.0:(\d+)->(\d+)/g) || [];
+            const exposedPorts = portMatches.map(m => {
+                const match = m.match(/0\.0\.0\.0:(\d+)->(\d+)/);
+                return match ? { host: parseInt(match[1]), container: parseInt(match[2]) } : null;
+            }).filter(Boolean);
+            if (exposedPorts.length === 0) continue;
+            apps.push({ name, ports: exposedPorts, status: status || '', image: image || '' });
+        }
+    } catch (e) {}
+
+    for (const reg of registeredApps) {
+        if (!apps.find(a => a.name === reg.name)) {
+            apps.push(reg);
+        } else {
+            const existing = apps.find(a => a.name === reg.name);
+            if (reg.url) existing.url = reg.url;
+            if (reg.label) existing.label = reg.label;
+        }
+    }
+    return apps;
+}
 
 const server = http.createServer((req, res) => {
     if (req.url === '/api/status') {
@@ -250,6 +284,44 @@ const server = http.createServer((req, res) => {
             'Access-Control-Allow-Origin': '*'
         });
         res.end(JSON.stringify(getUsageStats()));
+        return;
+    }
+
+    if (req.url === '/api/apps') {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify(getRunningApps()));
+        return;
+    }
+
+    if (req.url === '/api/apps/open' && req.method === 'POST') {
+        let body = '';
+        req.on('data', c => body += c);
+        req.on('end', () => {
+            try {
+                const app = JSON.parse(body);
+                if (app.name) {
+                    const existing = registeredApps.findIndex(a => a.name === app.name);
+                    if (existing >= 0) registeredApps[existing] = { ...registeredApps[existing], ...app, timestamp: Date.now() };
+                    else registeredApps.push({ ...app, timestamp: Date.now() });
+                }
+            } catch (e) {}
+            res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ ok: true }));
+        });
+        return;
+    }
+
+    if (req.url === '/api/apps/close' && req.method === 'POST') {
+        let body = '';
+        req.on('data', c => body += c);
+        req.on('end', () => {
+            try {
+                const { name } = JSON.parse(body);
+                registeredApps = registeredApps.filter(a => a.name !== name);
+            } catch (e) {}
+            res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ ok: true }));
+        });
         return;
     }
 
@@ -282,7 +354,7 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    if (req.method === 'OPTIONS' && req.url.startsWith('/auth/')) {
+    if (req.method === 'OPTIONS' && (req.url.startsWith('/auth/') || req.url.startsWith('/api/'))) {
         res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' });
         res.end();
         return;

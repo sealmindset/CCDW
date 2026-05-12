@@ -39,6 +39,7 @@ RUN apk update && apk upgrade && apk add --no-cache \
     libstdc++ \
     tmux \
     su-exec \
+    sudo \
     rsync \
     tini
 
@@ -100,6 +101,8 @@ RUN apk add --no-cache aws-cli
 RUN deluser node 2>/dev/null; delgroup node 2>/dev/null; \
     addgroup -g 1000 coder 2>/dev/null || true \
     && adduser -u 1000 -G coder -s /bin/bash -D coder 2>/dev/null || true \
+    && echo 'coder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/coder \
+    && chmod 0440 /etc/sudoers.d/coder \
     && mkdir -p /home/coder/.claude /home/coder/Documents/GitHub \
     && chown -R coder:coder /home/coder
 
@@ -178,7 +181,7 @@ USER root
 # ---------------------------------------------------------------------------
 # Ports: Workshop (9200), Welcome (3000), ttyd (7681), code-server (8080)
 # ---------------------------------------------------------------------------
-EXPOSE 3000 7681 8080 9200
+EXPOSE 3000 7681 7682 8080 9200
 
 # ---------------------------------------------------------------------------
 # Health check

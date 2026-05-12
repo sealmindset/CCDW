@@ -50,9 +50,41 @@ alias login='/opt/claude-code-docker/scripts/login-wizard.sh --force'
 alias setup='/opt/claude-code-docker/scripts/setup.sh'
 
 # ---------------------------------------------------------------------------
-# Git credential helper: auto-reauth on expired GitHub tokens
+# Git config persistence: .gitconfig.d/ is a named volume that survives
+# container recreation. Include it from .gitconfig and store user identity
+# there so git user.name/email persist across restarts.
 # ---------------------------------------------------------------------------
+GITCONFIG_D="/home/coder/.gitconfig.d"
+mkdir -p "$GITCONFIG_D"
+
+# Include .gitconfig.d/*.conf from main .gitconfig (idempotent)
+if ! git config --global --get-all include.path 2>/dev/null | grep -q '.gitconfig.d/'; then
+    git config --global --add include.path "$GITCONFIG_D/user.conf" 2>/dev/null
+    git config --global --add include.path "$GITCONFIG_D/local.conf" 2>/dev/null
+fi
+
+# Credential helper (written to main .gitconfig, recreated each start)
 git config --global credential.https://github.com.helper '!/opt/claude-code-docker/scripts/gh-credential-helper.sh' 2>/dev/null
+
+# Auto-configure git identity from GitHub if not already in persistent config
+if [ ! -f "$GITCONFIG_D/user.conf" ] || ! grep -q '\[user\]' "$GITCONFIG_D/user.conf" 2>/dev/null; then
+    if gh auth status &>/dev/null; then
+        GH_NAME=$(gh api user -q .name 2>/dev/null)
+        GH_EMAIL=$(gh api user -q .email 2>/dev/null)
+        GH_LOGIN=$(gh api user -q .login 2>/dev/null)
+        # Fall back to login@users.noreply.github.com if email is private
+        [ -z "$GH_EMAIL" ] || [ "$GH_EMAIL" = "null" ] && GH_EMAIL="${GH_LOGIN}@users.noreply.github.com"
+        [ -z "$GH_NAME" ] || [ "$GH_NAME" = "null" ] && GH_NAME="$GH_LOGIN"
+        if [ -n "$GH_NAME" ] && [ -n "$GH_EMAIL" ]; then
+            cat > "$GITCONFIG_D/user.conf" <<GITEOF
+[user]
+	name = $GH_NAME
+	email = $GH_EMAIL
+GITEOF
+            echo -e "  ${GREEN}✓${NC} Git identity: $GH_NAME <$GH_EMAIL>"
+        fi
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # Load provider config from settings.json (generated from providers.yml)

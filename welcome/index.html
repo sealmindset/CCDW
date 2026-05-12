@@ -566,6 +566,25 @@
             </a>
         </div>
 
+        <!-- Quick actions -->
+        <div style="display:flex;gap:0.75rem;margin-bottom:1rem;">
+            <a href="" id="new-terminal-link" target="_blank" style="
+                display:inline-flex;align-items:center;gap:0.5rem;
+                background:var(--bg-card);border:1px solid var(--border);
+                border-radius:var(--radius-md);padding:0.5rem 1rem;
+                color:var(--text-secondary);font-size:0.85rem;font-weight:500;
+                text-decoration:none;transition:all 0.15s;
+            " onmouseover="this.style.borderColor='var(--border-hover)';this.style.color='var(--text-primary)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">
+                <span style="color:var(--success);font-size:1rem;">+</span> New Terminal
+            </a>
+        </div>
+
+        <!-- Running Apps (populated by /try-it) -->
+        <div id="apps-section" style="display:none;margin-bottom:1rem;">
+            <div class="section-label">Your Apps</div>
+            <div id="apps-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.75rem;"></div>
+        </div>
+
         <!-- AI Provider Card -->
         <div class="provider-card" id="providerCard">
             <div class="provider-row">
@@ -700,6 +719,7 @@
         document.getElementById('workshop-link').href = 'http://' + host + ':9200';
         document.getElementById('terminal-link').href = 'http://' + host + ':7681';
         document.getElementById('vscode-link').href = 'http://' + host + ':8080';
+        document.getElementById('new-terminal-link').href = 'http://' + host + ':7682';
 
         var setupBadge = document.getElementById('setup-badge');
 
@@ -833,12 +853,45 @@
             } catch (e) {}
         }
 
+        async function checkApps() {
+            try {
+                var resp = await fetch('/api/apps');
+                if (!resp.ok) return;
+                var apps = await resp.json();
+                var section = document.getElementById('apps-section');
+                var grid = document.getElementById('apps-grid');
+                if (!apps || apps.length === 0) { section.style.display = 'none'; return; }
+                section.style.display = '';
+                grid.innerHTML = '';
+                apps.forEach(function(app) {
+                    var port = app.url ? '' : (app.ports && app.ports[0] ? app.ports[0].host : '');
+                    var url = app.url || ('http://' + host + ':' + port);
+                    var label = app.label || app.name;
+                    var card = document.createElement('a');
+                    card.href = url;
+                    card.target = '_blank';
+                    card.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:1rem 1.25rem;text-decoration:none;color:inherit;transition:all 0.15s;display:block;';
+                    card.onmouseover = function() { this.style.borderColor = 'var(--success)'; this.style.transform = 'translateY(-1px)'; };
+                    card.onmouseout = function() { this.style.borderColor = 'var(--border)'; this.style.transform = ''; };
+                    var portBadge = port ? '<span style="background:var(--bg-tertiary);color:var(--text-muted);padding:0.1rem 0.4rem;border-radius:4px;font-family:var(--font-mono);font-size:0.7rem;">:' + port + '</span>' : '';
+                    card.innerHTML = '<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.35rem;">' +
+                        '<div style="width:28px;height:28px;border-radius:var(--radius-sm);background:var(--success-soft);color:var(--success);display:flex;align-items:center;justify-content:center;font-size:0.9rem;">&#9654;</div>' +
+                        '<strong style="font-size:0.9rem;">' + label + '</strong>' + portBadge +
+                        '</div>' +
+                        '<div style="color:var(--text-muted);font-size:0.75rem;">' + (app.image || 'Running') + '</div>';
+                    grid.appendChild(card);
+                });
+            } catch (e) {}
+        }
+
         checkAll();
         checkUsage();
         checkSslProxy();
+        checkApps();
         setInterval(checkAll, 30000);
         setInterval(checkUsage, 30000);
         setInterval(checkSslProxy, 30000);
+        setInterval(checkApps, 5000);
 
         var authAutoOpened = false;
         async function checkAuthPending() {

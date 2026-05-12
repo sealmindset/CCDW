@@ -30,12 +30,8 @@ if [ ! -d "$GITHUB_DIR" ]; then
     mkdir -p "$GITHUB_DIR"
 fi
 
-if [ -w "$GITHUB_DIR" ]; then
-    echo -e "${GREEN}[OK]${NC} Workspace: $GITHUB_DIR"
-else
-    echo -e "${YELLOW}[WARN]${NC} Workspace directory is not writable: $GITHUB_DIR"
-    echo -e "         Projects may fail to save. Check your volume mount permissions."
-fi
+chown -R coder:coder "$GITHUB_DIR" 2>/dev/null || true
+echo -e "${GREEN}[OK]${NC} Workspace: $GITHUB_DIR"
 
 # ---------------------------------------------------------------------------
 # Docker socket permissions (entrypoint runs as root, so we can fix this)
@@ -67,11 +63,16 @@ fi
 # ---------------------------------------------------------------------------
 # Fix volume ownership (mounted volumes may be root-owned)
 # ---------------------------------------------------------------------------
-for dir in /home/coder/.config /home/coder/.claude /home/coder/.azure /home/coder/.gitconfig.d; do
+for dir in /home/coder/.config /home/coder/.claude /home/coder/.azure /home/coder/.aws \
+           /home/coder/.gitconfig.d /home/coder/.local /home/coder/.continue \
+           /home/coder/.npm /home/coder/go; do
     if [ -d "$dir" ]; then
         chown -R coder:coder "$dir" 2>/dev/null || true
     fi
 done
+chown coder:coder /home/coder 2>/dev/null || true
+chown coder:coder /home/coder/.gitconfig 2>/dev/null || true
+chown coder:coder /home/coder/.claude.json 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # Restore .claude.json if missing (backup lives inside the volume)
@@ -221,6 +222,7 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "  Workshop:      ${GREEN}http://localhost:${WORKSHOP_PORT:-9200}${NC}"
 echo -e "  Dashboard:     ${GREEN}http://localhost:${WELCOME_PORT:-3000}${NC}"
 echo -e "  Web Terminal:  ${GREEN}http://localhost:${TTYD_PORT:-7681}${NC}"
+echo -e "  New Terminal:  ${GREEN}http://localhost:${TTYD_NEW_PORT:-7682}${NC}"
 echo -e "  VS Code:       ${GREEN}http://localhost:${CODE_SERVER_PORT:-8080}${NC}"
 if [ "$CS_AUTH" = "password" ]; then
     echo -e "  VS Code Pass:  ${GREEN}${CODE_SERVER_PASSWORD}${NC}"
@@ -234,10 +236,24 @@ echo ""
 # reopening reconnects to the same terminal (session persistence).
 # Font stack: system monospace fonts with good Unicode block element coverage
 # (needed for Claude Code's logo and box-drawing UI)
+TTYD_FONT='fontFamily="Menlo, Cascadia Mono, Consolas, DejaVu Sans Mono, Liberation Mono, monospace"'
+
+# Second ttyd (port 7682): each browser tab gets a NEW tmux window.
+# Use this for additional terminals without disturbing the main session.
+echo -e "${GREEN}[OK]${NC} New Terminal service on port ${TTYD_NEW_PORT:-7682}..."
+su-exec coder ttyd \
+    --port "${TTYD_NEW_PORT:-7682}" \
+    --writable \
+    --client-option "$TTYD_FONT" \
+    --client-option 'fontSize=14' \
+    --client-option 'cursorBlink=true' \
+    "$SCRIPTS_DIR/new-terminal.sh" &
+
+# Main ttyd (port 7681): always reconnects to the same tmux session.
 exec su-exec coder ttyd \
     --port 7681 \
     --writable \
-    --client-option 'fontFamily="Menlo, Cascadia Mono, Consolas, DejaVu Sans Mono, Liberation Mono, monospace"' \
+    --client-option "$TTYD_FONT" \
     --client-option 'fontSize=14' \
     --client-option 'cursorBlink=true' \
     tmux new-session -A -s main "bash --init-file $SCRIPTS_DIR/shell-init.sh"

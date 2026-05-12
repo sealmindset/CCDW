@@ -211,7 +211,7 @@ if !ERRORLEVEL! equ 0 goto :ports_ok
 
 powershell -NoProfile -Command ^
     "$conflicts = @(); " ^
-    "foreach ($p in @(3000,7681,8080,9200)) { " ^
+    "foreach ($p in @(3000,7681,7682,8080,9200)) { " ^
     "  $r = netstat -ano 2>$null | Select-String \":$p\s.*LISTENING\"; " ^
     "  if ($r) { $conflicts += $p } " ^
     "} " ^
@@ -225,7 +225,7 @@ if !ERRORLEVEL! neq 0 (
     echo   Another program is using a port that Claude Code needs:
     echo.
     powershell -NoProfile -Command ^
-        "foreach ($p in @(3000,7681,8080,9200)) { " ^
+        "foreach ($p in @(3000,7681,7682,8080,9200)) { " ^
         "  try { " ^
         "    $conn = Get-NetTCPConnection -LocalPort $p -State Listen -EA Stop; " ^
         "    $proc = Get-Process -Id $conn[0].OwningProcess -EA Stop; " ^
@@ -1179,11 +1179,11 @@ echo [...]  Starting Claude Code Docker...
 if not exist "!ENV_FILE!" goto :run_without_env
 
 echo [OK] Loading environment from .env
-docker run -d --name claude-code --restart unless-stopped --group-add 0 --env-file "!ENV_FILE!" -p 3000:3000 -p 7681:7681 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents/GitHub" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest
+docker run -d --name claude-code --restart unless-stopped --group-add 0 --env-file "!ENV_FILE!" -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents/GitHub" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest
 goto :check_run_result
 
 :run_without_env
-docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:3000 -p 7681:7681 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents/GitHub" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest
+docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents/GitHub" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest
 
 :check_run_result
 if !ERRORLEVEL! equ 0 goto :run_ok
