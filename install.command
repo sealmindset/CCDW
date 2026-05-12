@@ -728,9 +728,12 @@ echo ""
 open "http://localhost:3000" 2>/dev/null || xdg-open "http://localhost:3000" 2>/dev/null &
 
 # ---------------------------------------------------------------------------
-# Desktop shortcut (macOS .webloc)
+# Desktop shortcut (macOS .webloc) with Claude icon
 # ---------------------------------------------------------------------------
-DESKTOP_SHORTCUT="$HOME/Desktop/Claude Code.webloc"
+DESKTOP_SHORTCUT="$HOME/Desktop/Claude.webloc"
+OLD_SHORTCUT="$HOME/Desktop/Claude Code.webloc"
+[ -f "$OLD_SHORTCUT" ] && rm -f "$OLD_SHORTCUT"
+
 if [ ! -f "$DESKTOP_SHORTCUT" ]; then
     cat > "$DESKTOP_SHORTCUT" << 'WEBLOC'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -743,6 +746,16 @@ if [ ! -f "$DESKTOP_SHORTCUT" ]; then
 </plist>
 WEBLOC
     echo -e "${GREEN}[OK]${NC} Desktop shortcut created"
+fi
+
+# Set Claude icon on the shortcut
+ICON_FILE="$(cd "$(dirname "$0")" && pwd)/assets/claude-icon.png"
+if [ -f "$ICON_FILE" ] && [ -f "$DESKTOP_SHORTCUT" ]; then
+    osascript -e "
+use framework \"AppKit\"
+set img to current application's NSImage's alloc()'s initWithContentsOfFile:\"$ICON_FILE\"
+current application's NSWorkspace's sharedWorkspace()'s setIcon:img forFile:\"$DESKTOP_SHORTCUT\" options:0
+" 2>/dev/null && echo -e "${GREEN}[OK]${NC} Claude icon set" || true
 fi
 
 echo ""
