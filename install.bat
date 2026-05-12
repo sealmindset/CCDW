@@ -595,20 +595,10 @@ if exist "%~dp0.env.example" (
 :env_exists
 
 REM ---------------------------------------------------------------------------
-REM Ensure REGISTRY_MIRROR is in .env (may be missing from older .env files)
+REM REGISTRY_MIRROR: only add if explicitly uncommented in .env.example
+REM (commented out by default — users opt in by editing .env)
 REM ---------------------------------------------------------------------------
-if exist "!ENV_FILE!" (
-    findstr /i /b "REGISTRY_MIRROR=" "!ENV_FILE!" >nul 2>nul
-    if !ERRORLEVEL! neq 0 if exist "%~dp0.env.example" (
-        for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0.env.example") do if /i "%%A"=="REGISTRY_MIRROR" if "%%B" neq "" call :add_registry_mirror "%%B"
-    )
-)
 goto :after_registry_mirror_check
-:add_registry_mirror
-echo.>> "!ENV_FILE!"
-echo REGISTRY_MIRROR=%~1>> "!ENV_FILE!"
-echo [OK] Added image registry setting to .env
-exit /b
 :after_registry_mirror_check
 
 REM ---------------------------------------------------------------------------
@@ -1016,13 +1006,7 @@ if defined ACR_SUBSCRIPTION set "ACR_LOGIN_ARGS=!ACR_LOGIN_ARGS! --subscription 
 call az acr login !ACR_LOGIN_ARGS! >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :acr_auth_ok
 
-REM Login failed -- need Azure sign-in first
-echo [...]  Image registry needs Azure sign-in...
-call az login
-call az acr login !ACR_LOGIN_ARGS! >nul 2>nul
-if !ERRORLEVEL! equ 0 goto :acr_auth_ok
-
-echo [WARN] Could not authenticate to image registry.
+echo [WARN] Image registry not authenticated. Will use public Docker Hub instead.
 goto :acr_auth_done
 
 :acr_auth_ok

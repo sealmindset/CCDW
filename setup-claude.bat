@@ -97,38 +97,42 @@ if !ERRORLEVEL! equ 0 (
 )
 
 :vpn_check
-echo [...]  Checking VPN connection...
-curl.exe -s --connect-timeout 8 -o nul https://snapistg-scus.azure.sleepnumber.com 2>nul
+echo [...]  Checking Sleep Number network access...
+curl.exe -so nul -w "%%{http_code}" --connect-timeout 10 https://snapistg-scus.azure.sleepnumber.com 2>nul | findstr /v "^000$" >nul 2>nul
 if !ERRORLEVEL! equ 0 (
-    echo [OK]  VPN connected.
+    echo [OK]  Sleep Number network reachable.
 ) else (
     echo.
     echo ========================================
-    echo   VPN is not connected
+    echo   Cannot reach Sleep Number services
     echo ========================================
     echo.
-    echo   Claude Code needs VPN to reach Sleep Number services.
+    echo   Claude Code needs access to Sleep Number services.
+    echo   This works on the corporate network OR via VPN.
     echo.
-    echo   How to connect:
+    echo   If you're in the office:
+    echo     - Make sure you're on the corporate network ^(not guest Wi-Fi^)
+    echo.
+    echo   If you're remote:
     echo     1. Look for the GlobalProtect icon in the system tray
     echo        ^(bottom-right corner, near the clock^)
     echo     2. Click it and make sure it says "Connected"
     echo     3. If you don't see it, search for "GlobalProtect"
     echo        in the Start menu and open it
     echo.
-    echo   Press any key after connecting your VPN...
+    echo   Press any key after connecting...
     echo.
     pause
-    curl.exe -s --connect-timeout 8 -o nul https://snapistg-scus.azure.sleepnumber.com 2>nul
+    curl.exe -so nul -w "%%{http_code}" --connect-timeout 10 https://snapistg-scus.azure.sleepnumber.com 2>nul | findstr /v "^000$" >nul 2>nul
     if !ERRORLEVEL! neq 0 (
         echo.
         echo [ERROR] Still cannot reach Sleep Number services.
-        echo         Make sure GlobalProtect VPN is connected and try again.
+        echo         Check your network connection ^(corporate network or VPN^) and try again.
         echo.
         pause
         exit /b 1
     )
-    echo [OK]  VPN connected.
+    echo [OK]  Sleep Number network reachable.
 )
 
 REM ---------------------------------------------------------------------------
