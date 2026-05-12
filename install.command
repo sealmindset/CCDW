@@ -368,7 +368,7 @@ echo -e "${GREEN}[OK]${NC} Docker is running."
 # ---------------------------------------------------------------------------
 # Create required folders
 # ---------------------------------------------------------------------------
-PROJECTS_DIR="$HOME/Documents/GitHub"
+PROJECTS_DIR="$HOME/Documents"
 AZURE_DIR="$HOME/.azure"
 AWS_DIR="$HOME/.aws"
 
@@ -686,7 +686,9 @@ if ! docker run -d \
     -p "${CODE_SERVER_PORT:-8080}:8080" \
     -p "${WORKSHOP_PORT:-9200}:9200" \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    -v "$PROJECTS_DIR:/home/coder/Documents/GitHub" \
+    -v "$PROJECTS_DIR:/home/coder/Documents" \
+    -v "$HOME/Downloads:/home/coder/Downloads" \
+    -v "$HOME/Desktop:/home/coder/Desktop" \
     -v "$AZURE_DIR:/home/coder/.azure" \
     -v "$AWS_DIR:/home/coder/.aws" \
     -v claude-code-data:/home/coder/.claude \

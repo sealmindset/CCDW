@@ -25,9 +25,10 @@ services:
     volumes:
       # Mount host Docker socket for sibling container execution
       - /var/run/docker.sock:/var/run/docker.sock
-      # Projects folder: defaults to ~/Documents/GitHub on the host
-      # Power users can override via PROJECTS_PATH in .env
-      - ${PROJECTS_PATH:-~/Documents/GitHub}:/home/coder/Documents/GitHub
+      # User folders: mount Documents, Downloads, Desktop for full file access
+      - ${PROJECTS_PATH:-~/Documents}:/home/coder/Documents
+      - ~/Downloads:/home/coder/Downloads
+      - ~/Desktop:/home/coder/Desktop
       # Persistent data: Claude Code settings, skills, git config, gh auth
       - claude-code-data:/home/coder/.claude
       - git-config:/home/coder/.gitconfig.d

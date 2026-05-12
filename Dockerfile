@@ -103,7 +103,7 @@ RUN deluser node 2>/dev/null; delgroup node 2>/dev/null; \
     && adduser -u 1000 -G coder -s /bin/bash -D coder 2>/dev/null || true \
     && echo 'coder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/coder \
     && chmod 0440 /etc/sudoers.d/coder \
-    && mkdir -p /home/coder/.claude /home/coder/Documents/GitHub \
+    && mkdir -p /home/coder/.claude /home/coder/Documents/GitHub /home/coder/Downloads /home/coder/Desktop \
     && chown -R coder:coder /home/coder
 
 # ---------------------------------------------------------------------------
