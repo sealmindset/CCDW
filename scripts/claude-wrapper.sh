@@ -46,11 +46,7 @@ if [ -z "$ANTHROPIC_API_KEY" ] && [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
         echo -e "  ${BOLD}Problem:${NC} Your Azure login has expired."
         echo ""
         echo -e "  ${BOLD}How to fix:${NC}"
-        echo -e "    On your ${BOLD}host machine${NC} (not inside this container), run:"
-        echo ""
-        echo -e "      ${GREEN}az login${NC}"
-        echo ""
-        echo -e "    Then try again here. The container shares your host's Azure credentials."
+        echo -e "    Type ${GREEN}login${NC} to re-authenticate."
         echo ""
         exit $EXIT_CODE
     fi

@@ -95,10 +95,10 @@ elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
                     REMAINING=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 60 ))
                     if [ "$REMAINING" -le 0 ]; then
                         fail "Azure token has expired"
-                        hint "On your HOST machine, run: az login"
+                        hint "Run: login"
                     elif [ "$REMAINING" -le 10 ]; then
                         warn "Azure token expires in $REMAINING minutes"
-                        hint "On your HOST machine, run: az login"
+                        hint "Run: login"
                     else
                         pass "Azure token is valid ($REMAINING minutes remaining)"
                     fi
@@ -110,11 +110,11 @@ elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
             fi
         else
             fail "Could not get Azure access token"
-            hint "On your HOST machine, run: az login"
+            hint "Run: login"
         fi
     else
         fail "Azure CLI is not logged in"
-        hint "On your HOST machine, run: az login"
+        hint "Run: login"
     fi
 elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
     pass "AWS Bedrock is configured"

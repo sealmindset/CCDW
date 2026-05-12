@@ -2,6 +2,11 @@
 # =============================================================================
 # Claude Code - One-Click macOS Setup
 #
+# IMPORTANT — GATEKEEPER:
+#   macOS blocks downloaded .command files from running when double-clicked.
+#   The fix: RIGHT-CLICK the file → Open → click "Open" again.
+#   See START-HERE.txt for full instructions with screenshots-style guidance.
+#
 # Download this file and double-click it. It handles everything:
 #   1. Checks VPN and internet connectivity
 #   2. Installs Rancher Desktop (if needed)
@@ -407,16 +412,72 @@ elif [ -f "$INSTALL_DIR/install.command" ]; then
     git pull 2>/dev/null || true
     step_ok "Updated."
 else
-    step_wait "Downloading (this may take a minute)..."
-    if git clone https://github.com/SleepNumberInc/CCDW.git "$INSTALL_DIR" 2>/dev/null; then
-        step_ok "Downloaded."
+    # Pre-flight: check GitHub authentication
+    GH_AUTH=0
+    if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
+        step_ok "GitHub CLI authenticated."
+        GH_AUTH=1
+    elif git credential-osxkeychain 2>&1 | grep -qi "usage" &>/dev/null; then
+        step_info "Git credential helper available."
     else
+        step_warn "No GitHub credentials detected."
+        echo ""
+        echo "  To download Claude Code, you need GitHub access."
+        echo "  The easiest way is to open this URL in your browser:"
+        echo "    https://github.com/SleepNumberInc/CCDW"
+        echo "  If you can see the page, try again."
+        echo "  If not, ask your manager for GitHub access."
+        echo ""
+    fi
+
+    step_wait "Downloading (this may take a minute)..."
+    CLONE_OK=0
+
+    # Strategy 1: git clone
+    if git clone https://github.com/SleepNumberInc/CCDW.git "$INSTALL_DIR" 2>/dev/null; then
+        step_ok "Downloaded via git."
+        CLONE_OK=1
+    else
+        step_warn "Git clone failed (likely no credentials). Trying ZIP download..."
+
+        # Strategy 2: ZIP archive fallback
+        ZIP_PATH="$TMPDIR/CCDW.zip"
+        rm -f "$ZIP_PATH" 2>/dev/null || true
+        if curl -fSL --connect-timeout 15 -o "$ZIP_PATH" \
+            "https://github.com/SleepNumberInc/CCDW/archive/refs/heads/main.zip" 2>/dev/null; then
+            step_wait "Extracting..."
+            mkdir -p "$INSTALL_DIR"
+            if unzip -q "$ZIP_PATH" -d "$TMPDIR" 2>/dev/null; then
+                # unzip creates CCDW-main/ — move contents into INSTALL_DIR
+                rm -rf "$INSTALL_DIR"
+                mv "$TMPDIR/CCDW-main" "$INSTALL_DIR"
+                rm -f "$ZIP_PATH"
+                step_ok "Downloaded via ZIP archive."
+                CLONE_OK=1
+            else
+                step_warn "ZIP extraction failed."
+                rm -f "$ZIP_PATH" 2>/dev/null || true
+            fi
+        else
+            step_warn "ZIP download failed (private repo requires auth)."
+            rm -f "$ZIP_PATH" 2>/dev/null || true
+        fi
+    fi
+
+    if [ "$CLONE_OK" = "0" ]; then
         echo ""
         echo -e "${RED}========================================${NC}"
         echo -e "${RED}  Could not download Claude Code${NC}"
         echo -e "${RED}========================================${NC}"
         echo ""
-        echo "  Two things to check:"
+        echo "  Opening the GitHub repo page in your browser..."
+        echo "  If you can sign in and see the repo, download"
+        echo "  it manually using the green 'Code' button > 'Download ZIP'."
+        echo ""
+        echo "  Then unzip it and move the folder to:"
+        echo "    $INSTALL_DIR"
+        echo ""
+        echo "  Things to check:"
         echo ""
         echo "  1. VPN -- Make sure GlobalProtect is connected."
         echo "     Look for its icon in the menu bar (top-right)."
@@ -425,6 +486,7 @@ else
         echo "     the Sleep Number organization. If you haven't set this"
         echo "     up yet, ask your manager or the AI CoE team."
         echo ""
+        open "https://github.com/SleepNumberInc/CCDW" 2>/dev/null
         echo "  After fixing, double-click this file again."
         echo ""
         read -p "Press Enter to close..."
@@ -446,7 +508,7 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  Starting Claude Code installer...${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
-step_info "Setup completed in $(elapsed). Handing off to installer."
+step_info "Pre-checks done in $(elapsed). Starting installer..."
 echo ""
 
 cd "$INSTALL_DIR"

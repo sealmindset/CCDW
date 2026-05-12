@@ -382,6 +382,15 @@ const server = http.createServer((req, res) => {
 
         if (provider === 'none') { res.writeHead(200, h); res.end(JSON.stringify({ needed: false, provider: 'none' })); return; }
 
+        // If the terminal's login-wizard is already running, don't spawn a competing auth process
+        try {
+            execSync('pgrep -f "login-wizard.sh"', { stdio: 'ignore', timeout: 3000 });
+            // Wizard is running -- tell the dashboard to use the terminal instead
+            res.writeHead(200, h);
+            res.end(JSON.stringify({ needed: true, provider: provider, status: 'use-terminal' }));
+            return;
+        } catch(e) {} // Not running, proceed
+
         if (loginProcess) { try { loginProcess.kill(); } catch(e) {} loginProcess = null; }
 
         loginProcess = spawn(authCmd, authArgs, { stdio: ['pipe', 'pipe', 'pipe'] });

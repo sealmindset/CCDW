@@ -228,6 +228,9 @@ run_preflight() {
     echo -e "${BOLD}  Preflight Checks${NC}"
     echo ""
 
+    # Run preflight checks once, capturing output and exit code
+    local tmpfile
+    tmpfile=$(mktemp)
     python3 -c "
 import json, subprocess, sys
 
@@ -288,7 +291,11 @@ for p in prereqs:
             fail_count += 1
 
 sys.exit(fail_count)
-" 2>/dev/null | while IFS='|' read -r status label msg; do
+" > "$tmpfile" 2>/dev/null
+    local preflight_result=$?
+
+    # Display the saved output with colored formatting
+    while IFS='|' read -r status label msg; do
         case "$status" in
             PASS)
                 echo -e "  ${GREEN}✓${NC} $label"
@@ -313,45 +320,8 @@ sys.exit(fail_count)
                 fi
                 ;;
         esac
-    done
-
-    # Re-run the python to get the exit code (pipe eats it)
-    python3 -c "
-import json, subprocess, sys
-
-with open('$config_file') as f:
-    cfg = json.load(f)
-
-prereqs = cfg.get('prereqs', {}).get('host', [])
-import re
-def resolve(val, cfg):
-    def replacer(m):
-        keys = m.group(1).split('.')
-        v = cfg
-        for k in keys:
-            if isinstance(v, dict) and k in v: v = v[k]
-            else: return ''
-        return str(v) if v is not None else ''
-    return re.sub(r'\{([^}]+)\}', replacer, str(val))
-
-fail_count = 0
-for p in prereqs:
-    check = p.get('check', '')
-    if check in ('manual', 'info'): continue
-    resolved_check = resolve(check, cfg)
-    expect = p.get('expect', '')
-    required = p.get('required', False)
-    try:
-        result = subprocess.run(resolved_check, shell=True, capture_output=True, text=True, timeout=15)
-        if result.returncode != 0 and required:
-            fail_count += 1
-        elif expect and expect not in result.stdout and required:
-            fail_count += 1
-    except:
-        if required: fail_count += 1
-sys.exit(1 if fail_count > 0 else 0)
-" 2>/dev/null
-    local preflight_result=$?
+    done < "$tmpfile"
+    rm -f "$tmpfile"
 
     echo ""
     if [ $preflight_result -ne 0 ]; then
@@ -628,10 +598,8 @@ if [ -n "$REGISTRY_MIRROR" ]; then
     if command -v az &>/dev/null; then
         if az acr login --name "$ACR_NAME" &>/dev/null; then
             echo -e "${GREEN}[OK]${NC} Image registry authenticated."
-        elif az login --use-device-code &>/dev/null && az acr login --name "$ACR_NAME" &>/dev/null; then
-            echo -e "${GREEN}[OK]${NC} Image registry authenticated."
         else
-            echo -e "${YELLOW}[WARN]${NC} Could not connect to image registry -- build may prompt for sign-in."
+            echo -e "${YELLOW}[WARN]${NC} Image registry not authenticated. Will use public Docker Hub instead."
         fi
     fi
 fi
@@ -692,6 +660,9 @@ fi
 # ---------------------------------------------------------------------------
 # Stop existing container if running
 # ---------------------------------------------------------------------------
+if docker ps --format '{{.Names}}' | grep -q '^claude-code$'; then
+    echo -e "${YELLOW}[...]${NC} Stopping existing Claude Code session..."
+fi
 docker rm -f claude-code &>/dev/null || true
 
 # ---------------------------------------------------------------------------
@@ -711,6 +682,7 @@ if ! docker run -d \
     --env-file "$ENV_FILE" \
     -p "${WELCOME_PORT:-3000}:3000" \
     -p "${TTYD_PORT:-7681}:7681" \
+    -p "${TTYD_NEW_PORT:-7682}:7682" \
     -p "${CODE_SERVER_PORT:-8080}:8080" \
     -p "${WORKSHOP_PORT:-9200}:9200" \
     -v /var/run/docker.sock:/var/run/docker.sock \

@@ -1,0 +1,43 @@
+=============================================
+  Claude Code - Getting Started on macOS
+=============================================
+
+STEP 1: Open the setup file
+--------------------------------------------
+  Right-click on "setup-claude-mac.command"
+  and choose "Open" from the menu.
+
+  macOS will show a warning that says the file
+  is from an unidentified developer.
+
+  Click "Open" again when macOS asks.
+
+  (Double-clicking won't work the first time
+  because macOS blocks downloaded files. The
+  right-click > Open method bypasses this.)
+
+
+STEP 2: Follow the prompts
+--------------------------------------------
+  The script opens a Terminal window and walks
+  you through the rest automatically:
+    - Checks your network connection
+    - Installs Rancher Desktop (Docker)
+    - Downloads Claude Code
+    - Runs the installer
+
+
+TROUBLESHOOTING
+--------------------------------------------
+  "Open" is grayed out or missing?
+    Open System Settings > Privacy & Security,
+    scroll down, and click "Open Anyway" next
+    to the setup-claude-mac.command message.
+
+  Still blocked?
+    Open Terminal (Spotlight > "Terminal") and type:
+      bash ~/Downloads/setup-claude-mac.command
+    (adjust the path if you saved it elsewhere)
+
+  Need help?
+    Contact the AI CoE team or your manager.
