@@ -50,6 +50,11 @@ alias login='/opt/claude-code-docker/scripts/login-wizard.sh --force'
 alias setup='/opt/claude-code-docker/scripts/setup.sh'
 
 # ---------------------------------------------------------------------------
+# Git credential helper: auto-reauth on expired GitHub tokens
+# ---------------------------------------------------------------------------
+git config --global credential.https://github.com.helper '!/opt/claude-code-docker/scripts/gh-credential-helper.sh' 2>/dev/null
+
+# ---------------------------------------------------------------------------
 # Load provider config from settings.json (generated from providers.yml)
 # ---------------------------------------------------------------------------
 CLAUDE_SETTINGS="/home/coder/.claude/settings.json"
@@ -151,12 +156,13 @@ if [ ! -f "$FIRST_RUN_MARKER" ]; then
         "$SCRIPTS_DIR/login-wizard.sh"
         WIZARD_EXIT=$?
 
-        # Re-check status after wizard
+        # Re-check status after wizard (wizard now handles GitHub too)
         az account show &>/dev/null 2>&1 && AZ_OK=1
+        gh auth status &>/dev/null 2>&1 && GH_OK=1
 
         # If wizard completed, first-run marker is already set by the wizard
     else
-        # Everything already logged in — just show status and mark done
+        # AI provider already logged in — show status
         echo ""
         echo -e "${BLUE}  Welcome to Claude Code Docker!${NC}"
         echo ""
@@ -167,6 +173,12 @@ if [ ! -f "$FIRST_RUN_MARKER" ]; then
             [ "$AZ_OK" = "1" ] && echo -e "  ${CHECK_PASS} Azure login" || echo -e "  ${CHECK_FAIL} Azure login"
         fi
         [ "$DOCKER_OK" = "1" ] && echo -e "  ${CHECK_PASS} Docker" || echo -e "  ${CHECK_FAIL} Docker"
+        if [ "$GH_OK" = "1" ]; then
+            GH_USER=$(gh api user -q .login 2>/dev/null || echo "authenticated")
+            echo -e "  ${CHECK_PASS} GitHub        ${GREEN}${GH_USER}${NC}"
+        else
+            echo -e "  ${CHECK_FAIL} GitHub        ${RED}Not signed in${NC}"
+        fi
         echo ""
         if [ "$SSL_PROXY" = "1" ]; then
             echo -e "  ${YELLOW}╭──────────────────────────────────────────────────────────────────╮${NC}"
@@ -179,6 +191,11 @@ if [ ! -f "$FIRST_RUN_MARKER" ]; then
             echo -e "  ${YELLOW}│${NC} tray, pick the longest time option, then re-enable when done.  ${YELLOW}│${NC}"
             echo -e "  ${YELLOW}╰──────────────────────────────────────────────────────────────────╯${NC}"
             echo ""
+        fi
+        # GitHub not authenticated — run wizard for GitHub only
+        if [ "$GH_OK" = "0" ]; then
+            "$SCRIPTS_DIR/login-wizard.sh" --github-only
+            gh auth status &>/dev/null 2>&1 && GH_OK=1
         fi
         echo -e "  ${GREEN}You're all set!${NC} Type ${GREEN}claude${NC} to start."
         echo -e "  Then type ${GREEN}/make-it${NC} to build your first app."
@@ -197,6 +214,7 @@ else
     if [ -f "$SH_STATE_FILE" ]; then
         SH_FAILURE=$(python3 -c "import json; print(json.load(open('$SH_STATE_FILE')).get('failure_type',''))" 2>/dev/null || echo "")
         [ "$SH_FAILURE" = "azure_token_expired" ] && AZ_OK=0
+        [ "$SH_FAILURE" = "github_token_expired" ] && GH_OK=0
     fi
 
     # Make sure correct subscription is set
@@ -225,13 +243,20 @@ else
 
     if [ "$NEEDS_REAUTH" = "1" ]; then
         "$SCRIPTS_DIR/login-wizard.sh" --refresh
-        # Re-check after wizard
+        # Re-check after wizard (wizard now handles GitHub too)
         if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
             az account show &>/dev/null 2>&1 && AUTH_OK=1 && NEEDS_REAUTH=0
         elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
             aws sts get-caller-identity --profile "${AWS_PROFILE:-sso-bedrock}" &>/dev/null 2>&1 && AUTH_OK=1 && NEEDS_REAUTH=0
         fi
         AZ_OK=$AUTH_OK
+        gh auth status &>/dev/null 2>&1 && GH_OK=1
+    fi
+
+    # --- GitHub auth recovery (independent of AI provider) ---
+    if [ "$GH_OK" = "0" ]; then
+        "$SCRIPTS_DIR/login-wizard.sh" --github-only
+        gh auth status &>/dev/null 2>&1 && GH_OK=1
     fi
 
     # --- Now show the status (post-recovery if wizard ran) ---
@@ -267,6 +292,13 @@ else
         echo -e "  ${CHECK_PASS} Docker"
     else
         echo -e "  ${CHECK_FAIL} Docker"
+    fi
+
+    if [ "$GH_OK" = "1" ]; then
+        GH_USER=$(gh api user -q .login 2>/dev/null || echo "authenticated")
+        echo -e "  ${CHECK_PASS} GitHub        ${GREEN}${GH_USER}${NC}"
+    else
+        echo -e "  ${CHECK_FAIL} GitHub        ${RED}Not signed in${NC}"
     fi
 
     echo ""

@@ -558,7 +558,7 @@ if not exist "%~dp0.env" goto :default_projects_dir
 for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0.env") do if /i "%%A"=="PROJECTS_PATH" set "PROJECTS_DIR=%%B"
 
 :default_projects_dir
-if not defined PROJECTS_DIR set "PROJECTS_DIR=%USERPROFILE%\GitHub"
+if not defined PROJECTS_DIR set "PROJECTS_DIR=%USERPROFILE%\Documents\Github"
 set "PROJECTS_DIR=!PROJECTS_DIR:"=!"
 set "AZURE_DIR=%USERPROFILE%\.azure"
 set "AWS_DIR=%USERPROFILE%\.aws"
@@ -573,7 +573,7 @@ echo [ERROR] Could not create !PROJECTS_DIR!
 echo.
 echo   This can happen if OneDrive is redirecting your folders.
 echo   Add this to .env and pick a folder you have access to:
-echo     PROJECTS_PATH=C:\Users\%USERNAME%\GitHub
+echo     PROJECTS_PATH=C:\Users\%USERNAME%\Documents\Github
 echo.
 pause
 exit /b 1
@@ -610,6 +610,18 @@ echo REGISTRY_MIRROR=%~1>> "!ENV_FILE!"
 echo [OK] Added image registry setting to .env
 exit /b
 :after_registry_mirror_check
+
+REM ---------------------------------------------------------------------------
+REM Ensure PROJECTS_PATH is set in .env (docker-compose needs explicit Windows path)
+REM ---------------------------------------------------------------------------
+if exist "!ENV_FILE!" (
+    findstr /i /b "PROJECTS_PATH=" "!ENV_FILE!" >nul 2>nul
+    if !ERRORLEVEL! neq 0 (
+        echo.>> "!ENV_FILE!"
+        echo PROJECTS_PATH=!PROJECTS_DIR!>> "!ENV_FILE!"
+        echo [OK] Set projects folder in .env: !PROJECTS_DIR!
+    )
+)
 
 REM ---------------------------------------------------------------------------
 REM AI Provider Setup

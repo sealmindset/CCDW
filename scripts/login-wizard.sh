@@ -11,6 +11,7 @@
 #   login-wizard.sh              # Full wizard (first run)
 #   login-wizard.sh --refresh    # Token refresh (returning user)
 #   login-wizard.sh --force      # Force fresh login
+#   login-wizard.sh --github-only # GitHub auth only (skip AI provider)
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -36,9 +37,11 @@ MODE="${1:-full}"
 
 # Cleanup handler for Ctrl+C
 AZ_PID=""
+GH_PID=""
 TMPFILE=""
 cleanup() {
     [ -n "$AZ_PID" ] && kill "$AZ_PID" 2>/dev/null
+    [ -n "$GH_PID" ] && kill "$GH_PID" 2>/dev/null
     [ -n "$TMPFILE" ] && rm -f "$TMPFILE"
     tput cnorm 2>/dev/null
     echo ""
@@ -155,8 +158,23 @@ elif [ "$PROVIDER" = "bedrock" ]; then
     fi
 fi
 
+# Check GitHub auth status
+GH_NEED_LOGIN=0
+if [ "$MODE" = "--force" ]; then
+    GH_NEED_LOGIN=1
+elif [ "$MODE" = "--github-only" ]; then
+    gh auth status &>/dev/null 2>&1 || GH_NEED_LOGIN=1
+else
+    gh auth status &>/dev/null 2>&1 || GH_NEED_LOGIN=1
+fi
+
+# If --github-only, skip AI provider checks entirely
+if [ "$MODE" = "--github-only" ]; then
+    NEED_LOGIN=0
+fi
+
 # If nothing is needed, exit early
-if [ "$NEED_LOGIN" = "0" ]; then
+if [ "$NEED_LOGIN" = "0" ] && [ "$GH_NEED_LOGIN" = "0" ]; then
     if [ "$MODE" = "--refresh" ]; then
         echo -e "  ${OK} Already signed in. No refresh needed."
     fi
@@ -459,10 +477,6 @@ azure_allset() {
     echo -e "  ${GREEN}You're all set!${NC} Type ${GREEN}claude${NC} to start Claude Code."
     echo -e "  Then type ${GREEN}/make-it${NC} to build your first app."
     echo ""
-    if ! gh auth status &>/dev/null 2>&1; then
-        echo -e "  ${DIM}Tip: To push code to GitHub later, run: gh auth login${NC}"
-    fi
-    echo ""
 }
 
 # =============================================================================
@@ -672,41 +686,133 @@ bedrock_allset() {
     echo -e "  ${GREEN}You're all set!${NC} Type ${GREEN}claude${NC} to start Claude Code."
     echo -e "  Then type ${GREEN}/make-it${NC} to build your first app."
     echo ""
-    if ! gh auth status &>/dev/null 2>&1; then
-        echo -e "  ${DIM}Tip: To push code to GitHub later, run: gh auth login${NC}"
+}
+
+# =============================================================================
+# GITHUB CLI LOGIN FLOW
+# =============================================================================
+
+github_signin() {
+    if gh auth status &>/dev/null 2>&1; then
+        local gh_user
+        gh_user=$(gh api user -q .login 2>/dev/null || echo "authenticated")
+        echo -e "  ${OK} GitHub: signed in as ${GREEN}${gh_user}${NC}"
+        return 0
     fi
+
+    clear
+    draw_header "GitHub Sign In" 1 1
+    draw_progress 1 1
+
+    echo -e "  Starting GitHub sign-in..."
     echo ""
+
+    TMPFILE=$(mktemp /tmp/gh-login-XXXXXX)
+    # Pipe Enter to satisfy "Press Enter to open github.com..." prompt
+    # xdg-open shim is a no-op so gh prints URL and waits for browser auth
+    echo "" | stdbuf -oL gh auth login -p https -h github.com -w >"$TMPFILE" 2>&1 &
+    GH_PID=$!
+
+    local device_code=""
+    local attempts=0
+    while [ -z "$device_code" ] && [ $attempts -lt 60 ]; do
+        sleep 0.5
+        attempts=$((attempts + 1))
+        device_code=$(sed -n 's/.*one-time code: \([A-Z0-9]*-[A-Z0-9]*\).*/\1/p' "$TMPFILE" 2>/dev/null | head -1)
+    done
+
+    if [ -z "$device_code" ]; then
+        echo -e "  ${FAIL} Could not start GitHub sign-in."
+        echo ""
+        echo -e "  Try running manually: ${GREEN}gh auth login${NC}"
+        wait "$GH_PID" 2>/dev/null
+        GH_PID=""
+        rm -f "$TMPFILE"
+        TMPFILE=""
+        echo ""
+        read -p "  Press Enter to continue... " _
+        return 1
+    fi
+
+    clear
+    draw_header "GitHub Sign In" 1 1
+    draw_progress 1 1
+
+    echo -e "  Enter this code at the GitHub sign-in page:"
+    draw_code_box "$device_code"
+    echo -e "  ${BOLD}▸${NC} ${BOLD}https://github.com/login/device${NC}"
+    echo -e "    ${DIM}(Auto-opening if the dashboard is open in your browser)${NC}"
+    notify_browser "https://github.com/login/device" "$device_code" "github"
+    show_qr "https://github.com/login/device"
+
+    spinner_wait "$GH_PID" "Waiting for you to sign in..."
+    local exit_code=$SPINNER_EXIT
+    GH_PID=""
+    rm -f "$TMPFILE"
+    TMPFILE=""
+
+    if [ $exit_code -ne 0 ] && ! gh auth status &>/dev/null 2>&1; then
+        echo -e "  ${FAIL} GitHub sign-in was not completed."
+        echo ""
+        echo -e "  ${DIM}This can happen if the code expired or login was cancelled.${NC}"
+        echo ""
+        read -p "  Press Enter to try again, or Ctrl+C to exit... " _
+        github_signin
+        return $?
+    fi
+
+    # Configure git to use gh for credentials
+    gh auth setup-git 2>/dev/null
+
+    local gh_user
+    gh_user=$(gh api user -q .login 2>/dev/null || echo "unknown")
+    echo -e "  ${OK} GitHub sign-in successful! Logged in as ${GREEN}${gh_user}${NC}"
+    sleep 1.5
+    return 0
 }
 
 # =============================================================================
 # Main: Route to the correct login flow
 # =============================================================================
 
-case "$PROVIDER" in
-    azure-foundry)
-        azure_preflight || exit 1
-        azure_signin
-        azure_allset
-        ;;
-    bedrock)
-        bedrock_preflight || exit 1
-        bedrock_signin
-        bedrock_allset
-        ;;
-    anthropic)
-        echo ""
-        echo -e "  ${OK} Anthropic API key is configured. No sign-in needed."
-        echo -e "  Type ${GREEN}claude${NC} to start Claude Code."
-        echo ""
-        ;;
-    *)
-        echo ""
-        echo -e "  ${YELLOW}No AI provider configured.${NC}"
-        echo -e "  Re-run the installer with --ai=foundry, --ai=bedrock, or --ai=anthropic"
-        echo ""
-        exit 1
-        ;;
-esac
+# GitHub-only mode: skip AI provider, just do GitHub
+if [ "$MODE" = "--github-only" ]; then
+    github_signin
+    exit $?
+fi
+
+if [ "$NEED_LOGIN" = "1" ]; then
+    case "$PROVIDER" in
+        azure-foundry)
+            azure_preflight || exit 1
+            azure_signin
+            azure_allset
+            ;;
+        bedrock)
+            bedrock_preflight || exit 1
+            bedrock_signin
+            bedrock_allset
+            ;;
+        anthropic)
+            echo ""
+            echo -e "  ${OK} Anthropic API key is configured. No sign-in needed."
+            echo -e "  Type ${GREEN}claude${NC} to start Claude Code."
+            echo ""
+            ;;
+        *)
+            echo ""
+            echo -e "  ${YELLOW}No AI provider configured.${NC}"
+            echo -e "  Re-run the installer with --ai=foundry, --ai=bedrock, or --ai=anthropic"
+            echo ""
+            exit 1
+            ;;
+    esac
+fi
+
+# GitHub auth runs after AI provider (or standalone via --github-only above)
+if [ "$GH_NEED_LOGIN" = "1" ]; then
+    github_signin
+fi
 
 # Mark first run complete
 mkdir -p /home/coder/.claude

@@ -823,24 +823,110 @@ echo [...]  Getting Claude Code Docker...
 
 if "!S_CLONE!"=="1" if exist "!INSTALL_DIR!\install.bat" goto :ccdw_update
 if exist "!INSTALL_DIR!\install.bat" goto :ccdw_update
-echo [...]  Downloading (this may take a minute)...
-git clone https://github.com/SleepNumberInc/CCDW.git "!INSTALL_DIR!" 2>nul
+
+REM --- Check if we can reach the private repo (tests both network + auth) ---
+echo [...]  Checking GitHub access...
+git ls-remote --exit-code https://github.com/SleepNumberInc/CCDW.git HEAD >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :github_auth_ok
+
+REM --- GitHub not reachable or not authenticated. Try to fix auth. ---
+echo [%date% %time%] GitHub auth needed >> "!SETUP_LOG!"
+echo [...]  GitHub authentication needed.
+echo.
+
+REM --- Strategy A: Use GitHub CLI (gh) if available ---
+where gh >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :gh_auth
+
+REM --- Strategy B: Try to install GitHub CLI via winget ---
+where winget >nul 2>nul
+if !ERRORLEVEL! neq 0 goto :no_gh_cli
+echo [...]  Installing GitHub CLI...
+winget install --id GitHub.cli -e --source winget --accept-package-agreements --accept-source-agreements >nul 2>nul
+REM Refresh PATH for gh
+set "GH_PATHS=%ProgramFiles%\GitHub CLI;%LOCALAPPDATA%\Programs\GitHub CLI"
+set "PATH=!GH_PATHS!;!PATH!"
+where gh >nul 2>nul
+if !ERRORLEVEL! neq 0 goto :no_gh_cli
+
+:gh_auth
+echo ========================================
+echo   Sign in to GitHub
+echo ========================================
+echo.
+echo   A browser window will open for you to sign in to GitHub.
+echo   If it doesn't open automatically, look for a code to enter
+echo   at https://github.com/login/device
+echo.
+echo   Use your Sleep Number GitHub account.
+echo.
+gh auth login --hostname github.com --git-protocol https --web
+if !ERRORLEVEL! equ 0 (
+    echo [OK]  GitHub authenticated.
+    REM Configure git to use gh for credentials
+    gh auth setup-git >nul 2>nul
+    goto :github_auth_check
+)
+echo [WARN] GitHub CLI sign-in did not complete. Trying other methods...
+echo.
+
+:no_gh_cli
+REM --- Strategy C: Let Git Credential Manager handle it (browser popup) ---
+REM GCM ships with Git for Windows and triggers on clone. Try clone directly
+REM WITHOUT suppressing stderr so GCM's browser auth prompt can appear.
+echo ========================================
+echo   Sign in to GitHub
+echo ========================================
+echo.
+echo   When you see a browser window or pop-up from Git, sign in
+echo   with your Sleep Number GitHub account.
+echo.
+echo   If you are asked for a username and password instead:
+echo     - Username: your GitHub username
+echo     - Password: a Personal Access Token (NOT your GitHub password)
+echo       Get one at: https://github.com/settings/tokens
+echo       Select scope: repo
+echo.
+echo [...]  Downloading (a sign-in window may appear)...
+git clone https://github.com/SleepNumberInc/CCDW.git "!INSTALL_DIR!"
 if !ERRORLEVEL! equ 0 goto :ccdw_ready
+goto :clone_failed
+
+:github_auth_check
+REM Verify auth actually works now
+git ls-remote --exit-code https://github.com/SleepNumberInc/CCDW.git HEAD >nul 2>nul
+if !ERRORLEVEL! neq 0 goto :clone_failed
+
+:github_auth_ok
+echo [OK]  GitHub access confirmed.
+echo [...]  Downloading (this may take a minute)...
+git clone https://github.com/SleepNumberInc/CCDW.git "!INSTALL_DIR!"
+if !ERRORLEVEL! equ 0 goto :ccdw_ready
+
+:clone_failed
+echo [%date% %time%] Clone failed >> "!SETUP_LOG!"
 echo.
 echo ========================================
 echo   Could not download Claude Code
 echo ========================================
 echo.
-echo   Two things to check:
+echo   Three things to check:
 echo.
-echo   1. VPN -- Make sure GlobalProtect is connected.
+echo   1. GitHub sign-in -- Did the browser sign-in complete?
+echo      If not, try running this file again. The sign-in
+echo      window sometimes appears behind other windows.
+echo.
+echo   2. GitHub organization access -- Your account must be
+echo      a member of the Sleep Number GitHub organization.
+echo      After signing in at https://github.com, check that
+echo      you can visit:
+echo        https://github.com/SleepNumberInc
+echo      If you see "404" or "Page not found", ask your
+echo      manager or the AI CoE team to add your account.
+echo.
+echo   3. VPN -- Make sure GlobalProtect is connected.
 echo      Look for its icon in the system tray ^(bottom-right,
-echo      near the clock^). Click it and verify it says "Connected".
-echo.
-echo   2. GitHub access -- Your GitHub account needs access to
-echo      the Sleep Number organization. If you haven't set this
-echo      up yet, go to https://github.com and sign in, then ask
-echo      your manager or the AI CoE team to add you.
+echo      near the clock^). It should say "Connected".
 echo.
 echo   After fixing, run this file again.
 echo.
@@ -849,7 +935,7 @@ exit /b 1
 :ccdw_update
 echo [...]  Updating to latest version...
 pushd "!INSTALL_DIR!"
-git pull >nul 2>nul
+git pull
 popd
 :ccdw_ready
 echo [OK]  Ready.

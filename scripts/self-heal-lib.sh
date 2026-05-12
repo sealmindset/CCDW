@@ -333,6 +333,12 @@ sh_classify() {
         fi
     fi
 
+    # GitHub CLI auth (degraded, not critical — git push/clone won't work)
+    if command -v gh &>/dev/null && ! gh auth status &>/dev/null 2>&1; then
+        echo "github_token_expired"
+        return
+    fi
+
     # --- Layer 4: Services ---
     # Double-check on failure to avoid false positives
     if ! sh_check_service 7681; then
@@ -412,6 +418,13 @@ sh_remediate_azure_token() {
     # Silent refresh failed -- mark for user
     sh_log "Silent refresh failed. User must re-authenticate."
     sh_telemetry_log "azure_token_expired" "silent_refresh" "fail" "user_action_required"
+    return 1
+}
+
+sh_remediate_github_token() {
+    # GitHub tokens can't be silently refreshed — user must re-authenticate via device code
+    sh_log "GitHub auth expired. Will trigger login on next terminal open."
+    sh_telemetry_log "github_token_expired" "detect" "fail" "user_action_required"
     return 1
 }
 
@@ -546,6 +559,10 @@ sh_remediate() {
             sh_remediate_azure_token
             return $?
             ;;
+        github_token_expired)
+            sh_remediate_github_token
+            return $?
+            ;;
         service_crashed:code_server)
             sh_remediate_code_server
             return $?
@@ -605,6 +622,9 @@ sh_failure_message() {
         azure_token_expired)
             echo "Azure token expired. Run 'login' to re-authenticate."
             ;;
+        github_token_expired)
+            echo "GitHub session expired. Sign-in will start automatically on next terminal open."
+            ;;
         api_key_invalid)
             echo "API key is invalid or rejected."
             ;;
@@ -643,7 +663,7 @@ sh_failure_status() {
         "")
             echo "healthy"
             ;;
-        docker_socket_lost|service_crashed:welcome_server|service_crashed:workshop)
+        docker_socket_lost|github_token_expired|service_crashed:welcome_server|service_crashed:workshop)
             echo "degraded"
             ;;
         *)

@@ -21,7 +21,7 @@ const mimeTypes = {
 };
 
 function getStatus() {
-    const status = { docker: 'unavailable', ai_provider: 'none', ai_status: 'unknown', token_minutes_remaining: null };
+    const status = { docker: 'unavailable', ai_provider: 'none', ai_status: 'unknown', token_minutes_remaining: null, github: 'unauthenticated' };
 
     try {
         execSync('docker info', { stdio: 'ignore', timeout: 5000 });
@@ -68,6 +68,13 @@ function getStatus() {
         } catch (e) {
             status.ai_status = 'Session expired';
         }
+    }
+
+    try {
+        execSync('gh auth status', { stdio: 'ignore', timeout: 10000 });
+        status.github = 'ok';
+    } catch (e) {
+        status.github = 'unauthenticated';
     }
 
     return status;

@@ -854,7 +854,7 @@
                 }
                 document.getElementById('authNotifyCode').textContent = data.code || '---';
                 document.getElementById('authNotifyLink').href = data.url;
-                var provider = data.provider === 'azure' ? 'Microsoft' : 'AWS';
+                var provider = data.provider === 'azure' ? 'Microsoft' : data.provider === 'github' ? 'GitHub' : 'AWS';
                 document.getElementById('authNotifyDetail').textContent =
                     'Enter the code at the ' + provider + ' sign-in page';
                 banner.style.display = 'block';
