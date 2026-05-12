@@ -36,11 +36,11 @@
   "prereqs": {
     "host": [
       {
-        "id": "vpn",
-        "label": "Sleep Number VPN connected",
-        "check": "curl -sf --connect-timeout 8 https://snapistg-scus.azure.sleepnumber.com",
+        "id": "network",
+        "label": "AI Foundry endpoint reachable",
+        "check": "curl -so /dev/null -w '%{http_code}' --connect-timeout 10 https://snapistg-scus.azure.sleepnumber.com | grep -qv '^000$'",
         "required": true,
-        "fail_message": "Cannot reach the AI Foundry endpoint. Connect to the Sleep Number VPN (Cisco AnyConnect) first.",
+        "fail_message": "Cannot reach the AI Foundry endpoint. You need corporate network (office Wi-Fi) or VPN (GlobalProtect). If on corporate network, Zscaler SSL inspection may be blocking the request.",
         "retry": true
       },
       {

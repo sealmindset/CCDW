@@ -141,34 +141,38 @@ else
     exit 1
 fi
 
-step_wait "Checking VPN connection..."
-if curl -s --connect-timeout 8 -o /dev/null https://snapistg-scus.azure.sleepnumber.com 2>/dev/null; then
-    step_ok "VPN connected."
+step_wait "Checking Sleep Number network access..."
+if curl -so /dev/null -w '%{http_code}' --connect-timeout 10 https://snapistg-scus.azure.sleepnumber.com 2>/dev/null | grep -qv '^000$'; then
+    step_ok "Sleep Number network reachable."
 else
     echo ""
     echo -e "${YELLOW}========================================${NC}"
-    echo -e "${YELLOW}  VPN is not connected${NC}"
+    echo -e "${YELLOW}  Cannot reach Sleep Number services${NC}"
     echo -e "${YELLOW}========================================${NC}"
     echo ""
-    echo "  Claude Code needs VPN to reach Sleep Number services."
+    echo "  Claude Code needs access to Sleep Number services."
+    echo "  This works on the corporate network OR via VPN."
     echo ""
-    echo "  How to connect:"
+    echo "  If you're in the office:"
+    echo "    - Make sure you're on the corporate Wi-Fi (not guest)"
+    echo ""
+    echo "  If you're remote:"
     echo "    1. Look for the GlobalProtect icon in the menu bar"
     echo "       (top-right corner of your screen)"
     echo "    2. Click it and make sure it says \"Connected\""
     echo "    3. If you don't see it, open Spotlight (Cmd+Space)"
     echo "       and search for \"GlobalProtect\""
     echo ""
-    read -p "  Press Enter after connecting your VPN... "
+    read -p "  Press Enter after connecting... "
 
-    if ! curl -s --connect-timeout 8 -o /dev/null https://snapistg-scus.azure.sleepnumber.com 2>/dev/null; then
+    if ! curl -so /dev/null -w '%{http_code}' --connect-timeout 10 https://snapistg-scus.azure.sleepnumber.com 2>/dev/null | grep -qv '^000$'; then
         step_fail "Still cannot reach Sleep Number services."
-        echo "         Make sure GlobalProtect VPN is connected and try again."
+        echo "         Check your network connection (corporate Wi-Fi or VPN) and try again."
         echo ""
         read -p "Press Enter to close..."
         exit 1
     fi
-    step_ok "VPN connected."
+    step_ok "Sleep Number network reachable."
 fi
 
 # ---------------------------------------------------------------------------
