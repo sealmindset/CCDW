@@ -66,7 +66,63 @@ echo ""
 xattr -d com.apple.quarantine "$0" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# Step 0: Connectivity checks
+# Step 0a: Source shell profile for PATH (Finder double-click skips .zshrc)
+# ---------------------------------------------------------------------------
+if [ -z "${SHELL_PROFILE_SOURCED:-}" ]; then
+    for profile in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+        if [ -f "$profile" ]; then
+            source "$profile" 2>/dev/null || true
+            break
+        fi
+    done
+    export SHELL_PROFILE_SOURCED=1
+fi
+
+# Ensure Rancher Desktop bin is in PATH regardless
+if [ -d "$HOME/.rd/bin" ]; then
+    export PATH="$HOME/.rd/bin:$PATH"
+fi
+
+# ---------------------------------------------------------------------------
+# Step 0b: Fix Lima socket path for long usernames (UNIX_PATH_MAX=104)
+# ---------------------------------------------------------------------------
+LIMA_ORIGINAL="$HOME/Library/Application Support/rancher-desktop/lima"
+LIMA_SHORT="$HOME/.rd-lima"
+SOCK_TEST="$LIMA_ORIGINAL/0/ssh.sock.1234567890123456"
+
+if [ ${#SOCK_TEST} -gt 104 ] && [ ! -L "$LIMA_ORIGINAL" ]; then
+    step_warn "Username creates Lima socket path too long (${#SOCK_TEST} > 104 chars)."
+    step_wait "Applying Lima path fix..."
+
+    if pgrep -q "Rancher Desktop"; then
+        osascript -e 'quit app "Rancher Desktop"' 2>/dev/null || true
+        sleep 3
+    fi
+
+    if [ -d "$LIMA_ORIGINAL" ]; then
+        mv "$LIMA_ORIGINAL" "$LIMA_SHORT"
+    else
+        mkdir -p "$LIMA_SHORT"
+        mkdir -p "$(dirname "$LIMA_ORIGINAL")"
+    fi
+    ln -s "$LIMA_SHORT" "$LIMA_ORIGINAL"
+
+    # Persist LIMA_HOME in shell profiles
+    for rcfile in "$HOME/.zshrc" "$HOME/.bashrc"; do
+        if [ -f "$rcfile" ] && grep -qF "LIMA_HOME" "$rcfile"; then
+            continue
+        fi
+        echo '' >> "$rcfile"
+        echo '# Fix Rancher Desktop Lima socket path length (UNIX_PATH_MAX=104)' >> "$rcfile"
+        echo 'export LIMA_HOME="$HOME/.rd-lima"' >> "$rcfile"
+    done
+
+    export LIMA_HOME="$LIMA_SHORT"
+    step_ok "Lima path fix applied (${#SOCK_TEST} -> $(echo -n "$LIMA_SHORT/0/ssh.sock.1234567890123456" | wc -c | tr -d ' ') chars)."
+fi
+
+# ---------------------------------------------------------------------------
+# Step 0c: Connectivity checks
 # ---------------------------------------------------------------------------
 step_wait "Checking internet connection..."
 if curl -s --connect-timeout 5 -o /dev/null https://github.com 2>/dev/null; then
