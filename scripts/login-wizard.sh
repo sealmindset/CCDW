@@ -769,25 +769,18 @@ github_signin() {
     # Send to welcome dashboard — it auto-opens the pre-filled URL in user's browser
     local gh_device_url="https://github.com/login/device?user_code=${device_code}"
     notify_browser "$gh_device_url" "$device_code" "github"
+    printf "\r  ${DIM}○${NC} GitHub        ${DIM}Check your browser to sign in${NC}\n"
 
-    # Wait for auth to complete (browser handles the interaction)
-    wait "$gh_pid" 2>/dev/null
-    local exit_code=$?
-    rm -f "$tmpfile"
+    # Don't block — run completion handler in background
+    (
+        wait "$gh_pid" 2>/dev/null
+        rm -f "$tmpfile"
+        if gh auth status &>/dev/null 2>&1; then
+            gh auth setup-git 2>/dev/null
+        fi
+    ) &
+    disown
 
-    if [ $exit_code -ne 0 ] && ! gh auth status &>/dev/null 2>&1; then
-        printf "\r  ${YELLOW}!${NC} GitHub        Not signed in ${DIM}(run: gh auth login)${NC}\n"
-        return 1
-    fi
-
-    # Configure git to use gh for credentials
-    gh auth setup-git 2>/dev/null
-
-    local gh_user
-    gh_user=$(gh api user -q .login 2>/dev/null || echo "unknown")
-    local gh_user
-    gh_user=$(gh api user -q .login 2>/dev/null || echo "authenticated")
-    printf "\r  ${OK} GitHub        ${GREEN}${gh_user}${NC}\n"
     return 0
 }
 
