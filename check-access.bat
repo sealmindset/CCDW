@@ -153,6 +153,19 @@ if !ERRORLEVEL! equ 0 (
     set /a FAIL+=1
 )
 
+REM --- GitHub.com ---
+curl.exe -sf --connect-timeout 10 https://github.com -o nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    echo   OK GitHub.com reachable
+    set /a PASS+=1
+) else (
+    echo   X  Cannot reach github.com
+    echo       Your network may be blocking GitHub. Contact IT.
+    set /a FAIL+=1
+)
+
+echo   i  GitHub sign-in happens automatically after install ^(device code flow^)
+
 REM --- Disk space ---
 for /f "tokens=3" %%S in ('dir /-C "%~dp0." 2^>nul ^| findstr /c:"bytes free"') do set "FREE_BYTES=%%S"
 if defined FREE_BYTES (

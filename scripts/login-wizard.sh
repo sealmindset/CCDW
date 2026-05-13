@@ -750,8 +750,9 @@ github_signin() {
 
     TMPFILE=$(mktemp /tmp/gh-login-XXXXXX)
     # Pipe Enter to satisfy "Press Enter to open github.com..." prompt
+    # --skip-ssh-key avoids the SSH key generation prompt
     # xdg-open shim is a no-op so gh prints URL and waits for browser auth
-    echo "" | stdbuf -oL gh auth login -p https -h github.com -w >"$TMPFILE" 2>&1 &
+    echo "" | gh auth login -p https -h github.com -w --skip-ssh-key >"$TMPFILE" 2>&1 &
     GH_PID=$!
 
     local device_code=""
@@ -760,11 +761,19 @@ github_signin() {
         sleep 0.5
         attempts=$((attempts + 1))
         device_code=$(sed -n 's/.*one-time code: \([A-Z0-9]*-[A-Z0-9]*\).*/\1/p' "$TMPFILE" 2>/dev/null | head -1)
+        [ -z "$device_code" ] && device_code=$(grep -oE '[A-Z0-9]{4}-[A-Z0-9]{4}' "$TMPFILE" 2>/dev/null | head -1)
     done
 
     if [ -z "$device_code" ]; then
         echo -e "  ${FAIL} Could not start GitHub sign-in."
         echo ""
+        # Show what gh actually said for debugging
+        local gh_output
+        gh_output=$(cat "$TMPFILE" 2>/dev/null | tr -d '\r' | grep -v '^$' | head -5)
+        if [ -n "$gh_output" ]; then
+            echo -e "  ${DIM}$gh_output${NC}"
+            echo ""
+        fi
         echo -e "  Try running manually: ${GREEN}gh auth login${NC}"
         wait "$GH_PID" 2>/dev/null
         GH_PID=""

@@ -25,6 +25,7 @@ WARN=0
 ok()   { echo -e "  ${GREEN}✓${NC} $1"; PASS=$((PASS + 1)); }
 fail() { echo -e "  ${RED}✗${NC} $1"; [ -n "$2" ] && echo -e "    ${YELLOW}$2${NC}"; FAIL=$((FAIL + 1)); }
 info() { echo -e "  ${YELLOW}?${NC} $1 ${BLUE}(verify manually)${NC}"; [ -n "$2" ] && echo -e "    ${YELLOW}$2${NC}"; WARN=$((WARN + 1)); }
+note() { echo -e "  ${BLUE}i${NC} $1"; }
 
 # --- Parse --ai= argument ---
 AI_PROVIDER=""
@@ -101,6 +102,17 @@ else
     fail "Cannot reach ghcr.io (GitHub Container Registry)" \
          "Your network may be blocking GitHub. Contact IT or try from a different network."
 fi
+
+# --- GitHub.com ---
+if curl -sf --connect-timeout 10 https://github.com -o /dev/null 2>/dev/null; then
+    ok "GitHub.com reachable"
+else
+    fail "Cannot reach github.com" \
+         "Your network may be blocking GitHub. Contact IT or try from a different network."
+fi
+
+# --- GitHub sign-in info ---
+note "GitHub sign-in happens automatically after install (device code flow)"
 
 # --- Disk space (5 GB minimum) ---
 FREE_KB=$(df -k "$(pwd)" 2>/dev/null | awk 'NR==2 {print $4}')
