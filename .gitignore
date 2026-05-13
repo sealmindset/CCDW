@@ -15,6 +15,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Claude Code local config
+.claude/
+
 # Make-it state
 .make-it/
 
