@@ -1170,7 +1170,14 @@ if !ERRORLEVEL! equ 0 goto :run_ok
 echo.
 echo [!] Could not start Claude Code.
 echo.
-echo   Try restarting Docker and running this installer again.
+echo   The error details are shown above.
+echo.
+echo   Common causes:
+echo     - A port is already in use -- 3000, 7681, 8080, or 9200
+echo     - Docker ran out of disk space
+echo     - The Docker engine needs to be restarted
+echo.
+echo   Try: restart Docker, then double-click install.bat again.
 echo.
 pause
 exit /b 1

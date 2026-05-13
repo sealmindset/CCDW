@@ -708,10 +708,21 @@ if ! docker run -d \
     -v claude-code-data:/home/coder/.claude \
     -v claude-code-gh:/home/coder/.config/gh \
     -v claude-code-git-config:/home/coder/.gitconfig.d \
-    ghcr.io/sealmindset/claude-code-docker:latest >/dev/null 2>&1; then
+    ghcr.io/sealmindset/claude-code-docker:latest >/tmp/claude-code-start.log 2>&1; then
     echo -e "${RED}[!]${NC} Could not start Claude Code."
     echo ""
-    echo "  Try restarting Docker and running this installer again."
+    # Show the actual error so users (or IT) can diagnose
+    if [ -f /tmp/claude-code-start.log ] && [ -s /tmp/claude-code-start.log ]; then
+        echo "  Error details:"
+        sed 's/^/    /' /tmp/claude-code-start.log | tail -20
+        echo ""
+    fi
+    echo "  Common causes:"
+    echo "    - A port is already in use (3000, 7681, 8080, or 9200)"
+    echo "    - Docker ran out of disk space"
+    echo "    - The Docker engine needs to be restarted"
+    echo ""
+    echo "  Try: restart Docker, then double-click this file again."
     echo ""
     read -p "Press Enter to close..."
     exit 1
