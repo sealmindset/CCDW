@@ -436,9 +436,10 @@ azure_signin() {
     draw_header "Sign In" 2 3
     draw_progress 2 3
 
+    local az_prefilled_url="${login_url}?otc=${device_code}"
     draw_code_box "$device_code" "$login_url"
-    notify_browser "$login_url" "$device_code" "azure"
-    show_qr "$login_url"
+    notify_browser "$az_prefilled_url" "$device_code" "azure"
+    show_qr "$az_prefilled_url"
 
     spinner_wait "$AZ_PID" "Waiting for you to sign in..."
     local exit_code=$SPINNER_EXIT
@@ -788,9 +789,10 @@ github_signin() {
     draw_header "GitHub Sign In" 1 1
     draw_progress 1 1
 
+    local gh_device_url="https://github.com/login/device?user_code=${device_code}"
     draw_code_box "$device_code" "https://github.com/login/device"
-    notify_browser "https://github.com/login/device" "$device_code" "github"
-    show_qr "https://github.com/login/device"
+    notify_browser "$gh_device_url" "$device_code" "github"
+    show_qr "$gh_device_url"
 
     spinner_wait "$GH_PID" "Waiting for you to sign in..."
     local exit_code=$SPINNER_EXIT
