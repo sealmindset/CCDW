@@ -45,10 +45,10 @@
       },
       {
         "id": "azure-subscription",
-        "label": "Access to Azure subscription",
-        "check": "manual",
-        "required": true,
-        "fail_message": "You need access to the Azure subscription hosting your AI Foundry endpoint. Contact your Azure admin."
+        "label": "Azure sign-in happens automatically after install (no action needed now)",
+        "check": "info",
+        "required": false,
+        "fail_message": ""
       },
       {
         "id": "internet",
@@ -70,6 +70,12 @@
         "label": "Azure AD signed in",
         "check": "az account show",
         "fail_message": "Not signed in to Azure. Run: az login --use-device-code"
+      },
+      {
+        "id": "azure-subscription",
+        "label": "Access to Azure subscription",
+        "check": "az account list --query \"[?id=='{subscription_id}'].id\" -o tsv | grep -q {subscription_id}",
+        "fail_message": "Your account does not have access to the required Azure subscription. Ask your Azure admin to grant access."
       },
       {
         "id": "azure-token",

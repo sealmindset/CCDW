@@ -45,10 +45,10 @@
       },
       {
         "id": "azure-subscription",
-        "label": "Access to Azure subscription: sn-openai-dev-01",
-        "check": "manual",
-        "required": true,
-        "fail_message": "You need access to the 'sn-openai-dev-01' Azure subscription. Contact the AI CoE team or your manager to request access."
+        "label": "Azure sign-in happens automatically after install (no action needed now)",
+        "check": "info",
+        "required": false,
+        "fail_message": ""
       },
       {
         "id": "internet",
@@ -59,10 +59,10 @@
       },
       {
         "id": "zscaler-note",
-        "label": "Zscaler DevOps group (for Docker builds)",
+        "label": "SSL inspection (Zscaler) handled automatically",
         "check": "info",
         "required": false,
-        "fail_message": "If Docker image pulls fail with TLS errors, temporarily disable Zscaler (ZscalerPRD_DevopsZTunnel_AppC Okta group required)."
+        "fail_message": "The installer auto-extracts corporate certificates. If Docker pulls still fail, contact IT about your content filter settings."
       }
     ],
     "container": [
@@ -80,9 +80,9 @@
       },
       {
         "id": "azure-subscription",
-        "label": "Correct Azure subscription selected",
-        "check": "az account show --query id -o tsv | grep -q a8da1709-ccc3-4356-b3b7-6660af86e979",
-        "fail_message": "Wrong subscription. Run: az account set --subscription a8da1709-ccc3-4356-b3b7-6660af86e979"
+        "label": "Access to Azure subscription: sn-openai-dev-01",
+        "check": "az account list --query \"[?id=='a8da1709-ccc3-4356-b3b7-6660af86e979'].id\" -o tsv | grep -q a8da1709",
+        "fail_message": "Your account does not have access to the required Azure subscription (sn-openai-dev-01). Ask your manager to request access."
       },
       {
         "id": "azure-token",

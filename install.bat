@@ -1158,20 +1158,49 @@ echo [...]  Starting Claude Code...
 if not exist "!ENV_FILE!" goto :run_without_env
 
 echo [OK] Loading environment from .env
-docker run -d --name claude-code --restart unless-stopped --group-add 0 --env-file "!ENV_FILE!" -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest
+docker run -d --name claude-code --restart unless-stopped --group-add 0 --env-file "!ENV_FILE!" -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest >"%TEMP%\claude-code-start.log" 2>&1
+set "RUN_WITH_ENV=1"
 goto :check_run_result
 
 :run_without_env
-docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest
+docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest >"%TEMP%\claude-code-start.log" 2>&1
+set "RUN_WITH_ENV=0"
 
 :check_run_result
 if !ERRORLEVEL! equ 0 goto :run_ok
 
+REM --- Auto-recover from stale image (OCI "file exists" error) ---
+findstr /i "file exists" "%TEMP%\claude-code-start.log" >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    echo.
+    echo [...] Downloaded image is outdated. Rebuilding locally ^(one-time fix^)...
+    docker rm -f claude-code >nul 2>nul
+    docker rmi ghcr.io/sealmindset/claude-code-docker:latest >nul 2>nul
+    set "BUILD_CMD=docker build"
+    if defined REGISTRY_MIRROR set "BUILD_CMD=docker build --build-arg REGISTRY_MIRROR=!REGISTRY_MIRROR!"
+    !BUILD_CMD! -t ghcr.io/sealmindset/claude-code-docker:latest . >"%TEMP%\claude-code-build.log" 2>&1
+    if !ERRORLEVEL! equ 0 (
+        echo [OK] Rebuild complete.
+        echo.
+        echo [...] Starting Claude Code...
+        if "!RUN_WITH_ENV!"=="1" (
+            docker run -d --name claude-code --restart unless-stopped --group-add 0 --env-file "!ENV_FILE!" -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest >"%TEMP%\claude-code-start.log" 2>&1
+        ) else (
+            docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest >"%TEMP%\claude-code-start.log" 2>&1
+        )
+        if !ERRORLEVEL! equ 0 goto :run_ok
+    )
+    echo [!] Rebuild did not fix the problem.
+)
+
 echo.
 echo [!] Could not start Claude Code.
 echo.
-echo   The error details are shown above.
-echo.
+if exist "%TEMP%\claude-code-start.log" (
+    echo   Error details:
+    type "%TEMP%\claude-code-start.log"
+    echo.
+)
 echo   Common causes:
 echo     - A port is already in use -- 3000, 7681, 8080, or 9200
 echo     - Docker ran out of disk space

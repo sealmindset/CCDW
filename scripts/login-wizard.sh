@@ -459,7 +459,18 @@ azure_signin() {
     fi
 
     if [ -n "$SUB_ID" ]; then
-        az account set --subscription "$SUB_ID" 2>/dev/null
+        # Verify user has access to the required subscription before selecting it
+        if az account list --query "[?id=='$SUB_ID'].id" -o tsv 2>/dev/null | grep -q "$SUB_ID"; then
+            az account set --subscription "$SUB_ID" 2>/dev/null
+        else
+            echo ""
+            echo -e "  ${YELLOW}!${NC} Your account does not have access to the required"
+            echo -e "    Azure subscription (${SUB_NAME:-$SUB_ID})."
+            echo ""
+            echo -e "    Ask your manager to request access, then try again."
+            echo ""
+            read -p "  Press Enter to continue anyway, or Ctrl+C to exit... " _
+        fi
     fi
 
     echo -e "  ${OK} Azure sign-in successful!"

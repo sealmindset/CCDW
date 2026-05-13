@@ -709,26 +709,87 @@ if ! docker run -d \
     -v claude-code-gh:/home/coder/.config/gh \
     -v claude-code-git-config:/home/coder/.gitconfig.d \
     ghcr.io/sealmindset/claude-code-docker:latest >/tmp/claude-code-start.log 2>&1; then
-    echo -e "${RED}[!]${NC} Could not start Claude Code."
-    echo ""
-    # Show the actual error so users (or IT) can diagnose
-    if [ -f /tmp/claude-code-start.log ] && [ -s /tmp/claude-code-start.log ]; then
-        echo "  Error details:"
-        sed 's/^/    /' /tmp/claude-code-start.log | tail -20
+
+    # Auto-recover from stale image (OCI "file exists" error)
+    if grep -q "file exists" /tmp/claude-code-start.log 2>/dev/null; then
+        echo -e "${YELLOW}[...]${NC} Downloaded image is outdated. Rebuilding locally (one-time fix)..."
+        docker rm -f claude-code &>/dev/null || true
+        docker rmi ghcr.io/sealmindset/claude-code-docker:latest &>/dev/null || true
+        BUILD_ARGS=""
+        [ -n "$REGISTRY_MIRROR" ] && BUILD_ARGS="--build-arg REGISTRY_MIRROR=${REGISTRY_MIRROR}"
+        printf "  Building"
+        docker build $BUILD_ARGS -t ghcr.io/sealmindset/claude-code-docker:latest . >/tmp/claude-code-build.log 2>&1 &
+        BUILD_PID=$!
+        while kill -0 "$BUILD_PID" 2>/dev/null; do printf "."; sleep 5; done
+        wait "$BUILD_PID" 2>/dev/null
+        BUILD_EXIT=$?
         echo ""
+
+        if [ $BUILD_EXIT -eq 0 ]; then
+            echo -e "${GREEN}[OK]${NC} Rebuild complete."
+            echo ""
+            echo -e "${YELLOW}[...]${NC} Starting Claude Code..."
+            if docker run -d \
+                --name claude-code \
+                --restart unless-stopped \
+                --group-add "$DOCKER_GID" \
+                --env-file "$ENV_FILE" \
+                -p "${WELCOME_PORT:-3000}:3000" \
+                -p "${TTYD_PORT:-7681}:7681" \
+                -p "${TTYD_NEW_PORT:-7682}:7682" \
+                -p "${CODE_SERVER_PORT:-8080}:8080" \
+                -p "${WORKSHOP_PORT:-9200}:9200" \
+                -v /var/run/docker.sock:/var/run/docker.sock \
+                -v "$PROJECTS_DIR:/home/coder/Documents" \
+                -v "$HOME/Downloads:/home/coder/Downloads" \
+                -v "$HOME/Desktop:/home/coder/Desktop" \
+                -v "$AZURE_DIR:/home/coder/.azure" \
+                -v "$AWS_DIR:/home/coder/.aws" \
+                -v claude-code-data:/home/coder/.claude \
+                -v claude-code-gh:/home/coder/.config/gh \
+                -v claude-code-git-config:/home/coder/.gitconfig.d \
+                ghcr.io/sealmindset/claude-code-docker:latest >/tmp/claude-code-start.log 2>&1; then
+                echo -e "${GREEN}[OK]${NC} Claude Code is running!"
+                CONTAINER_STARTED=1
+            fi
+        fi
+
+        if [ "${CONTAINER_STARTED:-0}" != "1" ]; then
+            echo -e "${RED}[!]${NC} Rebuild did not fix the problem."
+            if [ -f /tmp/claude-code-start.log ] && [ -s /tmp/claude-code-start.log ]; then
+                echo "  Error details:"
+                sed 's/^/    /' /tmp/claude-code-start.log | tail -20
+                echo ""
+            fi
+            echo "  Try: restart Docker, then double-click this file again."
+            echo ""
+            read -p "Press Enter to close..."
+            exit 1
+        fi
+    else
+        echo -e "${RED}[!]${NC} Could not start Claude Code."
+        echo ""
+        # Show the actual error so users (or IT) can diagnose
+        if [ -f /tmp/claude-code-start.log ] && [ -s /tmp/claude-code-start.log ]; then
+            echo "  Error details:"
+            sed 's/^/    /' /tmp/claude-code-start.log | tail -20
+            echo ""
+        fi
+        echo "  Common causes:"
+        echo "    - A port is already in use (3000, 7681, 8080, or 9200)"
+        echo "    - Docker ran out of disk space"
+        echo "    - The Docker engine needs to be restarted"
+        echo ""
+        echo "  Try: restart Docker, then double-click this file again."
+        echo ""
+        read -p "Press Enter to close..."
+        exit 1
     fi
-    echo "  Common causes:"
-    echo "    - A port is already in use (3000, 7681, 8080, or 9200)"
-    echo "    - Docker ran out of disk space"
-    echo "    - The Docker engine needs to be restarted"
-    echo ""
-    echo "  Try: restart Docker, then double-click this file again."
-    echo ""
-    read -p "Press Enter to close..."
-    exit 1
 fi
 
-echo -e "${GREEN}[OK]${NC} Claude Code is running!"
+if [ "${CONTAINER_STARTED:-0}" != "1" ]; then
+    echo -e "${GREEN}[OK]${NC} Claude Code is running!"
+fi
 
 # ---------------------------------------------------------------------------
 # Wait for dashboard

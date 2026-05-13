@@ -249,13 +249,19 @@ else
         [ "$SH_FAILURE" = "github_token_expired" ] && GH_OK=0
     fi
 
-    # Make sure correct subscription is set
+    # Make sure correct subscription is set (verify access first)
     if [ "$AZ_OK" = "1" ] && [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
         SUB_ID=$(read_yaml "providers.azure-foundry.subscription_id")
         if [ -n "$SUB_ID" ]; then
             CURRENT_SUB=$(az account show --query id -o tsv 2>/dev/null)
             if [ "$CURRENT_SUB" != "$SUB_ID" ]; then
-                az account set --subscription "$SUB_ID" 2>/dev/null
+                if az account list --query "[?id=='$SUB_ID'].id" -o tsv 2>/dev/null | grep -q "$SUB_ID"; then
+                    az account set --subscription "$SUB_ID" 2>/dev/null
+                else
+                    SUB_NAME=$(read_yaml "providers.azure-foundry.subscription_name")
+                    echo -e "  ${YELLOW}!${NC} No access to Azure subscription: ${SUB_NAME:-$SUB_ID}"
+                    echo -e "    ${DIM}Ask your manager to request access, then run: login${NC}"
+                fi
             fi
         fi
     fi

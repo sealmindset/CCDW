@@ -65,11 +65,11 @@
         "fail_message": "AWS CLI v2 is required. Install from: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
       },
       {
-        "id": "okta-group",
-        "label": "Okta group: aws-bedrock-model-access",
+        "id": "ai-access",
+        "label": "AI access permission (verify manually)",
         "check": "manual",
         "required": true,
-        "fail_message": "You must be in the Okta group 'aws-bedrock-model-access'. If not, create an EMB ticket requesting access."
+        "fail_message": "If sign-in fails later, ask your manager to confirm you have Bedrock model access."
       },
       {
         "id": "internet",
