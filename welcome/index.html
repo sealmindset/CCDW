@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Code Docker</title>
+    <title>Claude Code</title>
     <style>
         :root {
             --bg-primary: #0c0e14;
@@ -499,8 +499,8 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
             </div>
             <div class="header-text">
-                <h1>Claude Code Docker</h1>
-                <p>Your AI-powered development environment</p>
+                <h1>Claude Code</h1>
+                <p>Your personal AI development studio</p>
             </div>
         </div>
 
@@ -542,7 +542,6 @@
                     <h2>Workshop</h2>
                 </div>
                 <p>Build apps without touching a terminal. Describe your idea, watch it come to life.</p>
-                <span class="card-port">:9200</span>
             </a>
             <a class="card" href="" id="vscode-link">
                 <div class="card-header">
@@ -551,8 +550,7 @@
                     </div>
                     <h2>VS Code</h2>
                 </div>
-                <p>Full IDE with file explorer, extensions, and integrated terminal.</p>
-                <span class="card-port">:8080</span>
+                <p>Code editor with file explorer, extensions, and built-in terminal.</p>
             </a>
             <a class="card" href="" id="terminal-link">
                 <div class="card-header">
@@ -561,13 +559,12 @@
                     </div>
                     <h2>Web Terminal</h2>
                 </div>
-                <p>Claude Code in a browser terminal. Start with <code>/make-it</code>.</p>
-                <span class="card-port">:7681</span>
+                <p>Direct access to Claude Code. For power users who prefer the command line.</p>
             </a>
         </div>
 
-        <!-- Quick actions -->
-        <div style="display:flex;gap:0.75rem;margin-bottom:1rem;">
+        <!-- Quick actions (hidden — advanced users find terminal via cards) -->
+        <div id="quick-actions" style="display:none;gap:0.75rem;margin-bottom:1rem;">
             <a href="" id="new-terminal-link" target="_blank" style="
                 display:inline-flex;align-items:center;gap:0.5rem;
                 background:var(--bg-card);border:1px solid var(--border);
@@ -642,7 +639,7 @@
             <div class="status-item">
                 <div class="status-dot checking" id="dot-docker"></div>
                 <div>
-                    <div class="status-label">Docker</div>
+                    <div class="status-label">System</div>
                     <div class="status-detail" id="status-docker">Checking...</div>
                 </div>
             </div>
@@ -662,7 +659,7 @@
             <div class="usage-grid">
                 <div class="usage-item">
                     <div class="usage-value" id="usage-tokens">--</div>
-                    <div class="usage-label">Tokens</div>
+                    <div class="usage-label">AI Usage</div>
                 </div>
                 <div class="usage-item">
                     <div class="usage-value" id="usage-cost">--</div>
@@ -696,7 +693,7 @@
             </div>
             <div class="step">
                 <div class="step-num">4</div>
-                <div class="step-text">Need more control? Open <strong>VS Code</strong> or <strong>Web Terminal</strong></div>
+                <div class="step-text">Want to edit the code directly? Open <strong>VS Code</strong> to browse files and make changes</div>
             </div>
         </div>
 

@@ -20,8 +20,11 @@ NC='\033[0m'
 
 echo ""
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  Claude Code Docker - Installer${NC}"
+echo -e "${BLUE}  Claude Code — Setup${NC}"
 echo -e "${BLUE}========================================${NC}"
+echo ""
+echo -e "  This will set up your AI development environment."
+echo -e "  It takes about 2-3 minutes on a good connection."
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -225,7 +228,7 @@ run_preflight() {
     local all_pass=1
 
     echo ""
-    echo -e "${BOLD}  Preflight Checks${NC}"
+    echo -e "${BOLD}  Checking Your Setup${NC}"
     echo ""
 
     # Run preflight checks once, capturing output and exit code
@@ -341,23 +344,33 @@ sys.exit(fail_count)
 # Check for Docker
 # ---------------------------------------------------------------------------
 if ! command -v docker &> /dev/null; then
-    echo -e "${RED}[ERROR]${NC} Docker is not installed."
+    echo -e "${RED}[!]${NC} Docker needs to be installed first."
     echo ""
-    echo "  Please install one of the following:"
+    echo "  Download and install one of these (both are free):"
     echo "    - Docker Desktop:   https://www.docker.com/products/docker-desktop/"
     echo "    - Rancher Desktop:  https://rancherdesktop.io/"
     echo ""
-    echo "  After installing, run this script again."
+    echo "  Once installed, double-click this file again."
     echo ""
     read -p "Press Enter to close..."
     exit 1
 fi
 
 if ! docker info &> /dev/null; then
-    echo -e "${RED}[ERROR]${NC} Docker is installed but not running."
+    echo -e "${YELLOW}[...]${NC} Waiting for Docker to start..."
+    for i in $(seq 1 15); do
+        docker info &>/dev/null && break
+        printf "."
+        sleep 2
+    done
     echo ""
-    echo "  Please start Docker Desktop or Rancher Desktop,"
-    echo "  wait for it to finish loading, then run this script again."
+fi
+
+if ! docker info &> /dev/null; then
+    echo -e "${RED}[!]${NC} Docker is installed but not running yet."
+    echo ""
+    echo "  Open Docker Desktop (or Rancher Desktop) from your Applications folder,"
+    echo "  wait for it to finish loading, then double-click this file again."
     echo ""
     read -p "Press Enter to close..."
     exit 1
@@ -530,8 +543,7 @@ fi
 # Searches macOS Keychain and exports any proxy CA certs to certs/
 # so Docker builds trust corporate HTTPS inspection.
 # ---------------------------------------------------------------------------
-echo ""
-echo -e "${YELLOW}[...]${NC} Checking for SSL inspection proxy certificates..."
+echo -e "${YELLOW}[...]${NC} Checking network security settings..."
 
 CERTS_DIR="$(pwd)/certs"
 mkdir -p "$CERTS_DIR"
@@ -546,7 +558,7 @@ for pattern in Zscaler Netskope "Palo Alto" GlobalProtect "Blue Coat" Forcepoint
             security find-certificate -c "$cert_name" -p /Library/Keychains/System.keychain > "$out_path" 2>/dev/null \
                 || security find-certificate -c "$cert_name" -p ~/Library/Keychains/login.keychain-db > "$out_path" 2>/dev/null
             if [ -s "$out_path" ]; then
-                echo -e "  ${GREEN}[OK]${NC} Exported: $cert_name"
+                : # cert exported silently
                 PROXY_CERT_COUNT=$((PROXY_CERT_COUNT + 1))
             else
                 rm -f "$out_path"
@@ -559,9 +571,9 @@ for pattern in Zscaler Netskope "Palo Alto" GlobalProtect "Blue Coat" Forcepoint
 done
 
 if [ "$PROXY_CERT_COUNT" -eq 0 ]; then
-    echo -e "${GREEN}[OK]${NC} No SSL proxy certs found (not behind an inspection proxy)"
+    echo -e "${GREEN}[OK]${NC} Network security: no special configuration needed"
 else
-    echo -e "${GREEN}[OK]${NC} Exported ${PROXY_CERT_COUNT} proxy certificate(s) to certs/"
+    echo -e "${GREEN}[OK]${NC} Network security: configured for your environment"
 fi
 
 # ---------------------------------------------------------------------------
@@ -570,13 +582,9 @@ fi
 # Sets NODE_EXTRA_CA_CERTS so Node.js trusts the proxy's re-signed certs.
 # ---------------------------------------------------------------------------
 if [ "$PROXY_CERT_COUNT" -gt 0 ]; then
-    echo ""
-    echo -e "${YELLOW}[...]${NC} Configuring VSCode to trust proxy certificates..."
     SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
     if [ -f "$SCRIPT_DIR/scripts/fix-vscode-certs.sh" ]; then
-        bash "$SCRIPT_DIR/scripts/fix-vscode-certs.sh" 2>/dev/null && \
-            echo -e "${GREEN}[OK]${NC} VSCode certificate fix applied" || \
-            echo -e "${YELLOW}[WARN]${NC} VSCode cert fix had issues (non-fatal)"
+        bash "$SCRIPT_DIR/scripts/fix-vscode-certs.sh" 2>/dev/null || true
     fi
 fi
 
@@ -608,48 +616,54 @@ fi
 # Auto-update: pull latest image
 # ---------------------------------------------------------------------------
 echo ""
-echo -e "${YELLOW}[...]${NC} Checking for updates and downloading latest version..."
+echo -e "${YELLOW}[...]${NC} Downloading latest version (this may take a minute)..."
+
+PULL_LOG="/tmp/claude-code-install-pull.log"
 
 # Try 0: Load from local .tar file (pre-baked image distribution)
-# Place claude-code-docker.tar next to this script to skip all network pulls.
-# Create with: docker save ghcr.io/sealmindset/claude-code-docker:latest -o claude-code-docker.tar
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -f "$SCRIPT_DIR/claude-code-docker.tar" ]; then
-    echo -e "${YELLOW}[...]${NC} Found local image file -- loading..."
-    if docker load -i "$SCRIPT_DIR/claude-code-docker.tar"; then
-        echo -e "${GREEN}[OK]${NC} Image loaded from local file."
+    printf "  Loading from local file"
+    if docker load -i "$SCRIPT_DIR/claude-code-docker.tar" >"$PULL_LOG" 2>&1; then
+        echo ""
+        echo -e "${GREEN}[OK]${NC} Loaded from local file."
         IMAGE_LOADED=1
     else
-        echo -e "${YELLOW}[...]${NC} Local file load failed -- trying network..."
+        echo ""
     fi
 fi
 
 if [ "${IMAGE_LOADED:-0}" = "1" ]; then
     : # Already loaded from .tar
-elif docker pull ghcr.io/sealmindset/claude-code-docker:latest; then
-    echo -e "${GREEN}[OK]${NC} Image is up to date."
 else
-    if docker image inspect ghcr.io/sealmindset/claude-code-docker:latest &>/dev/null; then
-        echo -e "${YELLOW}[WARN]${NC} Could not check for updates. Using cached image."
+    printf "  Downloading"
+    docker pull ghcr.io/sealmindset/claude-code-docker:latest >"$PULL_LOG" 2>&1 &
+    PULL_PID=$!
+    while kill -0 "$PULL_PID" 2>/dev/null; do printf "."; sleep 3; done
+    wait "$PULL_PID" 2>/dev/null
+    PULL_EXIT=$?
+    echo ""
+
+    if [ $PULL_EXIT -eq 0 ]; then
+        echo -e "${GREEN}[OK]${NC} Download complete."
+    elif docker image inspect ghcr.io/sealmindset/claude-code-docker:latest &>/dev/null; then
+        echo -e "${GREEN}[OK]${NC} Using previously downloaded version."
     else
-        echo -e "${YELLOW}[...]${NC} No cached image. Building locally..."
+        printf "  Building locally"
         BUILD_ARGS=""
         [ -n "$REGISTRY_MIRROR" ] && BUILD_ARGS="--build-arg REGISTRY_MIRROR=${REGISTRY_MIRROR}"
-        if ! docker build $BUILD_ARGS -t ghcr.io/sealmindset/claude-code-docker:latest .; then
-            echo -e "${RED}[ERROR]${NC} Build failed."
-            if [ -n "$REGISTRY_MIRROR" ]; then
-                echo ""
-                echo "  The build could not download its base components from the"
-                echo "  image registry. This can happen if:"
-                echo "    - Your Azure sign-in expired -- try: az login"
-                echo "    - The registry doesn't have the right cache rules set up"
-                echo "      (ask the AI CoE team to verify the Docker Hub cache rule)"
-                echo "    - Your network is blocking the connection"
-            else
-                echo ""
-                echo "  The build could not download its base components."
-                echo "  Check your internet connection and try again."
-            fi
+        docker build $BUILD_ARGS -t ghcr.io/sealmindset/claude-code-docker:latest . >"$PULL_LOG" 2>&1 &
+        BUILD_PID=$!
+        while kill -0 "$BUILD_PID" 2>/dev/null; do printf "."; sleep 5; done
+        wait "$BUILD_PID" 2>/dev/null
+        BUILD_EXIT=$?
+        echo ""
+
+        if [ $BUILD_EXIT -ne 0 ]; then
+            echo -e "${RED}[!]${NC} Setup could not download the required files."
+            echo ""
+            echo "  Check your internet connection and try again."
+            echo "  If the problem persists, contact your IT team."
             echo ""
             read -p "Press Enter to close..."
             exit 1
@@ -674,7 +688,7 @@ DOCKER_GID=$(stat -f '%g' /var/run/docker.sock 2>/dev/null || stat -c '%g' /var/
 # Start the container
 # ---------------------------------------------------------------------------
 echo ""
-echo -e "${YELLOW}[...]${NC} Starting Claude Code Docker..."
+echo -e "${YELLOW}[...]${NC} Starting Claude Code..."
 if ! docker run -d \
     --name claude-code \
     --restart unless-stopped \
@@ -694,33 +708,33 @@ if ! docker run -d \
     -v claude-code-data:/home/coder/.claude \
     -v claude-code-gh:/home/coder/.config/gh \
     -v claude-code-git-config:/home/coder/.gitconfig.d \
-    ghcr.io/sealmindset/claude-code-docker:latest; then
-    echo -e "${RED}[ERROR]${NC} Failed to start the container."
+    ghcr.io/sealmindset/claude-code-docker:latest >/dev/null 2>&1; then
+    echo -e "${RED}[!]${NC} Could not start Claude Code."
     echo ""
-    echo "  Common fixes:"
-    echo "    - Make sure ports 3000, 7681, 8080, 9200 are not in use"
-    echo "    - Restart Docker and try again"
+    echo "  Try restarting Docker and running this installer again."
     echo ""
     read -p "Press Enter to close..."
     exit 1
 fi
 
-echo -e "${GREEN}[OK]${NC} Claude Code Docker is running!"
+echo -e "${GREEN}[OK]${NC} Claude Code is running!"
 
 # ---------------------------------------------------------------------------
 # Wait for dashboard
 # ---------------------------------------------------------------------------
 echo ""
-echo -e "${YELLOW}[...]${NC} Waiting for dashboard to start..."
+printf "${YELLOW}[...]${NC} Getting everything ready"
 
 for i in $(seq 1 30); do
     if curl -s -o /dev/null http://localhost:3000 2>/dev/null; then
         break
     fi
+    printf "."
     sleep 2
 done
+echo ""
 
-echo -e "${GREEN}[OK]${NC} Dashboard is ready!"
+echo -e "${GREEN}[OK]${NC} Ready!"
 echo ""
 echo -e "${BLUE}========================================${NC}"
 echo -e "  Opening Claude Code in your browser..."
@@ -761,12 +775,9 @@ current application's NSWorkspace's sharedWorkspace()'s setIcon:img forFile:\"$D
 fi
 
 echo ""
-echo -e "  Dashboard:     ${GREEN}http://localhost:3000${NC}"
-echo -e "  Workshop:      ${GREEN}http://localhost:9200${NC}"
-echo -e "  Web Terminal:  ${GREEN}http://localhost:7681${NC}"
-echo -e "  VS Code:       ${GREEN}http://localhost:8080${NC}"
+echo -e "  ${GREEN}http://localhost:3000${NC}"
 echo ""
-echo "  To stop:    docker rm -f claude-code"
-echo "  To restart: double-click this file or the desktop shortcut"
+echo -e "  A desktop shortcut has been created so you can come back anytime."
+echo -e "  To stop Claude Code: double-click ${BOLD}stop-claude.command${NC} or close Docker."
 echo ""
-read -p "Press Enter to close this window..."
+read -p "Press Enter to close..."

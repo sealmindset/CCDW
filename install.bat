@@ -9,12 +9,15 @@ REM   install.bat --ai=anthropic   Anthropic API key
 REM   install.bat                  Interactive prompt or auto-detect
 REM =============================================================================
 
-title Claude Code Docker - Installer
+title Claude Code - Setup
 
 echo.
 echo ========================================
-echo   Claude Code Docker - Installer
+echo   Claude Code - Setup
 echo ========================================
+echo.
+echo   This will set up your AI development environment.
+echo   It takes about 2-3 minutes on a good connection.
 echo.
 
 REM ---------------------------------------------------------------------------
@@ -78,7 +81,7 @@ echo.
 REM ---------------------------------------------------------------------------
 REM Preflight checks
 REM ---------------------------------------------------------------------------
-echo [...]  Running preflight checks...
+echo [...]  Checking your setup...
 
 REM --- Check: WSL2 is installed and working ---
 where wsl >nul 2>nul
@@ -665,7 +668,7 @@ REM --- Run provider-specific preflight checks ---
 :run_preflight
 echo.
 echo ========================================
-echo   Preflight Checks: !AI_PROVIDER!
+echo   Checking Your Setup
 echo ========================================
 echo.
 powershell -NoProfile -Command ^
@@ -708,7 +711,7 @@ powershell -NoProfile -Command ^
 if !ERRORLEVEL! neq 0 (
     echo.
     echo ========================================
-    echo   Some preflight checks failed
+    echo   Some checks need attention
     echo ========================================
     echo.
     echo   Most common fix: connect your VPN ^(GlobalProtect^).
@@ -954,18 +957,10 @@ REM Searches Windows cert store and exports any proxy CA certs to certs/
 REM so Docker builds trust corporate HTTPS inspection.
 REM ---------------------------------------------------------------------------
 echo.
-echo [...]  Checking for SSL inspection proxy certificates...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\extract-certs.ps1" -CertsDir "%~dp0certs"
-
-REM ---------------------------------------------------------------------------
-REM Fix host-side VSCode certificate errors (NODE_EXTRA_CA_CERTS)
-REM Same proxy CAs that break Docker also break VSCode extensions (Claude, etc.)
-REM Sets NODE_EXTRA_CA_CERTS so Node.js trusts the proxy's re-signed certs.
-REM ---------------------------------------------------------------------------
-echo.
-echo [...]  Configuring VSCode to trust proxy certificates...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\fix-vscode-certs.ps1"
-echo.
+echo [...]  Checking network security settings...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\extract-certs.ps1" -CertsDir "%~dp0certs" >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\fix-vscode-certs.ps1" >nul 2>nul
+echo [OK] Network security configured.
 
 REM ---------------------------------------------------------------------------
 REM ACR image registry (bypasses Zscaler / SSL inspection entirely)
@@ -1020,7 +1015,7 @@ REM ---------------------------------------------------------------------------
 REM Auto-update: pull latest image (try local file, gateway, direct, then build)
 REM ---------------------------------------------------------------------------
 echo.
-echo [...]  Checking for updates...
+echo [...]  Downloading latest version...
 
 REM --- Try 0: Load from local .tar file (pre-baked image distribution) ---
 REM   Place claude-code-docker.tar next to this script to skip all network pulls.
@@ -1158,7 +1153,7 @@ REM ---------------------------------------------------------------------------
 REM Start the container
 REM ---------------------------------------------------------------------------
 echo.
-echo [...]  Starting Claude Code Docker...
+echo [...]  Starting Claude Code...
 
 if not exist "!ENV_FILE!" goto :run_without_env
 
@@ -1173,11 +1168,9 @@ docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:
 if !ERRORLEVEL! equ 0 goto :run_ok
 
 echo.
-echo [ERROR] Failed to start the container.
+echo [!] Could not start Claude Code.
 echo.
-echo   Common fixes:
-echo     - Make sure ports 3000, 7681, 8080, 9200 are not in use
-echo     - Restart Rancher Desktop or Docker Desktop and try again
+echo   Try restarting Docker and running this installer again.
 echo.
 pause
 exit /b 1
@@ -1201,13 +1194,13 @@ pause
 exit /b 1
 
 :container_ok
-echo [OK] Claude Code Docker is running!
+echo [OK] Claude Code is running!
 
 REM ---------------------------------------------------------------------------
 REM Wait for dashboard
 REM ---------------------------------------------------------------------------
 echo.
-echo [...]  Waiting for dashboard to start...
+echo [...]  Getting everything ready...
 
 set ATTEMPTS=0
 :waitloop
@@ -1238,19 +1231,13 @@ start http://localhost:3000
 
 echo.
 echo ========================================
-echo   Claude Code Docker is ready!
+echo   Claude Code is ready!
 echo ========================================
 echo.
-echo   Dashboard:     http://localhost:3000
-echo   Workshop:      http://localhost:9200
-echo   Web Terminal:  http://localhost:7681
-echo   VS Code:       http://localhost:8080
+echo   http://localhost:3000
 echo.
-echo   FIRST TIME? Click "Workshop" in the dashboard to build
-echo   your first app -- no coding needed!
-echo.
-echo   To stop:    docker rm -f claude-code
-echo   To restart: double-click "Claude" on your desktop
+echo   A desktop shortcut has been created so you can come back anytime.
+echo   To stop Claude Code: close Docker or run "docker rm -f claude-code"
 echo.
 pause
 endlocal

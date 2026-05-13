@@ -34,7 +34,7 @@ fi
 # ---------------------------------------------------------------------------
 # Custom prompt
 # ---------------------------------------------------------------------------
-export PS1="\[\033[0;34m\]claude-code\[\033[0m\]:\[\033[0;32m\]\w\[\033[0m\]\$ "
+export PS1="\[\033[0;34m\]claude\[\033[0m\] \[\033[0;32m\]\W\[\033[0m\] \$ "
 
 # Version is pinned in the Docker image — disable Claude Code auto-updater
 export DISABLE_AUTOUPDATER=1
@@ -196,7 +196,7 @@ if [ ! -f "$FIRST_RUN_MARKER" ]; then
     else
         # AI provider already logged in — show status
         echo ""
-        echo -e "${BLUE}  Welcome to Claude Code Docker!${NC}"
+        echo -e "${BLUE}  Welcome to Claude Code!${NC}"
         echo ""
         [ "$AI_OK" = "1" ] && echo -e "  ${CHECK_PASS} AI Provider  ${GREEN}${AI_LABEL}${NC}" || echo -e "  ${CHECK_FAIL} AI Provider"
         if [ -n "$ANTHROPIC_API_KEY" ]; then
@@ -204,7 +204,7 @@ if [ ! -f "$FIRST_RUN_MARKER" ]; then
         elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
             [ "$AZ_OK" = "1" ] && echo -e "  ${CHECK_PASS} Azure login" || echo -e "  ${CHECK_FAIL} Azure login"
         fi
-        [ "$DOCKER_OK" = "1" ] && echo -e "  ${CHECK_PASS} Docker" || echo -e "  ${CHECK_FAIL} Docker"
+        [ "$DOCKER_OK" = "1" ] && echo -e "  ${CHECK_PASS} System" || echo -e "  ${CHECK_FAIL} System"
         if [ "$GH_OK" = "1" ]; then
             GH_USER=$(gh api user -q .login 2>/dev/null || echo "authenticated")
             echo -e "  ${CHECK_PASS} GitHub        ${GREEN}${GH_USER}${NC}"
@@ -293,7 +293,7 @@ else
 
     # --- Now show the status (post-recovery if wizard ran) ---
     echo ""
-    echo -e "${BLUE}  Claude Code Docker${NC}"
+    echo -e "${BLUE}  Claude Code${NC}"
     echo ""
 
     if [ "$AI_OK" = "1" ]; then
@@ -321,9 +321,9 @@ else
     fi
 
     if [ "$DOCKER_OK" = "1" ]; then
-        echo -e "  ${CHECK_PASS} Docker"
+        echo -e "  ${CHECK_PASS} System"
     else
-        echo -e "  ${CHECK_FAIL} Docker"
+        echo -e "  ${CHECK_FAIL} System"
     fi
 
     if [ "$GH_OK" = "1" ]; then

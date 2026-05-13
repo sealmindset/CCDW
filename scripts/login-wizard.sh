@@ -317,24 +317,24 @@ show_qr() {
 
 azure_preflight() {
     clear
-    draw_header "Preflight Checks" 1 3
+    draw_header "Checking Your Setup" 1 3
     draw_progress 1 3
 
     local all_pass=1
 
-    printf "  ${DIM}○${NC} Azure CLI"
+    printf "  ${DIM}○${NC} Cloud sign-in tools"
     if command -v az &>/dev/null; then
-        printf "\r  ${OK} Azure CLI\n"
+        printf "\r  ${OK} Cloud sign-in tools\n"
     else
-        printf "\r  ${FAIL} Azure CLI — not installed\n"
+        printf "\r  ${FAIL} Cloud sign-in tools — not installed\n"
         all_pass=0
     fi
 
-    printf "  ${DIM}○${NC} GitHub CLI"
+    printf "  ${DIM}○${NC} Code sharing tools"
     if command -v gh &>/dev/null; then
-        printf "\r  ${OK} GitHub CLI\n"
+        printf "\r  ${OK} Code sharing tools\n"
     else
-        printf "\r  ${FAIL} GitHub CLI — not installed\n"
+        printf "\r  ${FAIL} Code sharing tools — not installed\n"
         all_pass=0
     fi
 
@@ -346,22 +346,22 @@ azure_preflight() {
         all_pass=0
     fi
 
-    printf "  ${DIM}○${NC} Microsoft login service"
+    printf "  ${DIM}○${NC} Sign-in service"
     if curl -s --connect-timeout 5 -o /dev/null https://login.microsoftonline.com 2>/dev/null; then
-        printf "\r  ${OK} Microsoft login service\n"
+        printf "\r  ${OK} Sign-in service\n"
     else
-        printf "\r  ${FAIL} Microsoft login — unreachable\n"
+        printf "\r  ${FAIL} Sign-in service — unreachable\n"
         all_pass=0
     fi
 
     if [ -n "$ENDPOINT" ]; then
-        printf "  ${DIM}○${NC} AI endpoint (VPN)"
+        printf "  ${DIM}○${NC} AI service"
         if curl -s --connect-timeout 8 -o /dev/null "$ENDPOINT" 2>/dev/null; then
-            printf "\r  ${OK} AI endpoint (VPN connected)\n"
+            printf "\r  ${OK} AI service (connected)\n"
         else
-            printf "\r  ${FAIL} AI endpoint — VPN not connected\n"
+            printf "\r  ${FAIL} AI service — VPN not connected\n"
             echo ""
-            echo -e "  ${YELLOW}The AI endpoint is not reachable.${NC}"
+            echo -e "  ${YELLOW}The AI service is not reachable.${NC}"
             echo -e "  Make sure you're connected to your company VPN."
             echo ""
             read -p "  Press Enter to retry, or Ctrl+C to exit... " _
@@ -387,7 +387,7 @@ azure_preflight() {
 
 azure_signin() {
     clear
-    draw_header "Azure Sign In" 2 3
+    draw_header "Sign In" 2 3
     draw_progress 2 3
 
     if [ "$NEED_LOGIN" = "0" ]; then
@@ -398,7 +398,7 @@ azure_signin() {
         return 0
     fi
 
-    echo -e "  Starting Azure sign-in..."
+    echo -e "  Starting sign-in..."
     echo ""
 
     TMPFILE=$(mktemp /tmp/az-login-XXXXXX)
@@ -433,7 +433,7 @@ azure_signin() {
     fi
 
     clear
-    draw_header "Azure Sign In" 2 3
+    draw_header "Sign In" 2 3
     draw_progress 2 3
 
     draw_code_box "$device_code" "$login_url"
@@ -515,31 +515,31 @@ azure_allset() {
 
 bedrock_preflight() {
     clear
-    draw_header "Preflight Checks" 1 3
+    draw_header "Checking Your Setup" 1 3
     draw_progress 1 3
 
     local all_pass=1
 
-    printf "  ${DIM}○${NC} AWS CLI"
+    printf "  ${DIM}○${NC} Cloud sign-in tools"
     if command -v aws &>/dev/null; then
         local aws_ver
         aws_ver=$(aws --version 2>&1 | head -1)
         if echo "$aws_ver" | grep -q "aws-cli/2"; then
-            printf "\r  ${OK} AWS CLI v2\n"
+            printf "\r  ${OK} Cloud sign-in tools\n"
         else
-            printf "\r  ${FAIL} AWS CLI — v2 required (found: $aws_ver)\n"
+            printf "\r  ${FAIL} Cloud sign-in tools — update needed\n"
             all_pass=0
         fi
     else
-        printf "\r  ${FAIL} AWS CLI — not installed\n"
+        printf "\r  ${FAIL} Cloud sign-in tools — not installed\n"
         all_pass=0
     fi
 
-    printf "  ${DIM}○${NC} GitHub CLI"
+    printf "  ${DIM}○${NC} Code sharing tools"
     if command -v gh &>/dev/null; then
-        printf "\r  ${OK} GitHub CLI\n"
+        printf "\r  ${OK} Code sharing tools\n"
     else
-        printf "\r  ${FAIL} GitHub CLI — not installed\n"
+        printf "\r  ${FAIL} Code sharing tools — not installed\n"
         all_pass=0
     fi
 
@@ -551,14 +551,14 @@ bedrock_preflight() {
         all_pass=0
     fi
 
-    printf "  ${DIM}○${NC} AWS SSO profile"
+    printf "  ${DIM}○${NC} Sign-in profile"
     if grep -q "\[profile ${AWS_SSO_PROFILE}\]" /home/coder/.aws/config 2>/dev/null; then
-        printf "\r  ${OK} AWS SSO profile (${AWS_SSO_PROFILE})\n"
+        printf "\r  ${OK} Sign-in profile\n"
     else
-        printf "\r  ${FAIL} AWS SSO profile — ${AWS_SSO_PROFILE} not found in ~/.aws/config\n"
+        printf "\r  ${FAIL} Sign-in profile — not configured yet\n"
         echo ""
-        echo -e "  ${YELLOW}The AWS SSO profile is not configured.${NC}"
-        echo -e "  Re-run the installer with --ai=bedrock to set it up."
+        echo -e "  ${YELLOW}Your sign-in profile is not set up.${NC}"
+        echo -e "  Re-run the installer to configure it."
         all_pass=0
     fi
 
@@ -568,18 +568,16 @@ bedrock_preflight() {
     if [ -n "$sso_url" ]; then
         local sso_domain
         sso_domain=$(echo "$sso_url" | sed 's|/start$||')
-        printf "  ${DIM}○${NC} AWS SSO portal"
+        printf "  ${DIM}○${NC} Sign-in service"
         if curl -s --connect-timeout 5 -o /dev/null "$sso_domain" 2>/dev/null; then
-            printf "\r  ${OK} AWS SSO portal reachable\n"
+            printf "\r  ${OK} Sign-in service\n"
         else
-            printf "\r  ${FAIL} AWS SSO portal — unreachable\n"
+            printf "\r  ${FAIL} Sign-in service — unreachable\n"
             all_pass=0
         fi
     fi
 
-    # Okta group reminder
-    echo -e "  ${YELLOW}?${NC} Okta group: aws-bedrock-model-access ${DIM}(verify manually)${NC}"
-    echo -e "    ${YELLOW}You must be in this Okta group. If not, create an EMB ticket.${NC}"
+    echo -e "  ${YELLOW}?${NC} AI access permission ${DIM}(verify with your admin if sign-in fails)${NC}"
 
     echo ""
 
@@ -598,7 +596,7 @@ bedrock_preflight() {
 
 bedrock_signin() {
     clear
-    draw_header "AWS SSO Sign In" 2 3
+    draw_header "Sign In" 2 3
     draw_progress 2 3
 
     if [ "$NEED_LOGIN" = "0" ]; then
@@ -607,7 +605,7 @@ bedrock_signin() {
         return 0
     fi
 
-    echo -e "  Starting AWS SSO login for profile ${GREEN}${AWS_SSO_PROFILE}${NC}..."
+    echo -e "  Starting sign-in..."
     echo ""
 
     TMPFILE=$(mktemp /tmp/aws-sso-XXXXXX)
@@ -642,7 +640,7 @@ bedrock_signin() {
         cat "$TMPFILE" 2>/dev/null
     else
         clear
-        draw_header "AWS SSO Sign In" 2 3
+        draw_header "Sign In" 2 3
         draw_progress 2 3
 
         if [ -n "$sso_code" ]; then

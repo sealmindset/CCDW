@@ -18,6 +18,21 @@
 - Ship readiness checks no longer simulated -- backed by real gh auth, git, and filesystem checks
 - Ship view CSS expanded with proper styling for checks, mode cards, progress ring, activity feed
 
+### Polish (CEO/executive UX audit)
+- Welcome dashboard: removed port badges, renamed "Docker" to "System", "Tokens" to "AI Usage"
+- Welcome dashboard: title changed to "Claude Code", subtitle to "Your personal AI development studio"
+- Welcome dashboard: hid "+ New Terminal" quick action, softened VS Code/Terminal card descriptions
+- Welcome dashboard: Getting Started step 4 rewritten for non-technical users
+- Shell init: PS1 prompt simplified, "Claude Code Docker" renamed to "Claude Code" everywhere
+- Login wizard: preflight labels rewritten in plain language (no CLI/SDK jargon)
+- Login wizard: step headers renamed "Checking Your Setup" and "Sign In"
+- Login wizard: Bedrock Okta group message replaced with generic "AI access permission"
+- macOS install: added friendly preamble, progress dots during download, single URL at end
+- macOS install: Docker wait with auto-retry, silent SSL cert export, quieter error messages
+- Windows install: added friendly preamble, renamed "Preflight Checks" to "Checking Your Setup"
+- Windows install: silenced SSL/cert noise, simplified ending to single URL
+- Both installers: "Claude Code Docker" renamed to "Claude Code" in all user-facing text
+
 ## [0.5.2] - 2026-04-22
 
 ### Added
