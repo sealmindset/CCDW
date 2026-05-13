@@ -234,16 +234,8 @@ if defined FOUNDRY_EP if "!FOUNDRY_EP!" neq "" (
     set /a WARN+=1
 )
 
-REM Azure subscription (informational)
-if exist "%~dp0config\foundry.json" (
-    for /f "usebackq delims=" %%S in (`powershell -NoProfile -Command "(Get-Content '%~dp0config\foundry.json' | ConvertFrom-Json).subscription_name" 2^>nul`) do (
-        if "%%S" neq "" (
-            echo   ?  Azure subscription: %%S ^(verify manually^)
-            echo       Verify you have access in the Azure portal.
-            set /a WARN+=1
-        )
-    )
-)
+echo   OK Azure sign-in happens automatically after install ^(no action needed now^)
+set /a PASS+=1
 :skip_foundry
 
 REM --- Bedrock ---
@@ -297,8 +289,8 @@ if defined SSO_URL if "!SSO_URL!" neq "" (
     )
 )
 
-echo   ?  Okta group: aws-bedrock-model-access ^(verify manually^)
-echo       If not in this group, create an EMB ticket requesting access.
+echo   ?  AI access permission ^(verify manually^)
+echo       If sign-in fails later, ask your manager to confirm you have Bedrock model access.
 set /a WARN+=1
 :skip_bedrock
 

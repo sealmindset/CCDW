@@ -166,15 +166,8 @@ check_foundry() {
              "Set endpoint in config/foundry.json to test connectivity."
     fi
 
-    # Azure subscription (informational)
-    SUB_NAME=""
-    if [ -f "config/foundry.json" ]; then
-        SUB_NAME=$(python3 -c "import json; print(json.load(open('config/foundry.json')).get('subscription_name',''))" 2>/dev/null)
-    fi
-    if [ -n "$SUB_NAME" ]; then
-        info "Azure subscription: $SUB_NAME" \
-             "Verify you have access to this subscription in the Azure portal."
-    fi
+    # Azure sign-in (informational — handled automatically after install)
+    ok "Azure sign-in happens automatically after install (no action needed now)"
 }
 
 check_bedrock() {
@@ -219,9 +212,9 @@ check_bedrock() {
         fi
     fi
 
-    # Okta group (informational)
-    info "Okta group: aws-bedrock-model-access" \
-         "Verify you are in this Okta group. If not, create an EMB ticket requesting access."
+    # AI access permission (informational)
+    info "AI access permission" \
+         "If sign-in fails later, ask your manager to confirm you have Bedrock model access."
 }
 
 check_anthropic() {
