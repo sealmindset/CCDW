@@ -3,8 +3,6 @@
 # Claude Code Docker - Entrypoint
 # Starts ttyd + code-server, runs setup wizard if needed, auto-updates skills
 # =============================================================================
-set -e
-
 SCRIPTS_DIR="/opt/claude-code-docker/scripts"
 GITHUB_DIR="/home/coder/Documents/GitHub"
 ENV_FILE="${GITHUB_DIR}/.env"
@@ -16,6 +14,7 @@ SETUP_DONE_MARKER="/home/coder/.claude/.setup-done"
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${BLUE}========================================${NC}"
@@ -27,11 +26,19 @@ echo -e "${BLUE}========================================${NC}"
 # ---------------------------------------------------------------------------
 if [ ! -d "$GITHUB_DIR" ]; then
     echo -e "${YELLOW}[...]${NC} Creating workspace directory..."
-    mkdir -p "$GITHUB_DIR"
+    # Parent may not exist if volume mount failed — create both levels
+    mkdir -p /home/coder/Documents 2>/dev/null || true
+    mkdir -p "$GITHUB_DIR" 2>/dev/null || true
 fi
 
-chown -R coder:coder "$GITHUB_DIR" 2>/dev/null || true
-echo -e "${GREEN}[OK]${NC} Workspace: $GITHUB_DIR"
+if [ -d "$GITHUB_DIR" ]; then
+    chown -R coder:coder "$GITHUB_DIR" 2>/dev/null || true
+    echo -e "${GREEN}[OK]${NC} Workspace: $GITHUB_DIR"
+else
+    echo -e "${YELLOW}[!]${NC} Could not create $GITHUB_DIR — using /home/coder/Documents"
+    GITHUB_DIR="/home/coder/Documents"
+    ENV_FILE="/home/coder/Documents/.env"
+fi
 
 # ---------------------------------------------------------------------------
 # Docker socket permissions (entrypoint runs as root, so we can fix this)

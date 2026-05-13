@@ -797,8 +797,9 @@ fi
 echo ""
 printf "${YELLOW}[...]${NC} Getting everything ready"
 
-for i in $(seq 1 30); do
-    if curl -s -o /dev/null http://localhost:3000 2>/dev/null; then
+for i in $(seq 1 45); do
+    if curl -s -o /dev/null http://localhost:3000 2>/dev/null && \
+       curl -s -o /dev/null http://localhost:7681 2>/dev/null; then
         break
     fi
     printf "."

@@ -489,6 +489,59 @@
 </head>
 <body>
 
+    <!-- Boot screen (shown while services start up) -->
+    <div id="bootScreen" style="
+        position: fixed; inset: 0; z-index: 9999;
+        background: var(--bg-primary);
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        transition: opacity 0.8s ease, visibility 0.8s ease;
+    ">
+        <div style="text-align: center; max-width: 400px; padding: 2rem;">
+            <!-- Animated logo -->
+            <div id="bootLogo" style="
+                width: 80px; height: 80px; margin: 0 auto 2rem;
+                border-radius: 20px; background: var(--accent-soft);
+                display: flex; align-items: center; justify-content: center;
+                animation: bootPulse 2s ease-in-out infinite;
+            ">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+                </svg>
+            </div>
+            <h1 style="color: var(--text-primary); font-size: 1.5rem; font-weight: 600; margin: 0 0 0.5rem;">
+                Claude Code
+            </h1>
+            <p id="bootMessage" style="color: var(--text-muted); font-size: 0.95rem; margin: 0 0 2rem; line-height: 1.5;">
+                Setting things up just for you...
+            </p>
+            <!-- Progress dots -->
+            <div style="display: flex; gap: 8px; justify-content: center;">
+                <div class="boot-dot" style="animation-delay: 0s;"></div>
+                <div class="boot-dot" style="animation-delay: 0.2s;"></div>
+                <div class="boot-dot" style="animation-delay: 0.4s;"></div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        @keyframes bootPulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 var(--accent-glow); }
+            50% { transform: scale(1.05); box-shadow: 0 0 30px 10px var(--accent-glow); }
+        }
+        .boot-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent);
+            animation: bootDotBounce 1.4s ease-in-out infinite;
+        }
+        @keyframes bootDotBounce {
+            0%, 80%, 100% { transform: scale(0.4); opacity: 0.3; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+        #bootScreen.boot-ready {
+            opacity: 0; visibility: hidden; pointer-events: none;
+        }
+    </style>
+
     <div class="copy-toast" id="copyToast">Code copied!</div>
 
     <div class="page">
@@ -619,35 +672,35 @@
                 <div class="status-dot checking" id="dot-workshop"></div>
                 <div>
                     <div class="status-label">Workshop</div>
-                    <div class="status-detail" id="status-workshop">Checking...</div>
+                    <div class="status-detail" id="status-workshop">Starting up...</div>
                 </div>
             </div>
             <div class="status-item">
                 <div class="status-dot checking" id="dot-vscode"></div>
                 <div>
                     <div class="status-label">VS Code</div>
-                    <div class="status-detail" id="status-vscode">Checking...</div>
+                    <div class="status-detail" id="status-vscode">Starting up...</div>
                 </div>
             </div>
             <div class="status-item">
                 <div class="status-dot checking" id="dot-terminal"></div>
                 <div>
                     <div class="status-label">Terminal</div>
-                    <div class="status-detail" id="status-terminal">Checking...</div>
+                    <div class="status-detail" id="status-terminal">Starting up...</div>
                 </div>
             </div>
             <div class="status-item">
                 <div class="status-dot checking" id="dot-docker"></div>
                 <div>
                     <div class="status-label">System</div>
-                    <div class="status-detail" id="status-docker">Checking...</div>
+                    <div class="status-detail" id="status-docker">Starting up...</div>
                 </div>
             </div>
             <div class="status-item">
                 <div class="status-dot checking" id="dot-ai"></div>
                 <div>
                     <div class="status-label">AI Provider</div>
-                    <div class="status-detail" id="status-ai">Checking...</div>
+                    <div class="status-detail" id="status-ai">Starting up...</div>
                     <div class="status-token" id="status-token"></div>
                 </div>
             </div>
@@ -741,6 +794,7 @@
             return model;
         }
 
+        var pageLoadTime = Date.now();
         async function checkService(url, dotId, statusId) {
             var dot = document.getElementById(dotId);
             var status = document.getElementById(statusId);
@@ -751,8 +805,14 @@
                 dot.className = 'status-dot green';
                 status.textContent = 'Running';
             } catch (e) {
-                dot.className = 'status-dot red';
-                status.textContent = 'Not responding';
+                var elapsed = Date.now() - pageLoadTime;
+                if (elapsed < 90000) {
+                    dot.className = 'status-dot checking';
+                    status.textContent = 'Starting up...';
+                } else {
+                    dot.className = 'status-dot red';
+                    status.textContent = 'Not responding';
+                }
             }
         }
 
@@ -880,6 +940,47 @@
                 });
             } catch (e) {}
         }
+
+        // Boot screen: dismiss when at least one service is up
+        var bootDismissed = false;
+        var bootMessages = [
+            'Setting things up just for you...',
+            'Starting your development tools...',
+            'Almost there...'
+        ];
+        var bootMsgIndex = 0;
+        var bootMsgInterval = setInterval(function() {
+            bootMsgIndex = (bootMsgIndex + 1) % bootMessages.length;
+            var el = document.getElementById('bootMessage');
+            if (el) el.textContent = bootMessages[bootMsgIndex];
+        }, 4000);
+
+        function dismissBoot() {
+            if (bootDismissed) return;
+            bootDismissed = true;
+            clearInterval(bootMsgInterval);
+            var screen = document.getElementById('bootScreen');
+            if (screen) screen.classList.add('boot-ready');
+        }
+
+        // Check services frequently during boot, then slow down
+        var bootCheckInterval = setInterval(async function() {
+            if (bootDismissed) { clearInterval(bootCheckInterval); return; }
+            try {
+                var resp = await fetch('/api/status');
+                if (resp.ok) dismissBoot();
+            } catch(e) {}
+            try {
+                var h = window.location.hostname;
+                var controller = new AbortController();
+                setTimeout(function() { controller.abort(); }, 3000);
+                await fetch('http://' + h + ':7681', { mode: 'no-cors', signal: controller.signal });
+                dismissBoot();
+            } catch(e) {}
+        }, 2000);
+
+        // Safety: dismiss after 90 seconds no matter what
+        setTimeout(dismissBoot, 90000);
 
         checkAll();
         checkUsage();

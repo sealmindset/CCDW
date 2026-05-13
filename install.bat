@@ -1240,9 +1240,9 @@ echo [...]  Getting everything ready...
 
 set ATTEMPTS=0
 :waitloop
-if !ATTEMPTS! geq 30 goto :timedout
+if !ATTEMPTS! geq 45 goto :timedout
 ping -n 3 127.0.0.1 >nul
-curl.exe -s -o nul http://localhost:3000 2>nul
+curl.exe -s -o nul http://localhost:3000 2>nul && curl.exe -s -o nul http://localhost:7681 2>nul
 if !ERRORLEVEL! equ 0 goto :ready
 set /a ATTEMPTS+=1
 goto :waitloop
