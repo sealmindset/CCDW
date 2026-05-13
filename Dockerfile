@@ -114,7 +114,7 @@ RUN deluser node 2>/dev/null; delgroup node 2>/dev/null; \
     && adduser -u 1000 -G coder -s /bin/bash -D coder 2>/dev/null || true \
     && echo 'coder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/coder \
     && chmod 0440 /etc/sudoers.d/coder \
-    && mkdir -p /home/coder/.claude /home/coder/Documents/GitHub /home/coder/Downloads /home/coder/Desktop \
+    && mkdir -p /home/coder/.claude /home/coder/Documents /home/coder/Downloads /home/coder/Desktop \
     && chown -R coder:coder /home/coder
 
 # ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ RUN mv /opt/claude-code-docker/scripts/xdg-open /usr/local/bin/xdg-open
 # Switch to coder user for extensions, Go tools, and skill install
 # ---------------------------------------------------------------------------
 USER coder
-WORKDIR /home/coder/Documents/GitHub
+WORKDIR /home/coder/Documents
 
 # VS Code extensions (code-server uses Open VSX registry)
 RUN code-server --install-extension ms-python.python \
