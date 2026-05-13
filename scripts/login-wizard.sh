@@ -738,76 +738,46 @@ github_signin() {
     if gh auth status &>/dev/null 2>&1; then
         local gh_user
         gh_user=$(gh api user -q .login 2>/dev/null || echo "authenticated")
-        echo -e "  ${OK} GitHub: signed in as ${GREEN}${gh_user}${NC}"
+        echo -e "  ${OK} GitHub        ${GREEN}${gh_user}${NC}"
         return 0
     fi
 
-    clear
-    draw_header "GitHub Sign In" 1 1
-    draw_progress 1 1
+    # Start gh auth in background — welcome dashboard handles the browser UX
+    echo -ne "  ${DIM}○${NC} GitHub        Signing in..."
 
-    echo -e "  Starting GitHub sign-in..."
-    echo ""
+    local tmpfile
+    tmpfile=$(mktemp /tmp/gh-login-XXXXXX)
+    echo "" | gh auth login -p https -h github.com -w --skip-ssh-key >"$tmpfile" 2>&1 &
+    local gh_pid=$!
 
-    TMPFILE=$(mktemp /tmp/gh-login-XXXXXX)
-    # Pipe Enter to satisfy "Press Enter to open github.com..." prompt
-    # --skip-ssh-key avoids the SSH key generation prompt
-    # xdg-open shim is a no-op so gh prints URL and waits for browser auth
-    echo "" | gh auth login -p https -h github.com -w --skip-ssh-key >"$TMPFILE" 2>&1 &
-    GH_PID=$!
-
-    local device_code=""
-    local attempts=0
+    # Extract device code
+    local device_code="" attempts=0
     while [ -z "$device_code" ] && [ $attempts -lt 60 ]; do
         sleep 0.5
         attempts=$((attempts + 1))
-        device_code=$(sed -n 's/.*one-time code: \([A-Z0-9]*-[A-Z0-9]*\).*/\1/p' "$TMPFILE" 2>/dev/null | head -1)
-        [ -z "$device_code" ] && device_code=$(grep -oE '[A-Z0-9]{4}-[A-Z0-9]{4}' "$TMPFILE" 2>/dev/null | head -1)
+        device_code=$(sed -n 's/.*one-time code: \([A-Z0-9]*-[A-Z0-9]*\).*/\1/p' "$tmpfile" 2>/dev/null | head -1)
+        [ -z "$device_code" ] && device_code=$(grep -oE '[A-Z0-9]{4}-[A-Z0-9]{4}' "$tmpfile" 2>/dev/null | head -1)
     done
 
     if [ -z "$device_code" ]; then
-        echo -e "  ${FAIL} Could not start GitHub sign-in."
-        echo ""
-        # Show what gh actually said for debugging
-        local gh_output
-        gh_output=$(cat "$TMPFILE" 2>/dev/null | tr -d '\r' | grep -v '^$' | head -5)
-        if [ -n "$gh_output" ]; then
-            echo -e "  ${DIM}$gh_output${NC}"
-            echo ""
-        fi
-        echo -e "  Try running manually: ${GREEN}gh auth login${NC}"
-        wait "$GH_PID" 2>/dev/null
-        GH_PID=""
-        rm -f "$TMPFILE"
-        TMPFILE=""
-        echo ""
-        read -p "  Press Enter to continue... " _
+        printf "\r  ${YELLOW}!${NC} GitHub        Sign in manually: ${GREEN}gh auth login${NC}\n"
+        wait "$gh_pid" 2>/dev/null
+        rm -f "$tmpfile"
         return 1
     fi
 
-    clear
-    draw_header "GitHub Sign In" 1 1
-    draw_progress 1 1
-
+    # Send to welcome dashboard — it auto-opens the pre-filled URL in user's browser
     local gh_device_url="https://github.com/login/device?user_code=${device_code}"
-    draw_code_box "$device_code" "https://github.com/login/device"
     notify_browser "$gh_device_url" "$device_code" "github"
-    show_qr "$gh_device_url"
 
-    spinner_wait "$GH_PID" "Waiting for you to sign in..."
-    local exit_code=$SPINNER_EXIT
-    GH_PID=""
-    rm -f "$TMPFILE"
-    TMPFILE=""
+    # Wait for auth to complete (browser handles the interaction)
+    wait "$gh_pid" 2>/dev/null
+    local exit_code=$?
+    rm -f "$tmpfile"
 
     if [ $exit_code -ne 0 ] && ! gh auth status &>/dev/null 2>&1; then
-        echo -e "  ${FAIL} GitHub sign-in was not completed."
-        echo ""
-        echo -e "  ${DIM}This can happen if the code expired or login was cancelled.${NC}"
-        echo ""
-        read -p "  Press Enter to try again, or Ctrl+C to exit... " _
-        github_signin
-        return $?
+        printf "\r  ${YELLOW}!${NC} GitHub        Not signed in ${DIM}(run: gh auth login)${NC}\n"
+        return 1
     fi
 
     # Configure git to use gh for credentials
@@ -815,8 +785,9 @@ github_signin() {
 
     local gh_user
     gh_user=$(gh api user -q .login 2>/dev/null || echo "unknown")
-    echo -e "  ${OK} GitHub sign-in successful! Logged in as ${GREEN}${gh_user}${NC}"
-    sleep 1.5
+    local gh_user
+    gh_user=$(gh api user -q .login 2>/dev/null || echo "authenticated")
+    printf "\r  ${OK} GitHub        ${GREEN}${gh_user}${NC}\n"
     return 0
 }
 
