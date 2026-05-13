@@ -96,6 +96,17 @@ RUN apk add --no-cache py3-pip \
 RUN apk add --no-cache aws-cli
 
 # ---------------------------------------------------------------------------
+# Install kubectl + Helm (for /argo-it Kubernetes deployments)
+# ---------------------------------------------------------------------------
+RUN ARCH=$(uname -m) \
+    && if [ "$ARCH" = "x86_64" ]; then K8S_ARCH="amd64"; elif [ "$ARCH" = "aarch64" ]; then K8S_ARCH="arm64"; fi \
+    && curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/${K8S_ARCH}/kubectl" -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl \
+    && curl -fsSL https://get.helm.sh/helm-v3.17.3-linux-${K8S_ARCH}.tar.gz | tar xz -C /tmp \
+    && mv /tmp/linux-${K8S_ARCH}/helm /usr/local/bin/helm \
+    && rm -rf /tmp/linux-${K8S_ARCH}
+
+# ---------------------------------------------------------------------------
 # Create non-root user
 # ---------------------------------------------------------------------------
 RUN deluser node 2>/dev/null; delgroup node 2>/dev/null; \

@@ -131,6 +131,10 @@ class CLIBridge {
     this.send({ type: 'ship-it', mode });
   }
 
+  argoIt() {
+    this.send({ type: 'argo-it' });
+  }
+
   cancel() {
     this.send({ type: 'cancel' });
   }

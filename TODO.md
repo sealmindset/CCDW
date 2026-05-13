@@ -57,15 +57,15 @@
   - /make-it and /ship-it should detect which model the app uses and guide accordingly
 
 ## High Priority (Deployment)
-- [ ] Automate end-to-end app deployment via /ship-it or /argo-it
-  - User should do absolute bare minimum to get their app from local to dev to production
+- [x] Wire /ship-it and /argo-it into Workshop Ship view with real readiness checks
   - /ship-it: commit, push, create PR, trigger CI/CD -- all in one command
   - /argo-it: ArgoCD-based deployment pipeline for Kubernetes environments
-  - Auto-detect deployment target (Docker Compose, K8s, cloud run, etc.)
-  - Auto-generate Dockerfile, Helm chart, or manifests if missing
-  - Auto-configure GitHub Actions or ArgoCD pipeline
-  - Handle secrets/env vars promotion across environments (dev -> staging -> prod)
-  - Provide plain-English deployment status ("Your app is live at https://...")
+  - Real readiness checks (gh auth, git remote, app structure, tests)
+  - Mode selection: Ship for Review, Save Progress, Deploy to Kubernetes
+  - kubectl + Helm added to Docker image
+- [ ] End-to-end test: build app with /make-it, then /ship-it creates PR on GitHub
+- [ ] End-to-end test: build app with /make-it, then /argo-it generates K8s manifests + PR
+- [ ] Add kubeconfig mounting from host for /argo-it cluster access
 
 ## Medium Priority
 - [x] Add VS Code extensions for common languages (Python, TypeScript, Go)

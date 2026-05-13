@@ -151,7 +151,7 @@
       case 'ship':
         mainChat.addMessage('ai', "Let's get you live!");
         showView('ship');
-        if (window.ship && window.ship.start) window.ship.start();
+        if (window.ship && window.ship.start) window.ship.start(state.projectName);
         break;
     }
   }
@@ -394,9 +394,9 @@
           window.dashboard.showEmbeddedApp(url);
         }
         setStatus('App running', '');
-      } else if (msg.phase === 'shipping') {
-        setStatus('Shipped!', '');
-        window.ship.complete(msg);
+      } else if (msg.phase === 'shipping' || msg.phase === 'saving') {
+        setStatus(msg.exitCode === 0 ? 'Shipped!' : 'Ship failed', '');
+        // Ship controller handles its own UI via CLI bridge listeners
       } else if (msg.phase === 'iterating') {
         // Iterate change complete
         window.board.completeCurrent();
@@ -540,7 +540,7 @@
     // Go Live button
     document.getElementById('btnGoLive').addEventListener('click', () => {
       showView('ship');
-      window.ship.start();
+      window.ship.start(state.projectName);
     });
 
     // Embedded app controls

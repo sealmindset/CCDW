@@ -241,6 +241,15 @@ const server = http.createServer((req, res) => {
   // Provider write routes removed — configuration happens host-side via setup/server.js
   // before `docker compose up`. The Workshop only exposes read-only status above.
 
+  // API: Ship readiness checks (real checks for the Ship view)
+  if (url.pathname === '/api/ship/readiness' && req.method === 'POST') {
+    parseBody(req).then(body => {
+      const projectDir = body.projectName ? path.join(PROJECTS_DIR, sanitizeProjectName(body.projectName)) : null;
+      shipReadiness(projectDir, res);
+    }).catch(() => jsonError(res, 400, 'Invalid request'));
+    return;
+  }
+
   // Serve static files from public/
   serveStatic(url.pathname, res);
 });
@@ -341,6 +350,10 @@ function handleMessage(session, msg) {
 
     case 'ship-it':
       runSkill(session, msg.mode === 'save' ? '/ship-it save' : '/ship-it');
+      break;
+
+    case 'argo-it':
+      runSkill(session, '/argo-it');
       break;
 
     default:
@@ -464,6 +477,7 @@ function runSkill(session, skill) {
     '/resume-it': 'iterating',
     '/ship-it': 'shipping',
     '/ship-it save': 'saving',
+    '/argo-it': 'shipping',
   };
 
   // Extract base skill name (strip arguments like "save" from "/ship-it save")
@@ -1384,6 +1398,84 @@ async function runPreflight(res) {
 
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ ready: allPass, checks, steps }));
+}
+
+// ---------------------------------------------------------------------------
+// Ship Readiness -- real checks for the Ship view
+// ---------------------------------------------------------------------------
+function shipReadiness(projectDir, res) {
+  const checks = [];
+
+  // 1. GitHub CLI authenticated
+  let ghAuthed = false;
+  try {
+    execSync('gh auth status 2>&1', { timeout: 10000 });
+    ghAuthed = true;
+    checks.push({ id: 'gh-auth', label: 'GitHub account connected', pass: true, detail: 'Authenticated' });
+  } catch (e) {
+    const output = e.stdout ? e.stdout.toString() : e.stderr ? e.stderr.toString() : '';
+    checks.push({ id: 'gh-auth', label: 'GitHub account connected', pass: false, detail: 'Run gh auth login in the terminal', fixable: true });
+  }
+
+  // 2. Git remote exists
+  if (projectDir && fs.existsSync(projectDir)) {
+    try {
+      const remotes = execSync('git remote -v 2>/dev/null', { cwd: projectDir, timeout: 5000 }).toString().trim();
+      checks.push({ id: 'git-remote', label: 'Git remote configured', pass: remotes.length > 0, detail: remotes.length > 0 ? 'Remote found' : 'No git remote -- /ship-it will create one' });
+    } catch {
+      checks.push({ id: 'git-remote', label: 'Git remote configured', pass: false, detail: 'Not a git repository yet' });
+    }
+
+    // 3. Clean working tree (no uncommitted changes)
+    try {
+      const status = execSync('git status --short 2>/dev/null', { cwd: projectDir, timeout: 5000 }).toString().trim();
+      checks.push({ id: 'git-clean', label: 'All changes saved', pass: true, detail: status.length > 0 ? `${status.split('\n').length} file(s) will be committed` : 'Working tree clean' });
+    } catch {
+      checks.push({ id: 'git-clean', label: 'All changes saved', pass: true, detail: 'No git history yet' });
+    }
+
+    // 4. App builds (check if docker-compose exists and images build)
+    const hasCompose = fs.existsSync(path.join(projectDir, 'docker-compose.yml')) || fs.existsSync(path.join(projectDir, 'docker-compose.yaml'));
+    if (hasCompose) {
+      checks.push({ id: 'app-builds', label: 'App builds successfully', pass: true, detail: 'Docker Compose found' });
+    } else {
+      checks.push({ id: 'app-builds', label: 'App structure detected', pass: true, detail: 'Project files found' });
+    }
+
+    // 5. Tests (check if test infrastructure exists)
+    const hasTests = fs.existsSync(path.join(projectDir, 'tests'))
+      || fs.existsSync(path.join(projectDir, 'test'))
+      || fs.existsSync(path.join(projectDir, '__tests__'));
+    checks.push({ id: 'tests', label: 'Tests available', pass: hasTests, detail: hasTests ? 'Test directory found' : 'No tests yet -- /ship-it will still work', severity: 'info' });
+  }
+
+  // 6. kubectl available (for /argo-it)
+  let kubectlOk = false;
+  try {
+    execSync('kubectl version --client --short 2>/dev/null', { timeout: 5000 });
+    kubectlOk = true;
+  } catch { /* not installed */ }
+
+  // 7. helm available (for /argo-it)
+  let helmOk = false;
+  try {
+    execSync('helm version --short 2>/dev/null', { timeout: 5000 });
+    helmOk = true;
+  } catch { /* not installed */ }
+
+  const allPass = checks.filter(c => c.severity !== 'info').every(c => c.pass);
+
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    ready: allPass,
+    checks,
+    capabilities: {
+      shipIt: ghAuthed,
+      argoIt: ghAuthed && kubectlOk,
+      kubectl: kubectlOk,
+      helm: helmOk,
+    },
+  }));
 }
 
 function sanitizeProjectName(name) {

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.0] - 2026-05-13
+
+### Added
+- Workshop Ship view overhauled with real deployment workflows
+  - Real readiness checks: GitHub auth, git remote, app structure, test infrastructure
+  - Three deployment modes: Ship for Review (/ship-it), Save Progress (/ship-it save), Deploy to Kubernetes (/argo-it)
+  - Live progress feed during deployment with real-time CLI activity
+  - Failure recovery with retry option
+  - Capability detection: Kubernetes mode disabled when kubectl not available
+- /argo-it wired into Workshop server and CLI bridge
+- kubectl and Helm added to Docker image for Kubernetes deployments
+- `POST /api/ship/readiness` endpoint for real-time project readiness assessment
+
+### Changed
+- Ship mode cards replaced: Docker/ZIP/GitHub → Ship for Review/Save Progress/Deploy to Kubernetes
+- Ship readiness checks no longer simulated -- backed by real gh auth, git, and filesystem checks
+- Ship view CSS expanded with proper styling for checks, mode cards, progress ring, activity feed
+
 ## [0.5.2] - 2026-04-22
 
 ### Added
