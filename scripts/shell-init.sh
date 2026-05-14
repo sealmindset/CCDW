@@ -344,9 +344,7 @@ if [ ! -f "$FIRST_RUN_MARKER" ]; then
 
         # Auto-launch Claude after successful first-run setup
         if [ "$AI_OK" = "1" ] && [ "$AUTH_OK" = "1" ] && [ "${CLAUDE_AUTO_LAUNCH:-1}" = "1" ]; then
-            echo -e "  ${GREEN}Launching Claude...${NC}"
-            echo -e "  ${DIM}Tip: type /make-it to build your first app${NC}"
-            echo ""
+            clear
             claude
         else
             echo -e "  ${GREEN}You're all set!${NC} Type ${GREEN}claude${NC} to start."
@@ -473,9 +471,7 @@ else
     fi
 
     if [ "$AI_OK" = "1" ] && [ "$AUTH_OK" = "1" ] && [ "${CLAUDE_AUTO_LAUNCH:-1}" = "1" ]; then
-        echo -e "  ${GREEN}Launching Claude...${NC}"
-        echo -e "  ${DIM}Tip: type /make-it to build an app, or /help for commands${NC}"
-        echo ""
+        clear
         claude
     elif [ "$AI_OK" = "1" ] && [ "$AUTH_OK" = "1" ]; then
         echo -e "  ${GREEN}Ready.${NC} Type ${GREEN}claude${NC} to start."
