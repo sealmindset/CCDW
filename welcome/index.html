@@ -405,6 +405,8 @@
         .status-dot.checking { background: var(--text-muted); animation: pulse 1.5s infinite; }
         .status-label { color: var(--text-secondary); font-size: 0.85rem; font-weight: 500; }
         .status-detail { color: var(--text-muted); font-size: 0.75rem; }
+        .status-action { color: var(--accent); font-size: 0.72rem; text-decoration: none; cursor: pointer; }
+        .status-action:hover { text-decoration: underline; }
         .status-token { display: none; color: var(--text-muted); font-size: 0.75rem; }
 
         /* ---- Usage Stats ---- */
@@ -716,6 +718,7 @@
                 <div>
                     <div class="status-label">GitHub</div>
                     <div class="status-detail" id="status-github">Checking...</div>
+                    <a class="status-action" id="ghSignInLink" style="display:none;" href="#">Sign in</a>
                 </div>
             </div>
             <div class="status-item">
@@ -836,14 +839,17 @@
                     var ghStatus = document.getElementById('status-github');
 
                     // GitHub status
+                    var ghSignIn = document.getElementById('ghSignInLink');
                     if (data.github === 'ok') {
                         ghDot.className = 'status-dot green';
                         ghStatus.textContent = data.github_user || 'Authenticated';
+                        ghSignIn.style.display = 'none';
                         var authBanner = document.getElementById('authNotify');
                         if (authBanner) { authBanner.style.display = 'none'; authBannerVisible = false; }
                     } else {
                         ghDot.className = 'status-dot red';
                         ghStatus.textContent = 'Not connected';
+                        ghSignIn.style.display = '';
                     }
 
                     // System (Docker)
@@ -1044,6 +1050,23 @@
         setInterval(checkUsage, 30000);
         setInterval(checkSslProxy, 30000);
         setInterval(checkApps, 5000);
+
+        // GitHub sign-in via device code
+        document.getElementById('ghSignInLink').addEventListener('click', async function(e) {
+            e.preventDefault();
+            var link = this;
+            link.textContent = 'Starting...';
+            link.style.pointerEvents = 'none';
+            try {
+                var resp = await fetch('/auth/github-login', { method: 'POST' });
+                var data = await resp.json();
+                if (!data.needed) { link.style.display = 'none'; checkAll(); return; }
+            } catch(err) {
+                link.textContent = 'Sign in';
+                link.style.pointerEvents = '';
+            }
+            link.textContent = 'Signing in...';
+        });
 
         // Device code auth polling — shows banner when login-wizard sends a code,
         // auto-hides when auth completes (fixes the "banner stays after auth" bug)

@@ -468,6 +468,44 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    if (req.url === '/auth/github-login' && req.method === 'POST') {
+        const h = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+        try { execSync('gh auth status', { stdio: 'ignore', timeout: 10000 }); res.writeHead(200, h); res.end(JSON.stringify({ needed: false })); return; } catch(e) {}
+
+        if (loginProcess) { try { loginProcess.kill(); } catch(e) {} loginProcess = null; }
+
+        loginProcess = spawn('gh', ['auth', 'login', '-p', 'https', '-h', 'github.com', '-w', '--skip-ssh-key'], { stdio: ['pipe', 'pipe', 'pipe'] });
+        var ghOutput = '', ghCodeFound = false, ghCode = '', ghUrl = '';
+
+        var ghOnData = function(d) {
+            ghOutput += d.toString();
+            if (ghCodeFound) return;
+            var um = ghOutput.match(/(https:\/\/[^\s]+)/);
+            var cm = ghOutput.match(/([A-Z0-9]{4}-[A-Z0-9]{4})/);
+            if (um) { ghCodeFound = true; ghUrl = um[1]; ghCode = cm ? cm[1] : ''; pendingAuth = { url: ghUrl, code: ghCode, provider: 'github', timestamp: Date.now() }; savePendingAuth(); }
+        };
+        loginProcess.stdout.on('data', ghOnData);
+        loginProcess.stderr.on('data', ghOnData);
+        loginProcess.on('close', function(exitCode) {
+            loginProcess = null;
+            if (exitCode === 0) {
+                try { execSync('gh auth setup-git', { stdio: 'ignore', timeout: 10000 }); } catch(e) {}
+                pendingAuth = null; savePendingAuth();
+            }
+        });
+
+        var ghWaited = 0;
+        var ghWi = setInterval(function() {
+            ghWaited += 250;
+            if (ghCodeFound || ghWaited >= 10000) {
+                clearInterval(ghWi);
+                res.writeHead(200, h);
+                res.end(JSON.stringify(ghCodeFound ? { needed: true, code: ghCode, url: ghUrl } : { needed: true, status: 'waiting' }));
+            }
+        }, 250);
+        return;
+    }
+
     if (req.url === '/auth/check') {
         var ch = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
         var authed = false, prov = 'none';
