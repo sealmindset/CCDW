@@ -18,6 +18,7 @@ services:
     container_name: claude-code
     ports:
       - "${WORKSHOP_PORT:-9200}:9200"        # Workshop (Business User IDE)
+      - "${CHAT_PORT:-3002}:3002"            # Claude Chat (standalone chat)
       - "${WELCOME_PORT:-3000}:3000"         # Welcome dashboard
       - "${TTYD_PORT:-7681}:7681"            # Web terminal (ttyd - main session)
       - "${TTYD_NEW_PORT:-7682}:7682"       # Web terminal (ttyd - new window)

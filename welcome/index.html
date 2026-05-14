@@ -189,7 +189,7 @@
         /* ---- Service Cards ---- */
         .cards {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
             gap: 0.75rem;
             margin-bottom: 0.75rem;
         }
@@ -244,6 +244,7 @@
             flex-shrink: 0;
         }
         .card-icon-workshop { background: var(--accent-soft); color: var(--accent-hover); }
+        .card-icon-chat { background: rgba(139, 92, 246, 0.12); color: #a78bfa; }
         .card-icon-vscode { background: rgba(59, 130, 246, 0.12); color: #60a5fa; }
         .card-icon-terminal { background: rgba(34, 197, 94, 0.12); color: var(--success); }
         .card h2 {
@@ -641,6 +642,15 @@
                 </div>
                 <p>Build apps without touching a terminal. Describe your idea, watch it come to life.</p>
             </a>
+            <a class="card" href="" id="chat-link">
+                <div class="card-header">
+                    <div class="card-icon card-icon-chat">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    </div>
+                    <h2>Claude Chat</h2>
+                </div>
+                <p>Chat with Claude. Conversations, attachments, model selection.</p>
+            </a>
             <a class="card" href="" id="vscode-link">
                 <div class="card-header">
                     <div class="card-icon card-icon-vscode">
@@ -798,6 +808,7 @@
 
         var host = window.location.hostname;
         document.getElementById('workshop-link').href = 'http://' + host + ':9200';
+        document.getElementById('chat-link').href = 'http://' + host + ':3002';
         document.getElementById('terminal-link').href = 'http://' + host + ':7681';
         document.getElementById('vscode-link').href = 'http://' + host + ':8080';
         document.getElementById('new-terminal-link').href = 'http://' + host + ':7682';

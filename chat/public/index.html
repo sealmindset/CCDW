@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Chat</title>
+  <link rel="stylesheet" href="/css/chat.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <button id="btn-new-chat" class="btn-new-chat">+ New Chat</button>
+      </div>
+      <input type="text" id="sidebar-search" class="sidebar-search" placeholder="Search conversations...">
+      <div id="sidebar-list" class="sidebar-list"></div>
+    </aside>
+
+    <!-- Main chat area -->
+    <main class="chat-area">
+      <div class="chat-header">
+        <button id="btn-sidebar-toggle" class="btn-icon" title="Toggle sidebar">&#9776;</button>
+        <select id="model-selector" class="model-selector"></select>
+        <div class="chat-header-actions">
+          <button id="btn-settings" class="btn-icon" title="System prompt">&#9881;</button>
+          <button id="btn-export" class="btn-icon" title="Export conversation">&#8681;</button>
+          <button id="btn-stop" class="btn-icon btn-stop" title="Stop generation" style="display:none">&#9632;</button>
+        </div>
+      </div>
+
+      <div id="messages" class="messages">
+        <div class="welcome-screen" id="welcome-screen">
+          <div class="welcome-logo">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <rect width="48" height="48" rx="12" fill="#6366f1" fill-opacity="0.15"/>
+              <path d="M16 20c0-4.4 3.6-8 8-8s8 3.6 8 8v2c0 1.1-.9 2-2 2h-1v4c0 2.2-1.8 4-4 4h-2c-2.2 0-4-1.8-4-4v-4h-1c-1.1 0-2-.9-2-2v-2z" fill="#6366f1" opacity="0.8"/>
+              <circle cx="20" cy="20" r="1.5" fill="#fff"/>
+              <circle cx="28" cy="20" r="1.5" fill="#fff"/>
+            </svg>
+          </div>
+          <h2>Claude Chat</h2>
+          <p>Start a conversation with Claude</p>
+        </div>
+      </div>
+
+      <div id="typing-indicator" class="typing-indicator" style="display:none">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span>Claude is thinking...</span>
+      </div>
+
+      <div class="input-area">
+        <div id="attach-preview" class="attach-preview"></div>
+        <div class="input-row">
+          <button id="btn-attach" class="btn-icon" title="Attach file">&#128206;</button>
+          <input type="file" id="file-input" multiple hidden>
+          <textarea id="message-input" class="message-input" placeholder="Message Claude..." rows="1"></textarea>
+          <button id="btn-send" class="btn-send" title="Send">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M3.5 2.5l14 7.5-14 7.5V12l10-2-10-2V2.5z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Artifact pane -->
+    <aside id="artifact-pane" class="artifact-pane">
+      <div class="artifact-header">
+        <div id="artifact-tabs" class="artifact-tabs"></div>
+        <button id="btn-close-artifact" class="btn-icon" title="Close">&#10005;</button>
+      </div>
+      <div id="artifact-content" class="artifact-content"></div>
+    </aside>
+  </div>
+
+  <!-- Settings dialog -->
+  <dialog id="settings-dialog" class="settings-dialog">
+    <div class="settings-content">
+      <h3>System Prompt</h3>
+      <textarea id="settings-prompt" class="settings-textarea" placeholder="Optional: Set a system prompt for new conversations..."></textarea>
+      <div class="settings-actions">
+        <button id="btn-settings-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-settings-save" class="btn-primary">Save</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/js/markdown.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/chat.js"></script>
+  <script src="/js/sidebar.js"></script>
+  <script src="/js/models.js"></script>
+  <script src="/js/settings.js"></script>
+  <script src="/js/attachments.js"></script>
+  <script src="/js/artifacts.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

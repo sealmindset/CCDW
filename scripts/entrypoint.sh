@@ -254,6 +254,14 @@ su-exec coder "$SCRIPTS_DIR/workshop-server.sh" &
 slog "ok|Workshop|Running"
 
 # ---------------------------------------------------------------------------
+# Start Claude Chat server (standalone chat interface)
+# ---------------------------------------------------------------------------
+slog "busy|Claude Chat|Starting on port ${CHAT_PORT:-3002}..."
+echo -e "${GREEN}[OK]${NC} Starting Claude Chat on port ${CHAT_PORT:-3002}..."
+su-exec coder "$SCRIPTS_DIR/chat-server.sh" &
+slog "ok|Claude Chat|Running"
+
+# ---------------------------------------------------------------------------
 # Start welcome page server (landing page with status + links)
 # ---------------------------------------------------------------------------
 slog "busy|Dashboard|Starting on port 3000..."
@@ -276,6 +284,7 @@ echo -e "${GREEN}[OK]${NC} Starting web terminal on port 7681..."
 echo ""
 echo -e "${BLUE}========================================${NC}"
 echo -e "  Workshop:      ${GREEN}http://localhost:${WORKSHOP_PORT:-9200}${NC}"
+echo -e "  Claude Chat:   ${GREEN}http://localhost:${CHAT_PORT:-3002}${NC}"
 echo -e "  Dashboard:     ${GREEN}http://localhost:${WELCOME_PORT:-3000}${NC}"
 echo -e "  Web Terminal:  ${GREEN}http://localhost:${TTYD_PORT:-7681}${NC}"
 echo -e "  New Terminal:  ${GREEN}http://localhost:${TTYD_NEW_PORT:-7682}${NC}"
