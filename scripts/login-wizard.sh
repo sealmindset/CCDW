@@ -766,10 +766,10 @@ github_signin() {
         return 1
     fi
 
-    # Send to welcome dashboard + show clickable link in terminal as fallback
-    local gh_device_url="https://github.com/login/device?user_code=${device_code}"
-    notify_browser "$gh_device_url" "$device_code" "github"
-    printf "\r  ${DIM}○${NC} GitHub        Sign in: ${GREEN}${gh_device_url}${NC}\n"
+    # Send to welcome dashboard + show instructions in terminal
+    notify_browser "https://github.com/login/device" "$device_code" "github"
+    printf "\r  ${DIM}○${NC} GitHub        Open ${GREEN}https://github.com/login/device${NC}\n"
+    echo -e "                    Paste code ${GREEN}${device_code}${NC}, then click ${GREEN}Authorize${NC}"
 
     # Don't block — run completion handler in background
     (
