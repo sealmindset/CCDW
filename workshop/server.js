@@ -268,6 +268,35 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // API: Delete project
+  if (url.pathname.startsWith('/api/project/') && req.method === 'DELETE') {
+    const rawName = decodeURIComponent(url.pathname.split('/')[3]);
+    const safeName = sanitizeProjectName(rawName);
+    if (!safeName) { jsonError(res, 400, 'Invalid project name'); return; }
+
+    const projectDir = path.join(PROJECTS_DIR, safeName);
+    if (!fs.existsSync(projectDir) || !projectDir.startsWith(PROJECTS_DIR + path.sep)) {
+      jsonError(res, 404, 'Project not found');
+      return;
+    }
+
+    for (const [, s] of sessions) {
+      if (s.projectDir === projectDir && s.process) {
+        jsonError(res, 409, 'This project is currently open. Close it first.');
+        return;
+      }
+    }
+
+    try {
+      fs.rmSync(projectDir, { recursive: true, force: true });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ deleted: true, name: safeName }));
+    } catch (e) {
+      jsonError(res, 500, 'Could not delete project');
+    }
+    return;
+  }
+
   // -----------------------------------------------------------------------
   // Provider Setup API
   // -----------------------------------------------------------------------
@@ -1639,6 +1668,17 @@ function serveStatic(pathname, res) {
   });
 }
 
+const PHASE_LABELS = {
+  ideation:  'Ideation',
+  design:    'Planning',
+  building:  'Building',
+  verifying: 'Building',
+  iterating: 'Building',
+  testing:   'Demo Ready',
+  complete:  'Demo Ready',
+  shipped:   'Live',
+};
+
 function listProjects(res) {
   try {
     const entries = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })
@@ -1648,15 +1688,32 @@ function listProjects(res) {
         const hasState = fs.existsSync(path.join(dir, '.make-it-state.md'));
         const hasContext = fs.existsSync(path.join(dir, '.make-it', 'app-context.json'));
         const sessionData = loadSessionState(dir);
+
+        let description = null;
+        if (hasContext) {
+          try {
+            const ctx = JSON.parse(fs.readFileSync(path.join(dir, '.make-it', 'app-context.json'), 'utf-8'));
+            description = ctx.description || null;
+          } catch {}
+        }
+
+        const rawPhase = sessionData ? sessionData.phase : (hasState || hasContext ? 'complete' : null);
+        const status = rawPhase ? (PHASE_LABELS[rawPhase] || 'Ideation') : null;
+
         return {
           name: e.name,
-          hasState,
-          hasContext,
+          description,
+          status,
           builtWithMakeIt: hasState || hasContext,
           activeSession: sessionData ? { phase: sessionData.phase } : null,
         };
       })
-      .sort((a, b) => b.builtWithMakeIt - a.builtWithMakeIt);
+      .sort((a, b) => {
+        if (a.activeSession && !b.activeSession) return -1;
+        if (!a.activeSession && b.activeSession) return 1;
+        if (a.builtWithMakeIt !== b.builtWithMakeIt) return b.builtWithMakeIt - a.builtWithMakeIt;
+        return a.name.localeCompare(b.name);
+      });
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ projects: entries }));

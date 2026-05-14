@@ -130,36 +130,169 @@
   // PROJECT LOADING
   // ============================================================
 
+  let _projectsData = [];
+  let _projectsPage = 1;
+  const _projectsPerPage = 10;
+  let _projectsSortCol = 'name';
+  let _projectsSortAsc = true;
+  let _projectsFilter = '';
+  let _deleteTarget = null;
+
   async function loadProjects() {
     const grid = document.getElementById('projectsGrid');
     try {
       const res = await fetch('/api/projects');
       const data = await res.json();
+      _projectsData = data.projects || [];
+      _projectsPage = 1;
+      _projectsFilter = '';
+      const searchInput = document.getElementById('projectsSearchInput');
+      if (searchInput) searchInput.value = '';
+      renderProjectsTable();
+    } catch (e) {
+      grid.innerHTML = '<p class="projects-empty">Could not load projects.</p>';
+    }
+  }
 
-      grid.innerHTML = '';
+  function renderProjectsTable() {
+    const grid = document.getElementById('projectsGrid');
+    const searchWrap = document.getElementById('projectsSearch');
+    const pagination = document.getElementById('projectsPagination');
 
-      if (data.projects.length === 0) {
-        grid.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem;">No projects yet. Click "New Project" to get started!</p>';
+    if (_projectsData.length === 0) {
+      grid.innerHTML = '<p class="projects-empty">No projects yet. Click "New Project" to get started!</p>';
+      if (searchWrap) searchWrap.classList.add('hidden');
+      if (pagination) pagination.classList.add('hidden');
+      return;
+    }
+
+    const showAdvanced = _projectsData.length > _projectsPerPage;
+    if (searchWrap) searchWrap.classList.toggle('hidden', !showAdvanced);
+
+    let filtered = _projectsData;
+    if (_projectsFilter) {
+      const q = _projectsFilter.toLowerCase();
+      filtered = _projectsData.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q) ||
+        (p.status || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (showAdvanced) {
+      filtered.sort((a, b) => {
+        const va = (a[_projectsSortCol] || '').toString().toLowerCase();
+        const vb = (b[_projectsSortCol] || '').toString().toLowerCase();
+        const cmp = va.localeCompare(vb);
+        return _projectsSortAsc ? cmp : -cmp;
+      });
+    }
+
+    const totalPages = showAdvanced ? Math.max(1, Math.ceil(filtered.length / _projectsPerPage)) : 1;
+    if (_projectsPage > totalPages) _projectsPage = totalPages;
+    const start = showAdvanced ? (_projectsPage - 1) * _projectsPerPage : 0;
+    const pageItems = showAdvanced ? filtered.slice(start, start + _projectsPerPage) : filtered;
+
+    const sortIcon = (col) => {
+      if (!showAdvanced || _projectsSortCol !== col) return '';
+      return _projectsSortAsc ? ' &#9650;' : ' &#9660;';
+    };
+    const sortClass = showAdvanced ? ' sortable' : '';
+
+    let html = `<table class="projects-table">
+      <thead><tr>
+        <th class="col-name${sortClass}" data-sort="name">Name${sortIcon('name')}</th>
+        <th class="col-desc${sortClass}" data-sort="description">Description${sortIcon('description')}</th>
+        <th class="col-status${sortClass}" data-sort="status">Status${sortIcon('status')}</th>
+        <th class="col-actions"></th>
+      </tr></thead><tbody>`;
+
+    pageItems.forEach(p => {
+      const statusClass = p.status ? p.status.toLowerCase().replace(/\s+/g, '-') : '';
+      const badge = p.status
+        ? `<span class="status-badge status-${statusClass}">${escapeHtml(p.status)}</span>`
+        : '';
+      const desc = p.description
+        ? escapeHtml(p.description)
+        : '<span class="text-muted">No description</span>';
+
+      html += `<tr class="project-row" data-name="${escapeHtml(p.name)}">
+        <td><span class="project-name-text">${escapeHtml(p.name)}</span></td>
+        <td class="col-desc">${desc}</td>
+        <td>${badge}</td>
+        <td class="col-actions">
+          <button class="btn-delete-project" data-name="${escapeHtml(p.name)}" title="Delete project">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </td>
+      </tr>`;
+    });
+
+    html += '</tbody></table>';
+    grid.innerHTML = html;
+
+    grid.querySelectorAll('.project-row').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.btn-delete-project')) return;
+        openProject(row.dataset.name);
+      });
+    });
+
+    grid.querySelectorAll('.btn-delete-project').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        promptDeleteProject(btn.dataset.name);
+      });
+    });
+
+    if (showAdvanced) {
+      grid.querySelectorAll('th.sortable').forEach(th => {
+        th.addEventListener('click', () => {
+          const col = th.dataset.sort;
+          if (_projectsSortCol === col) { _projectsSortAsc = !_projectsSortAsc; }
+          else { _projectsSortCol = col; _projectsSortAsc = true; }
+          renderProjectsTable();
+        });
+      });
+    }
+
+    if (pagination) {
+      if (showAdvanced && totalPages > 1) {
+        pagination.classList.remove('hidden');
+        pagination.innerHTML = `
+          <button class="btn-page" id="btnPagePrev" ${_projectsPage <= 1 ? 'disabled' : ''}>&#8592; Prev</button>
+          <span class="page-info">Page ${_projectsPage} of ${totalPages}</span>
+          <button class="btn-page" id="btnPageNext" ${_projectsPage >= totalPages ? 'disabled' : ''}>Next &#8594;</button>`;
+        document.getElementById('btnPagePrev').addEventListener('click', () => {
+          if (_projectsPage > 1) { _projectsPage--; renderProjectsTable(); }
+        });
+        document.getElementById('btnPageNext').addEventListener('click', () => {
+          if (_projectsPage < totalPages) { _projectsPage++; renderProjectsTable(); }
+        });
+      } else {
+        pagination.classList.add('hidden');
+      }
+    }
+  }
+
+  function promptDeleteProject(name) {
+    _deleteTarget = name;
+    const dialog = document.getElementById('dialogDeleteProject');
+    document.getElementById('deleteProjectName').textContent = name;
+    dialog.showModal();
+  }
+
+  async function deleteProject(name) {
+    try {
+      const res = await fetch('/api/project/' + encodeURIComponent(name), { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Could not delete project.');
         return;
       }
-
-      data.projects.forEach(project => {
-        const card = document.createElement('div');
-        card.className = 'project-card';
-        const badgeText = project.activeSession
-          ? 'In progress'
-          : (project.builtWithMakeIt ? 'Workshop' : '');
-        const badgeClass = project.activeSession ? 'project-card-badge active-session' : 'project-card-badge';
-        card.innerHTML = `
-          <div class="project-card-name">${escapeHtml(project.name)}</div>
-          <div class="project-card-status">${project.builtWithMakeIt ? 'Built with Workshop' : 'Project'}</div>
-          ${badgeText ? '<span class="' + badgeClass + '">' + badgeText + '</span>' : ''}
-        `;
-        card.addEventListener('click', () => openProject(project.name));
-        grid.appendChild(card);
-      });
-    } catch (e) {
-      grid.innerHTML = '<p style="color: var(--text-muted);">Could not load projects.</p>';
+      loadProjects();
+    } catch {
+      alert('Could not delete project. Please try again.');
     }
   }
 
@@ -586,6 +719,27 @@
     // Enter in project name input
     document.getElementById('inputProjectName').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') confirmNewProject();
+    });
+
+    // Delete project dialog
+    document.getElementById('btnConfirmDelete').addEventListener('click', () => {
+      document.getElementById('dialogDeleteProject').close();
+      if (_deleteTarget) { deleteProject(_deleteTarget); _deleteTarget = null; }
+    });
+    document.getElementById('btnCancelDelete').addEventListener('click', () => {
+      document.getElementById('dialogDeleteProject').close();
+      _deleteTarget = null;
+    });
+
+    // Project search (debounced)
+    let _searchTimer = null;
+    document.getElementById('projectsSearchInput').addEventListener('input', (e) => {
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(() => {
+        _projectsFilter = e.target.value.trim();
+        _projectsPage = 1;
+        renderProjectsTable();
+      }, 200);
     });
 
     // Try It button

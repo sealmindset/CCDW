@@ -96,10 +96,16 @@
       </div>
 
       <div class="home-projects" id="projectsList">
-        <h2>Your Projects</h2>
-        <div class="projects-grid" id="projectsGrid">
+        <div class="projects-header">
+          <h2>Your Projects</h2>
+          <div class="projects-search hidden" id="projectsSearch">
+            <input type="text" class="projects-search-input" id="projectsSearchInput" placeholder="Search projects..." autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <div class="projects-table-wrap" id="projectsGrid">
           <!-- Populated by JS -->
         </div>
+        <div class="projects-pagination hidden" id="projectsPagination"></div>
       </div>
     </section>
 
@@ -368,6 +374,18 @@
       </div>
     </div>
   </div>
+
+  <!-- Delete confirmation dialog -->
+  <dialog class="dialog-new-project" id="dialogDeleteProject">
+    <div class="dialog-content">
+      <h2>Delete project?</h2>
+      <p>This will permanently remove <strong id="deleteProjectName"></strong> and all its files. This cannot be undone.</p>
+      <div class="dialog-actions">
+        <button class="btn-secondary" id="btnCancelDelete">Cancel</button>
+        <button class="btn-danger" id="btnConfirmDelete">Delete</button>
+      </div>
+    </div>
+  </dialog>
 
   <!-- New project dialog -->
   <dialog class="dialog-new-project" id="dialogNewProject">
