@@ -766,10 +766,10 @@ github_signin() {
         return 1
     fi
 
-    # Send to welcome dashboard — it auto-opens the pre-filled URL in user's browser
+    # Send to welcome dashboard + show clickable link in terminal as fallback
     local gh_device_url="https://github.com/login/device?user_code=${device_code}"
     notify_browser "$gh_device_url" "$device_code" "github"
-    printf "\r  ${DIM}○${NC} GitHub        ${DIM}Check your browser to sign in${NC}\n"
+    printf "\r  ${DIM}○${NC} GitHub        Sign in: ${GREEN}${gh_device_url}${NC}\n"
 
     # Don't block — run completion handler in background
     (
