@@ -295,9 +295,13 @@ spinner_wait() {
 
 notify_browser() {
     local url="$1" code="$2" provider="$3"
+    local payload="{\"url\":\"$url\",\"code\":\"$code\",\"provider\":\"$provider\",\"timestamp\":$(date +%s)000}"
+    # Write to file (immediate, no network dependency)
+    echo "$payload" > /tmp/.pending-auth.json 2>/dev/null
+    # Also POST to welcome server
     curl -s -o /dev/null -X POST "http://127.0.0.1:${WELCOME_PORT:-3000}/auth/start" \
         -H "Content-Type: application/json" \
-        -d "{\"url\":\"$url\",\"code\":\"$code\",\"provider\":\"$provider\"}" \
+        -d "$payload" \
         &>/dev/null &
 }
 

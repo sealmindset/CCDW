@@ -10,6 +10,7 @@ const { execSync, spawn } = require('child_process');
 
 const welcomeDir = process.env.WELCOME_DIR || '/opt/claude-code-docker/welcome';
 const port = parseInt(process.env.WELCOME_PORT, 10) || 3000;
+const pendingAuthFile = '/tmp/.pending-auth.json';
 
 const mimeTypes = {
     '.html': 'text/html',
@@ -226,6 +227,29 @@ let pendingAuth = null;
 let loginProcess = null;
 let registeredApps = [];
 
+// Restore pending auth from file (survives page reloads / server restarts)
+try {
+    if (fs.existsSync(pendingAuthFile)) {
+        const saved = JSON.parse(fs.readFileSync(pendingAuthFile, 'utf8'));
+        if (saved && saved.timestamp && Date.now() - saved.timestamp < 900000) {
+            pendingAuth = saved;
+        } else {
+            fs.unlinkSync(pendingAuthFile);
+        }
+    }
+} catch(e) {}
+
+function savePendingAuth() {
+    try {
+        if (pendingAuth) {
+            fs.writeFileSync(pendingAuthFile, JSON.stringify(pendingAuth));
+        } else {
+            if (fs.existsSync(pendingAuthFile)) fs.unlinkSync(pendingAuthFile);
+        }
+    } catch(e) {}
+}
+
+
 function getRunningApps() {
     const apps = [];
     try {
@@ -329,7 +353,7 @@ const server = http.createServer((req, res) => {
         let body = '';
         req.on('data', c => body += c);
         req.on('end', () => {
-            try { pendingAuth = JSON.parse(body); pendingAuth.timestamp = Date.now(); } catch(e) {}
+            try { pendingAuth = JSON.parse(body); pendingAuth.timestamp = Date.now(); savePendingAuth(); } catch(e) {}
             res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
             res.end(JSON.stringify({ok:true}));
         });
@@ -338,7 +362,16 @@ const server = http.createServer((req, res) => {
 
     if (req.url === '/auth/pending') {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        if (pendingAuth && Date.now() - pendingAuth.timestamp > 900000) pendingAuth = null;
+        // Re-read from file in case login-wizard wrote it directly
+        try {
+            if (fs.existsSync(pendingAuthFile)) {
+                const saved = JSON.parse(fs.readFileSync(pendingAuthFile, 'utf8'));
+                if (saved && saved.timestamp && Date.now() - saved.timestamp < 900000) {
+                    pendingAuth = saved;
+                }
+            }
+        } catch(e) {}
+        if (pendingAuth && Date.now() - pendingAuth.timestamp > 900000) { pendingAuth = null; savePendingAuth(); }
         if (pendingAuth) {
             res.end(JSON.stringify({ pending: true, url: pendingAuth.url, code: pendingAuth.code || '', provider: pendingAuth.provider || '' }));
         } else {
@@ -348,7 +381,7 @@ const server = http.createServer((req, res) => {
     }
 
     if (req.url === '/auth/clear' && req.method === 'POST') {
-        pendingAuth = null;
+        pendingAuth = null; savePendingAuth();
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ok:true}));
         return;
@@ -402,11 +435,11 @@ const server = http.createServer((req, res) => {
             if (provider === 'azure') {
                 var cm = output.match(/enter the code ([A-Z0-9]+) to/);
                 var um = output.match(/open the page (https:\/\/[^ ]+)/);
-                if (cm) { codeFound = true; foundCode = cm[1]; foundUrl = um ? um[1] : 'https://microsoft.com/devicelogin'; pendingAuth = { url: foundUrl, code: foundCode, provider: provider, timestamp: Date.now() }; }
+                if (cm) { codeFound = true; foundCode = cm[1]; foundUrl = um ? um[1] : 'https://microsoft.com/devicelogin'; pendingAuth = { url: foundUrl, code: foundCode, provider: provider, timestamp: Date.now() }; savePendingAuth(); }
             } else {
                 var um2 = output.match(/(https:\/\/[^ \n]+)/);
                 var cm2 = output.match(/([A-Z]{4}-[A-Z]{4})/);
-                if (um2) { codeFound = true; foundUrl = um2[1]; foundCode = cm2 ? cm2[1] : ''; pendingAuth = { url: foundUrl, code: foundCode, provider: provider, timestamp: Date.now() }; }
+                if (um2) { codeFound = true; foundUrl = um2[1]; foundCode = cm2 ? cm2[1] : ''; pendingAuth = { url: foundUrl, code: foundCode, provider: provider, timestamp: Date.now() }; savePendingAuth(); }
             }
         };
 
@@ -416,7 +449,7 @@ const server = http.createServer((req, res) => {
             loginProcess = null;
             if (exitCode === 0) {
                 try { execSync('/opt/claude-code-docker/scripts/configure-provider.sh', { timeout: 30000 }); } catch(e) {}
-                pendingAuth = null;
+                pendingAuth = null; savePendingAuth();
             }
         });
 
