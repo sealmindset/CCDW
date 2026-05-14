@@ -41,6 +41,9 @@ RUN apk update && apk upgrade && apk add --no-cache \
     su-exec \
     sudo \
     rsync \
+    nano \
+    file \
+    less \
     tini
 
 # ---------------------------------------------------------------------------

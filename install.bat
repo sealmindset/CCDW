@@ -1144,6 +1144,25 @@ powershell -NoProfile -Command ^
     "Write-Host '[OK] Claude shortcut added to your desktop.' -ForegroundColor Green"
 
 REM ---------------------------------------------------------------------------
+REM Extra drive mounts (from EXTRA_MOUNTS in .env)
+REM ---------------------------------------------------------------------------
+set "EXTRA_VOL_ARGS="
+if exist "!ENV_FILE!" (
+    for /f "tokens=1,* delims==" %%a in ('findstr /b "EXTRA_MOUNTS=" "!ENV_FILE!" 2^>nul') do (
+        set "EXTRA_MOUNTS_RAW=%%b"
+    )
+    if defined EXTRA_MOUNTS_RAW (
+        for %%p in ("!EXTRA_MOUNTS_RAW:|=" "!") do (
+            if exist "%%~p\" (
+                for %%n in ("%%~p") do set "DRIVE_NAME=%%~nxn"
+                set "EXTRA_VOL_ARGS=!EXTRA_VOL_ARGS! -v "%%~p:/home/coder/Drives/!DRIVE_NAME!""
+                echo [OK] Extra mount: !DRIVE_NAME!
+            )
+        )
+    )
+)
+
+REM ---------------------------------------------------------------------------
 REM Stop existing container if running
 REM ---------------------------------------------------------------------------
 docker rm -f claude-code >nul 2>nul
@@ -1158,12 +1177,12 @@ echo [...]  Starting Claude Code...
 if not exist "!ENV_FILE!" goto :run_without_env
 
 echo [OK] Loading environment from .env
-docker run -d --name claude-code --restart unless-stopped --group-add 0 --env-file "!ENV_FILE!" -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest >"%TEMP%\claude-code-start.log" 2>&1
+docker run -d --name claude-code --restart unless-stopped --group-add 0 --env-file "!ENV_FILE!" -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d !EXTRA_VOL_ARGS! ghcr.io/sealmindset/claude-code-docker:latest >"%TEMP%\claude-code-start.log" 2>&1
 set "RUN_WITH_ENV=1"
 goto :check_run_result
 
 :run_without_env
-docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest >"%TEMP%\claude-code-start.log" 2>&1
+docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d !EXTRA_VOL_ARGS! ghcr.io/sealmindset/claude-code-docker:latest >"%TEMP%\claude-code-start.log" 2>&1
 set "RUN_WITH_ENV=0"
 
 :check_run_result
@@ -1184,9 +1203,9 @@ if !ERRORLEVEL! equ 0 (
         echo.
         echo [...] Starting Claude Code...
         if "!RUN_WITH_ENV!"=="1" (
-            docker run -d --name claude-code --restart unless-stopped --group-add 0 --env-file "!ENV_FILE!" -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest >"%TEMP%\claude-code-start.log" 2>&1
+            docker run -d --name claude-code --restart unless-stopped --group-add 0 --env-file "!ENV_FILE!" -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d !EXTRA_VOL_ARGS! ghcr.io/sealmindset/claude-code-docker:latest >"%TEMP%\claude-code-start.log" 2>&1
         ) else (
-            docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d ghcr.io/sealmindset/claude-code-docker:latest >"%TEMP%\claude-code-start.log" 2>&1
+            docker run -d --name claude-code --restart unless-stopped --group-add 0 -p 3000:3000 -p 7681:7681 -p 7682:7682 -p 8080:8080 -p 9200:9200 -v //var/run/docker.sock:/var/run/docker.sock -v "!PROJECTS_DIR!:/home/coder/Documents" -v "%USERPROFILE%\Downloads:/home/coder/Downloads" -v "%USERPROFILE%\Desktop:/home/coder/Desktop" -v "!AZURE_DIR!:/home/coder/.azure" -v "!AWS_DIR!:/home/coder/.aws" -v claude-code-data:/home/coder/.claude -v claude-code-gh:/home/coder/.config/gh -v claude-code-git-config:/home/coder/.gitconfig.d !EXTRA_VOL_ARGS! ghcr.io/sealmindset/claude-code-docker:latest >"%TEMP%\claude-code-start.log" 2>&1
         )
         if !ERRORLEVEL! equ 0 goto :run_ok
     )

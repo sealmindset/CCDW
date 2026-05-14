@@ -48,6 +48,105 @@ alias backup='/opt/claude-code-docker/scripts/backup.sh'
 alias restore='/opt/claude-code-docker/scripts/restore.sh'
 alias login='/opt/claude-code-docker/scripts/login-wizard.sh --force'
 alias setup='/opt/claude-code-docker/scripts/setup.sh'
+alias mount-drive='/opt/claude-code-docker/scripts/mount-drive.sh'
+alias drives='/opt/claude-code-docker/scripts/mount-drive.sh'
+
+# ---------------------------------------------------------------------------
+# Windows CLI aliases (familiar commands for business users)
+# ---------------------------------------------------------------------------
+alias dir='ls -la'
+alias cls='clear'
+alias copy='cp'
+alias move='mv'
+alias del='rm'
+alias rd='rmdir'
+alias md='mkdir -p'
+alias ren='mv'
+alias type='cat'
+alias typeof='builtin type'
+alias find-file='find . -name'
+alias where='which'
+alias start='open'
+alias tree='find . -print | sed -e "s;[^/]*/;│   ;g;s;│   \([^│]\);├── \1;g"'
+alias ipconfig='ip addr 2>/dev/null || ifconfig 2>/dev/null'
+alias tasklist='ps aux'
+alias systeminfo='uname -a && echo "" && cat /etc/os-release 2>/dev/null'
+alias whoami='id -un'
+alias hostname='cat /etc/hostname 2>/dev/null || /bin/hostname'
+alias notepad='nano'
+alias edit='nano'
+alias explorer='ls -la'
+alias attrib='ls -la'
+alias more='less'
+alias help='/opt/claude-code-docker/scripts/help.sh'
+
+# Safer delete — move to trash instead of permanent delete
+trash() {
+    local TRASH_DIR="/home/coder/.local/share/Trash"
+    mkdir -p "$TRASH_DIR"
+    for f in "$@"; do
+        mv "$f" "$TRASH_DIR/" 2>/dev/null && echo "Moved to trash: $f" || echo "Could not trash: $f"
+    done
+}
+alias recycle='trash'
+
+# Open = display file info or launch
+open() {
+    if [ -d "$1" ]; then
+        ls -la "$1"
+    elif [ -f "$1" ]; then
+        file "$1"
+        echo ""
+        echo "To edit: nano $1"
+        echo "To view: cat $1"
+    else
+        echo "Not found: $1"
+    fi
+}
+
+# Send files to host Desktop (drag-and-drop equivalent)
+send() {
+    if [ $# -eq 0 ]; then
+        echo -e "Usage: ${GREEN}send${NC} file1 file2 ..."
+        echo "Copies files to your Desktop so you can access them on your computer."
+        return 0
+    fi
+    local dest="/home/coder/Desktop"
+    if [ ! -d "$dest" ]; then
+        echo "Desktop folder not available."
+        return 1
+    fi
+    for f in "$@"; do
+        if [ -e "$f" ]; then
+            cp -r "$f" "$dest/" && echo -e "${GREEN}✓${NC} Sent to Desktop: $(basename "$f")" || echo -e "${RED}✗${NC} Failed: $f"
+        else
+            echo -e "${RED}✗${NC} Not found: $f"
+        fi
+    done
+}
+
+# Fetch = copy from host Desktop/Downloads into current directory
+fetch() {
+    if [ $# -eq 0 ]; then
+        echo -e "Usage: ${GREEN}fetch${NC} filename"
+        echo ""
+        echo "Looks for the file in your Desktop and Downloads folders."
+        echo "Or specify a full path: fetch ~/Downloads/report.pdf"
+        return 0
+    fi
+    for f in "$@"; do
+        if [ -f "$f" ]; then
+            cp "$f" . && echo -e "${GREEN}✓${NC} Copied: $(basename "$f")"
+        elif [ -f "/home/coder/Desktop/$f" ]; then
+            cp "/home/coder/Desktop/$f" . && echo -e "${GREEN}✓${NC} Copied from Desktop: $f"
+        elif [ -f "/home/coder/Downloads/$f" ]; then
+            cp "/home/coder/Downloads/$f" . && echo -e "${GREEN}✓${NC} Copied from Downloads: $f"
+        else
+            echo -e "${RED}✗${NC} Not found: $f"
+            echo "  Checked: Desktop, Downloads"
+        fi
+    done
+}
 
 # ---------------------------------------------------------------------------
 # Git config persistence: .gitconfig.d/ is a named volume that survives

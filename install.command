@@ -685,6 +685,24 @@ docker rm -f claude-code &>/dev/null || true
 DOCKER_GID=$(stat -f '%g' /var/run/docker.sock 2>/dev/null || stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "0")
 
 # ---------------------------------------------------------------------------
+# Extra drive mounts (from EXTRA_MOUNTS in .env or mount-drive.command)
+# ---------------------------------------------------------------------------
+EXTRA_VOL_ARGS=()
+if [ -f "$ENV_FILE" ]; then
+    EXTRA_MOUNTS_RAW=$(grep '^EXTRA_MOUNTS=' "$ENV_FILE" 2>/dev/null | head -1 | sed 's/^EXTRA_MOUNTS=//')
+    if [ -n "$EXTRA_MOUNTS_RAW" ]; then
+        IFS='|' read -ra EXTRA_PATHS <<< "$EXTRA_MOUNTS_RAW"
+        for epath in "${EXTRA_PATHS[@]}"; do
+            if [ -d "$epath" ]; then
+                ename=$(basename "$epath")
+                EXTRA_VOL_ARGS+=(-v "$epath:/home/coder/Drives/$ename")
+                echo -e "${GREEN}[OK]${NC} Extra mount: $ename"
+            fi
+        done
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Start the container
 # ---------------------------------------------------------------------------
 echo ""
@@ -708,6 +726,7 @@ if ! docker run -d \
     -v claude-code-data:/home/coder/.claude \
     -v claude-code-gh:/home/coder/.config/gh \
     -v claude-code-git-config:/home/coder/.gitconfig.d \
+    "${EXTRA_VOL_ARGS[@]}" \
     ghcr.io/sealmindset/claude-code-docker:latest >/tmp/claude-code-start.log 2>&1; then
 
     # Auto-recover from stale image (OCI "file exists" error)
@@ -748,6 +767,7 @@ if ! docker run -d \
                 -v claude-code-data:/home/coder/.claude \
                 -v claude-code-gh:/home/coder/.config/gh \
                 -v claude-code-git-config:/home/coder/.gitconfig.d \
+                "${EXTRA_VOL_ARGS[@]}" \
                 ghcr.io/sealmindset/claude-code-docker:latest >/tmp/claude-code-start.log 2>&1; then
                 echo -e "${GREEN}[OK]${NC} Claude Code is running!"
                 CONTAINER_STARTED=1

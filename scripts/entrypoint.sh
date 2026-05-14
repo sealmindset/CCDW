@@ -45,6 +45,12 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Ensure ~/Drives directory exists for external drive mounts
+# ---------------------------------------------------------------------------
+mkdir -p /home/coder/Drives
+chown coder:coder /home/coder/Drives 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
 # Docker socket permissions (entrypoint runs as root, so we can fix this)
 # ---------------------------------------------------------------------------
 if [ -S /var/run/docker.sock ]; then
