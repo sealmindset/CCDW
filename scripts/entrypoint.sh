@@ -256,6 +256,9 @@ su-exec coder ttyd \
     --client-option 'cursorBlink=true' \
     "$SCRIPTS_DIR/new-terminal.sh" &
 
+# Tmux config (navigation breadcrumb, mouse, scrollback)
+TMUX_CONF="/opt/claude-code-docker/config/tmux.conf"
+
 # Main ttyd (port 7681): always reconnects to the same tmux session.
 exec su-exec coder ttyd \
     --port 7681 \
@@ -263,4 +266,4 @@ exec su-exec coder ttyd \
     --client-option "$TTYD_FONT" \
     --client-option 'fontSize=14' \
     --client-option 'cursorBlink=true' \
-    tmux new-session -A -s main "bash --init-file $SCRIPTS_DIR/shell-init.sh"
+    tmux -f "$TMUX_CONF" new-session -A -s main "bash --init-file $SCRIPTS_DIR/shell-init.sh"
