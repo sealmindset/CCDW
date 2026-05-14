@@ -726,6 +726,10 @@ if ! docker run -d \
     -v claude-code-data:/home/coder/.claude \
     -v claude-code-gh:/home/coder/.config/gh \
     -v claude-code-git-config:/home/coder/.gitconfig.d \
+    -v claude-code-local:/home/coder/.local \
+    -v claude-code-continue:/home/coder/.continue \
+    -v claude-code-npm:/home/coder/.npm \
+    -v claude-code-bash-history:/home/coder/.shell-persist \
     "${EXTRA_VOL_ARGS[@]}" \
     ghcr.io/sealmindset/claude-code-docker:latest >/tmp/claude-code-start.log 2>&1; then
 
@@ -767,6 +771,10 @@ if ! docker run -d \
                 -v claude-code-data:/home/coder/.claude \
                 -v claude-code-gh:/home/coder/.config/gh \
                 -v claude-code-git-config:/home/coder/.gitconfig.d \
+                -v claude-code-local:/home/coder/.local \
+                -v claude-code-continue:/home/coder/.continue \
+                -v claude-code-npm:/home/coder/.npm \
+                -v claude-code-bash-history:/home/coder/.shell-persist \
                 "${EXTRA_VOL_ARGS[@]}" \
                 ghcr.io/sealmindset/claude-code-docker:latest >/tmp/claude-code-start.log 2>&1; then
                 echo -e "${GREEN}[OK]${NC} Claude Code is running!"

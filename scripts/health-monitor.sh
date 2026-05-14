@@ -74,6 +74,19 @@ while true; do
         LAST_FAILURE_TYPE=""
 
         sh_write_state "healthy" "" "All systems operational." "$SERVICES"
+
+        # Auto-backup .claude.json into the persistent volume (every healthy cycle)
+        CLAUDE_JSON="/home/coder/.claude.json"
+        BACKUP_DIR="/home/coder/.claude/backups"
+        if [ -f "$CLAUDE_JSON" ]; then
+            mkdir -p "$BACKUP_DIR"
+            LATEST_BACKUP=$(ls -t "$BACKUP_DIR"/.claude.json.backup.* 2>/dev/null | head -1)
+            if [ -z "$LATEST_BACKUP" ] || ! diff -q "$CLAUDE_JSON" "$LATEST_BACKUP" &>/dev/null; then
+                cp "$CLAUDE_JSON" "$BACKUP_DIR/.claude.json.backup.$(date +%Y%m%d-%H%M%S)"
+                # Keep only last 5 backups
+                ls -t "$BACKUP_DIR"/.claude.json.backup.* 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null
+            fi
+        fi
     else
         # === FAILURE DETECTED ===
         CONSECUTIVE_FAILURES=$(( CONSECUTIVE_FAILURES + 1 ))

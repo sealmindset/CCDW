@@ -82,7 +82,7 @@ fi
 # ---------------------------------------------------------------------------
 for dir in /home/coder/.config /home/coder/.claude /home/coder/.azure /home/coder/.aws \
            /home/coder/.gitconfig.d /home/coder/.local /home/coder/.continue \
-           /home/coder/.npm /home/coder/go; do
+           /home/coder/.npm /home/coder/.shell-persist /home/coder/go; do
     if [ -d "$dir" ]; then
         chown -R coder:coder "$dir" 2>/dev/null || true
     fi

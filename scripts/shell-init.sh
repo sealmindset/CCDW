@@ -40,6 +40,16 @@ export PS1="\[\033[0;34m\]claude\[\033[0m\] \[\033[0;32m\]\W\[\033[0m\] \$ "
 export DISABLE_AUTOUPDATER=1
 
 # ---------------------------------------------------------------------------
+# Persistent shell history (survives container recreation)
+# ---------------------------------------------------------------------------
+SHELL_PERSIST="/home/coder/.shell-persist"
+mkdir -p "$SHELL_PERSIST" 2>/dev/null
+export HISTFILE="$SHELL_PERSIST/.bash_history"
+export HISTSIZE=10000
+export HISTFILESIZE=20000
+shopt -s histappend
+
+# ---------------------------------------------------------------------------
 # Aliases
 # ---------------------------------------------------------------------------
 alias cc='/opt/claude-code-docker/scripts/claude-wrapper.sh'

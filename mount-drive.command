@@ -252,6 +252,10 @@ VOL_ARGS=(
     -v claude-code-data:/home/coder/.claude
     -v claude-code-gh:/home/coder/.config/gh
     -v claude-code-git-config:/home/coder/.gitconfig.d
+    -v claude-code-local:/home/coder/.local
+    -v claude-code-continue:/home/coder/.continue
+    -v claude-code-npm:/home/coder/.npm
+    -v claude-code-bash-history:/home/coder/.shell-persist
 )
 
 # Add extra drive mounts
