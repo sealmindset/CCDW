@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const { spawn, execSync } = require('child_process');
+const crypto = require('crypto');
 const providers = require('./providers');
 
 // Crash guard -- log what kills the process
@@ -285,11 +286,18 @@ wss.on('connection', (ws) => {
   }));
 
   ws.on('message', (raw) => {
+    let msg;
     try {
-      const msg = JSON.parse(raw.toString());
-      handleMessage(session, msg);
+      msg = JSON.parse(raw.toString());
     } catch (e) {
       ws.send(JSON.stringify({ type: 'error', message: 'Invalid message format' }));
+      return;
+    }
+    try {
+      handleMessage(session, msg);
+    } catch (e) {
+      console.error(`[session:${sessionId.slice(0,8)}] handleMessage error:`, e.stack || e.message || e);
+      ws.send(JSON.stringify({ type: 'error', message: e.message || 'Something went wrong' }));
     }
   });
 
