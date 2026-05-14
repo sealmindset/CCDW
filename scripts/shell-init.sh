@@ -338,11 +338,20 @@ if [ ! -f "$FIRST_RUN_MARKER" ]; then
             "$SCRIPTS_DIR/login-wizard.sh" --github-only
             gh auth status &>/dev/null 2>&1 && GH_OK=1
         fi
-        echo -e "  ${GREEN}You're all set!${NC} Type ${GREEN}claude${NC} to start."
-        echo -e "  Then type ${GREEN}/make-it${NC} to build your first app."
         echo ""
         mkdir -p /home/coder/.claude
         touch "$FIRST_RUN_MARKER"
+
+        # Auto-launch Claude after successful first-run setup
+        if [ "$AI_OK" = "1" ] && [ "$AUTH_OK" = "1" ] && [ "${CLAUDE_AUTO_LAUNCH:-1}" = "1" ]; then
+            echo -e "  ${GREEN}Launching Claude...${NC}"
+            echo -e "  ${DIM}Tip: type /make-it to build your first app${NC}"
+            echo ""
+            claude
+        else
+            echo -e "  ${GREEN}You're all set!${NC} Type ${GREEN}claude${NC} to start."
+            echo ""
+        fi
     fi
 
 else
@@ -463,8 +472,13 @@ else
         echo ""
     fi
 
-    if [ "$AI_OK" = "1" ] && [ "$AUTH_OK" = "1" ]; then
-        echo -e "  ${GREEN}Ready.${NC} Type ${GREEN}claude${NC} to start, then ${GREEN}/make-it${NC} to build an app."
+    if [ "$AI_OK" = "1" ] && [ "$AUTH_OK" = "1" ] && [ "${CLAUDE_AUTO_LAUNCH:-1}" = "1" ]; then
+        echo -e "  ${GREEN}Launching Claude...${NC}"
+        echo -e "  ${DIM}Tip: type /make-it to build an app, or /help for commands${NC}"
+        echo ""
+        claude
+    elif [ "$AI_OK" = "1" ] && [ "$AUTH_OK" = "1" ]; then
+        echo -e "  ${GREEN}Ready.${NC} Type ${GREEN}claude${NC} to start."
     elif [ "$NEEDS_REAUTH" = "1" ]; then
         echo -e "  Some items still need attention. Type ${GREEN}login${NC} to try again."
     fi
