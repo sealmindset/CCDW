@@ -496,7 +496,7 @@
         display: flex; flex-direction: column; align-items: center; justify-content: center;
         transition: opacity 0.8s ease, visibility 0.8s ease;
     ">
-        <div style="text-align: center; max-width: 400px; padding: 2rem;">
+        <div style="text-align: center; max-width: 520px; padding: 2rem; width: 100%;">
             <!-- Animated logo -->
             <div id="bootLogo" style="
                 width: 80px; height: 80px; margin: 0 auto 2rem;
@@ -511,11 +511,25 @@
             <h1 style="color: var(--text-primary); font-size: 1.5rem; font-weight: 600; margin: 0 0 0.5rem;">
                 Claude Code
             </h1>
-            <p id="bootMessage" style="color: var(--text-muted); font-size: 0.95rem; margin: 0 0 2rem; line-height: 1.5;">
+            <p id="bootMessage" style="color: var(--text-muted); font-size: 0.95rem; margin: 0 0 1.5rem; line-height: 1.5;">
                 Setting things up just for you...
             </p>
+            <!-- Startup log viewer -->
+            <div id="bootLog" style="
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: var(--radius-md);
+                padding: 0.75rem 1rem;
+                text-align: left;
+                max-height: 220px;
+                overflow-y: auto;
+                margin-bottom: 1.5rem;
+                font-family: var(--font-mono);
+                font-size: 0.78rem;
+                line-height: 1.65;
+            "></div>
             <!-- Progress dots -->
-            <div style="display: flex; gap: 8px; justify-content: center;">
+            <div id="bootDots" style="display: flex; gap: 8px; justify-content: center;">
                 <div class="boot-dot" style="animation-delay: 0s;"></div>
                 <div class="boot-dot" style="animation-delay: 0.2s;"></div>
                 <div class="boot-dot" style="animation-delay: 0.4s;"></div>
@@ -539,6 +553,35 @@
         }
         #bootScreen.boot-ready {
             opacity: 0; visibility: hidden; pointer-events: none;
+        }
+        .boot-log-line {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            padding: 0.15rem 0;
+            animation: bootLogFadeIn 0.3s ease;
+        }
+        @keyframes bootLogFadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .boot-log-icon {
+            flex-shrink: 0;
+            width: 16px;
+            text-align: center;
+        }
+        .boot-log-icon.ok { color: var(--success); }
+        .boot-log-icon.error { color: var(--error); }
+        .boot-log-icon.busy { color: var(--accent-hover); }
+        .boot-log-icon.info { color: var(--text-muted); }
+        .boot-log-label {
+            color: var(--text-secondary);
+            min-width: 100px;
+            font-weight: 500;
+        }
+        .boot-log-detail {
+            color: var(--text-muted);
+            flex: 1;
         }
     </style>
 
@@ -754,7 +797,6 @@
                 setTimeout(function() { toast.classList.remove('show'); }, 1500);
             });
         }
-        document.getElementById('authNotifyCode').addEventListener('click', function() { copyCode(this); });
         document.getElementById('signinCode').addEventListener('click', function() { copyCode(this); });
 
         var host = window.location.hostname;
@@ -924,36 +966,79 @@
             } catch (e) {}
         }
 
-        // Boot screen: dismiss when at least one service is up
+        // Boot screen: live startup log + dismiss when ready
         var bootDismissed = false;
-        var bootMessages = [
-            'Setting things up just for you...',
-            'Starting your development tools...',
-            'Almost there...'
-        ];
-        var bootMsgIndex = 0;
-        var bootMsgInterval = setInterval(function() {
-            bootMsgIndex = (bootMsgIndex + 1) % bootMessages.length;
-            var el = document.getElementById('bootMessage');
-            if (el) el.textContent = bootMessages[bootMsgIndex];
-        }, 4000);
+        var bootLogCount = 0;
+        var bootLogIcons = { ok: '&#10003;', error: '&#10007;', busy: '&#9679;', info: '&#8250;' };
+
+        function renderBootLog(lines) {
+            var container = document.getElementById('bootLog');
+            if (!container || bootDismissed) return;
+            if (lines.length <= bootLogCount) return;
+            var newLines = lines.slice(bootLogCount);
+            bootLogCount = lines.length;
+            for (var i = 0; i < newLines.length; i++) {
+                var parts = newLines[i].split('|');
+                if (parts.length < 3) continue;
+                var status = parts[0], label = parts[1], detail = parts[2];
+                // Replace previous "busy" line for same label with new status
+                var existing = container.querySelector('[data-label="' + label + '"]');
+                if (existing && status !== 'busy') {
+                    existing.querySelector('.boot-log-icon').className = 'boot-log-icon ' + status;
+                    existing.querySelector('.boot-log-icon').innerHTML = bootLogIcons[status] || bootLogIcons.info;
+                    existing.querySelector('.boot-log-detail').textContent = detail;
+                    continue;
+                }
+                if (existing) continue;
+                var line = document.createElement('div');
+                line.className = 'boot-log-line';
+                line.setAttribute('data-label', label);
+                line.innerHTML =
+                    '<span class="boot-log-icon ' + status + '">' + (bootLogIcons[status] || bootLogIcons.info) + '</span>' +
+                    '<span class="boot-log-label">' + label + '</span>' +
+                    '<span class="boot-log-detail">' + detail + '</span>';
+                container.appendChild(line);
+                container.scrollTop = container.scrollHeight;
+            }
+            // Update header message based on last line
+            var lastStatus = lines[lines.length - 1].split('|')[0];
+            var lastLabel = lines[lines.length - 1].split('|')[1];
+            var msg = document.getElementById('bootMessage');
+            if (lastLabel === 'Ready') {
+                msg.textContent = 'Ready!';
+            } else if (lastStatus === 'busy') {
+                msg.textContent = lastLabel + '...';
+            } else if (lastStatus === 'error') {
+                msg.textContent = 'Issue with ' + lastLabel + ' — continuing...';
+            }
+        }
 
         function dismissBoot() {
             if (bootDismissed) return;
             bootDismissed = true;
-            clearInterval(bootMsgInterval);
-            var screen = document.getElementById('bootScreen');
-            if (screen) screen.classList.add('boot-ready');
+            var dots = document.getElementById('bootDots');
+            if (dots) dots.style.display = 'none';
+            var logo = document.getElementById('bootLogo');
+            if (logo) logo.style.animation = 'none';
+            setTimeout(function() {
+                var screen = document.getElementById('bootScreen');
+                if (screen) screen.classList.add('boot-ready');
+            }, 800);
         }
 
-        // Check services frequently during boot, then slow down
+        // Poll startup log + check if server is responsive
         var bootCheckInterval = setInterval(async function() {
             if (bootDismissed) { clearInterval(bootCheckInterval); return; }
             try {
-                var resp = await fetch('/api/status');
-                if (resp.ok) dismissBoot();
+                var resp = await fetch('/api/startup-log');
+                if (!resp.ok) return;
+                var data = await resp.json();
+                renderBootLog(data.lines || []);
+                // Dismiss when "Ready" line appears
+                var ready = (data.lines || []).some(function(l) { return l.indexOf('ok|Ready|') === 0; });
+                if (ready) dismissBoot();
             } catch(e) {}
-        }, 2000);
+        }, 500);
 
         // Safety: dismiss after 90 seconds no matter what
         setTimeout(dismissBoot, 90000);

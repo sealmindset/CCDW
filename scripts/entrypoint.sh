@@ -7,6 +7,16 @@ SCRIPTS_DIR="/opt/claude-code-docker/scripts"
 GITHUB_DIR="/home/coder/Documents/GitHub"
 ENV_FILE="${GITHUB_DIR}/.env"
 SETUP_DONE_MARKER="/home/coder/.claude/.setup-done"
+STARTUP_LOG="/tmp/.startup-log"
+
+# Structured startup log: status|label|detail
+# status: ok, busy, error, info
+slog() {
+    echo "$1|$2|$3" >> "$STARTUP_LOG"
+}
+
+# Clear previous startup log
+: > "$STARTUP_LOG"
 
 # ---------------------------------------------------------------------------
 # Color helpers
@@ -20,6 +30,7 @@ NC='\033[0m'
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  Claude Code Docker${NC}"
 echo -e "${BLUE}========================================${NC}"
+slog "info|Startup|Initializing Claude Code Docker..."
 
 # ---------------------------------------------------------------------------
 # Ensure workspace directory exists
@@ -27,6 +38,7 @@ echo -e "${BLUE}========================================${NC}"
 if [ -d "$GITHUB_DIR" ]; then
     chown -R coder:coder "$GITHUB_DIR" 2>/dev/null || true
     echo -e "${GREEN}[OK]${NC} Workspace: $GITHUB_DIR"
+    slog "ok|Workspace|$GITHUB_DIR"
 elif [ -L "$GITHUB_DIR" ] || [ -e "$GITHUB_DIR" ]; then
     # Symlink or file exists but isn't a usable directory — don't touch it
     GITHUB_DIR="/home/coder/Documents"
@@ -59,14 +71,23 @@ chown coder:coder /home/coder/Drives 2>/dev/null || true
 if [ -S /var/run/docker.sock ]; then
     chmod 666 /var/run/docker.sock 2>/dev/null || true
     echo -e "${GREEN}[OK]${NC} Docker socket accessible"
+    slog "ok|Docker|Socket accessible"
+else
+    slog "error|Docker|Socket not found"
 fi
 
 # ---------------------------------------------------------------------------
 # Auto-update /make-it skills (if enabled)
 # ---------------------------------------------------------------------------
 if [ "${SKILLS_AUTO_UPDATE:-1}" = "1" ]; then
+    slog "busy|Skills|Checking for updates..."
     echo -e "${YELLOW}[...]${NC} Checking for skill updates..."
-    su-exec coder "$SCRIPTS_DIR/auto-update.sh" || echo -e "${YELLOW}[WARN]${NC} Skill update check failed (continuing anyway)"
+    if su-exec coder "$SCRIPTS_DIR/auto-update.sh"; then
+        slog "ok|Skills|Up to date"
+    else
+        echo -e "${YELLOW}[WARN]${NC} Skill update check failed (continuing anyway)"
+        slog "error|Skills|Update check failed (continuing)"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -78,6 +99,7 @@ if [ -d /home/coder/.claude-defaults ]; then
     rsync -a --ignore-existing /home/coder/.claude-defaults/ /home/coder/.claude/
     chown -R coder:coder /home/coder/.claude 2>/dev/null || true
     echo -e "${GREEN}[OK]${NC} Synced image defaults into .claude volume"
+    slog "ok|Settings|Synced defaults"
 fi
 
 # ---------------------------------------------------------------------------
@@ -124,7 +146,9 @@ fi
 # Reads config/providers.yml and generates settings.json + token helper.
 # Skips if settings.json already exists (preserves user edits).
 # ---------------------------------------------------------------------------
+slog "busy|AI Provider|Configuring..."
 "$SCRIPTS_DIR/configure-provider.sh"
+slog "ok|AI Provider|Configured"
 
 # Source the exported env vars so downstream checks (token monitor) work
 CLAUDE_SETTINGS="/home/coder/.claude/settings.json"
@@ -144,6 +168,7 @@ fi
 # ---------------------------------------------------------------------------
 # From here on, everything runs as the coder user
 # ---------------------------------------------------------------------------
+slog "busy|VS Code|Starting on port 8080..."
 echo -e "${GREEN}[OK]${NC} Starting code-server on port 8080..."
 export XDG_CONFIG_HOME=/tmp/.config
 mkdir -p /tmp/.config
@@ -218,16 +243,20 @@ su-exec coder code-server \
     --disable-telemetry \
     --disable-update-check \
     "$PROJECTS_DIR" &
+slog "ok|VS Code|Running on port 8080"
 
 # ---------------------------------------------------------------------------
 # Start Workshop server (Business User IDE)
 # ---------------------------------------------------------------------------
+slog "busy|Workshop|Starting on port ${WORKSHOP_PORT:-9200}..."
 echo -e "${GREEN}[OK]${NC} Starting Workshop on port ${WORKSHOP_PORT:-9200}..."
 su-exec coder "$SCRIPTS_DIR/workshop-server.sh" &
+slog "ok|Workshop|Running"
 
 # ---------------------------------------------------------------------------
 # Start welcome page server (landing page with status + links)
 # ---------------------------------------------------------------------------
+slog "busy|Dashboard|Starting on port 3000..."
 echo -e "${GREEN}[OK]${NC} Starting welcome page on port 3000..."
 su-exec coder "$SCRIPTS_DIR/welcome-server.sh" &
 
@@ -236,11 +265,13 @@ su-exec coder "$SCRIPTS_DIR/welcome-server.sh" &
 # ---------------------------------------------------------------------------
 su-exec coder "$SCRIPTS_DIR/health-monitor.sh" &
 echo -e "${GREEN}[OK]${NC} Health monitor started (self-healing enabled)."
+slog "ok|Health Monitor|Running"
 
 # ---------------------------------------------------------------------------
 # Start ttyd (web terminal) -- this is the foreground process
 # Uses tmux so browser reconnects resume the same session.
 # ---------------------------------------------------------------------------
+slog "busy|Web Terminal|Starting on port 7681..."
 echo -e "${GREEN}[OK]${NC} Starting web terminal on port 7681..."
 echo ""
 echo -e "${BLUE}========================================${NC}"
@@ -276,6 +307,9 @@ su-exec coder ttyd \
 
 # Tmux config (navigation breadcrumb, mouse, scrollback)
 TMUX_CONF="/opt/claude-code-docker/config/tmux.conf"
+
+slog "ok|Web Terminal|Running"
+slog "ok|Ready|All services started"
 
 # Main ttyd (port 7681): always reconnects to the same tmux session.
 exec su-exec coder ttyd \

@@ -226,18 +226,6 @@ function getHealth() {
     };
 }
 
-// Auto-login GitHub if GH_TOKEN is set
-if (process.env.GH_TOKEN) {
-    try {
-        execSync('gh auth status', { stdio: 'ignore', timeout: 10000 });
-    } catch (e) {
-        try {
-            execSync('gh auth login --with-token', { input: process.env.GH_TOKEN + '\n', stdio: ['pipe', 'ignore', 'ignore'], timeout: 15000 });
-            execSync('gh auth setup-git', { stdio: 'ignore', timeout: 10000 });
-        } catch (e2) {}
-    }
-}
-
 let pendingAuth = null;
 let loginProcess = null;
 let registeredApps = [];
@@ -523,6 +511,18 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    if (req.url === '/api/startup-log') {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        try {
+            const logPath = '/tmp/.startup-log';
+            const lines = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8').trim().split('\n').filter(Boolean) : [];
+            res.end(JSON.stringify({ lines }));
+        } catch (e) {
+            res.end(JSON.stringify({ lines: [] }));
+        }
+        return;
+    }
+
     // Serve static files
     let filePath = req.url === '/' ? '/index.html' : req.url;
     filePath = path.join(welcomeDir, filePath);
@@ -546,6 +546,33 @@ const server = http.createServer((req, res) => {
     }
 });
 
+const startupLogPath = '/tmp/.startup-log';
+
+function startupLog(msg) {
+    try { fs.appendFileSync(startupLogPath, msg + '\n'); } catch (e) {}
+}
+
 server.listen(port, '0.0.0.0', () => {
-    // Silence -- logged by entrypoint
+    startupLog('ok|Welcome server|Listening on port ' + port);
+
+    // Auto-login GitHub if GH_TOKEN is set (non-blocking — runs after server is up)
+    if (process.env.GH_TOKEN) {
+        setImmediate(() => {
+            try {
+                execSync('gh auth status', { stdio: 'ignore', timeout: 10000 });
+                startupLog('ok|GitHub|Already authenticated');
+            } catch (e) {
+                startupLog('busy|GitHub|Authenticating with token...');
+                try {
+                    execSync('gh auth login --with-token', { input: process.env.GH_TOKEN + '\n', stdio: ['pipe', 'ignore', 'ignore'], timeout: 15000 });
+                    execSync('gh auth setup-git', { stdio: 'ignore', timeout: 10000 });
+                    let user = '';
+                    try { user = execSync('gh api user -q .login 2>/dev/null', { timeout: 10000 }).toString().trim(); } catch (e2) {}
+                    startupLog('ok|GitHub|' + (user || 'Authenticated'));
+                } catch (e2) {
+                    startupLog('error|GitHub|Token rejected — check GH_TOKEN in .env');
+                }
+            }
+        });
+    }
 });
