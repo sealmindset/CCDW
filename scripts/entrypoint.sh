@@ -149,6 +149,10 @@ export XDG_CONFIG_HOME=/tmp/.config
 mkdir -p /tmp/.config
 chown -R coder:coder /tmp/.config 2>/dev/null || true
 
+# Clear code-server's cached workspace state so it always opens $PROJECTS_DIR
+# The .vscdb files persist last-opened folder across container recreations
+find /home/coder/.local/share/code-server/ -name "*.vscdb*" -delete 2>/dev/null || true
+
 # ---------------------------------------------------------------------------
 # Code-server settings: panel on right, Claude Code terminal profile
 # ---------------------------------------------------------------------------
