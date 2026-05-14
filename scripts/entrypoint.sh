@@ -303,6 +303,7 @@ su-exec coder ttyd \
     --client-option "$TTYD_FONT" \
     --client-option 'fontSize=14' \
     --client-option 'cursorBlink=true' \
+    --client-option 'enableClipboard=true' \
     "$SCRIPTS_DIR/new-terminal.sh" &
 
 # Tmux config (navigation breadcrumb, mouse, scrollback)
@@ -318,4 +319,5 @@ exec su-exec coder ttyd \
     --client-option "$TTYD_FONT" \
     --client-option 'fontSize=14' \
     --client-option 'cursorBlink=true' \
+    --client-option 'enableClipboard=true' \
     tmux -f "$TMUX_CONF" new-session -A -s main "bash --init-file $SCRIPTS_DIR/shell-init.sh"
