@@ -746,7 +746,21 @@ github_signin() {
         return 0
     fi
 
-    # Start gh auth in background — welcome dashboard handles the browser UX
+    # Token-based login: GH_TOKEN env var → no browser interaction needed
+    if [ -n "${GH_TOKEN:-}" ]; then
+        echo -ne "  ${DIM}○${NC} GitHub        Authenticating..."
+        if echo "$GH_TOKEN" | gh auth login --with-token 2>/dev/null; then
+            gh auth setup-git 2>/dev/null
+            local gh_user
+            gh_user=$(gh api user -q .login 2>/dev/null || echo "authenticated")
+            printf "\r  ${OK} GitHub        ${GREEN}${gh_user}${NC}\n"
+            return 0
+        else
+            printf "\r  ${YELLOW}!${NC} GitHub        Token invalid, trying device code...\n"
+        fi
+    fi
+
+    # Fallback: device code flow (browser-based)
     echo -ne "  ${DIM}○${NC} GitHub        Signing in..."
 
     local tmpfile
@@ -770,12 +784,10 @@ github_signin() {
         return 1
     fi
 
-    # Send to welcome dashboard + show instructions in terminal
     notify_browser "https://github.com/login/device" "$device_code" "github"
     printf "\r  ${DIM}○${NC} GitHub        Open ${GREEN}https://github.com/login/device${NC}\n"
     echo -e "                    Paste code ${GREEN}${device_code}${NC}, then click ${GREEN}Authorize${NC}"
 
-    # Don't block — run completion handler in background
     (
         wait "$gh_pid" 2>/dev/null
         rm -f "$tmpfile"

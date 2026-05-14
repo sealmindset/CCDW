@@ -74,6 +74,9 @@ function getStatus() {
     try {
         execSync('gh auth status', { stdio: 'ignore', timeout: 10000 });
         status.github = 'ok';
+        try {
+            status.github_user = execSync('gh api user -q .login 2>/dev/null', { timeout: 10000 }).toString().trim();
+        } catch (e) {}
     } catch (e) {
         status.github = 'unauthenticated';
     }
@@ -221,6 +224,18 @@ function getHealth() {
         system: { disk_free_mb: diskFreeMb, docker_socket: dockerSocket },
         telemetry: { last_5_events: last5 }
     };
+}
+
+// Auto-login GitHub if GH_TOKEN is set
+if (process.env.GH_TOKEN) {
+    try {
+        execSync('gh auth status', { stdio: 'ignore', timeout: 10000 });
+    } catch (e) {
+        try {
+            execSync('gh auth login --with-token', { input: process.env.GH_TOKEN + '\n', stdio: ['pipe', 'ignore', 'ignore'], timeout: 15000 });
+            execSync('gh auth setup-git', { stdio: 'ignore', timeout: 10000 });
+        } catch (e2) {}
+    }
 }
 
 let pendingAuth = null;
@@ -384,6 +399,32 @@ const server = http.createServer((req, res) => {
         pendingAuth = null; savePendingAuth();
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ok:true}));
+        return;
+    }
+
+    if (req.url === '/auth/github-token' && req.method === 'POST') {
+        let body = '';
+        req.on('data', c => body += c);
+        req.on('end', () => {
+            const h = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+            try {
+                const { token } = JSON.parse(body);
+                if (!token || !token.trim()) {
+                    res.writeHead(400, h);
+                    res.end(JSON.stringify({ ok: false, error: 'No token provided' }));
+                    return;
+                }
+                execSync('gh auth login --with-token', { input: token.trim() + '\n', stdio: ['pipe', 'ignore', 'ignore'], timeout: 15000 });
+                execSync('gh auth setup-git', { stdio: 'ignore', timeout: 10000 });
+                let user = '';
+                try { user = execSync('gh api user -q .login 2>/dev/null', { timeout: 10000 }).toString().trim(); } catch (e) {}
+                res.writeHead(200, h);
+                res.end(JSON.stringify({ ok: true, user }));
+            } catch (e) {
+                res.writeHead(200, h);
+                res.end(JSON.stringify({ ok: false, error: 'Token rejected — check scopes and expiry' }));
+            }
+        });
         return;
     }
 

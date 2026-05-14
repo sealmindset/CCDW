@@ -43,6 +43,7 @@ services:
         required: false
     environment:
       - TERM=xterm-256color
+      - GH_TOKEN=${GH_TOKEN:-}
     restart: unless-stopped
     # Add coder user to docker group for socket access
     group_add:
