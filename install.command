@@ -716,6 +716,7 @@ if ! docker run -d \
     -p "${TTYD_PORT:-7681}:7681" \
     -p "${TTYD_NEW_PORT:-7682}:7682" \
     -p "${CODE_SERVER_PORT:-8080}:8080" \
+    -p "${CHAT_PORT:-3002}:3002" \
     -p "${WORKSHOP_PORT:-9200}:9200" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$PROJECTS_DIR:/home/coder/Documents" \
@@ -761,6 +762,7 @@ if ! docker run -d \
                 -p "${TTYD_PORT:-7681}:7681" \
                 -p "${TTYD_NEW_PORT:-7682}:7682" \
                 -p "${CODE_SERVER_PORT:-8080}:8080" \
+                -p "${CHAT_PORT:-3002}:3002" \
                 -p "${WORKSHOP_PORT:-9200}:9200" \
                 -v /var/run/docker.sock:/var/run/docker.sock \
                 -v "$PROJECTS_DIR:/home/coder/Documents" \
