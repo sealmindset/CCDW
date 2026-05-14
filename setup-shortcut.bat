@@ -13,7 +13,7 @@ powershell -NoProfile -Command ^
     "$desktop = [Environment]::GetFolderPath('Desktop'); " ^
     "$pub = [Environment]::GetFolderPath('CommonDesktopDirectory'); " ^
     "foreach ($d in @($desktop, $pub)) { " ^
-    "  foreach ($name in @('Rancher Desktop.lnk','Claude Code.url')) { " ^
+    "  foreach ($name in @('Rancher Desktop.lnk','Claude Code.url','Claude.lnk')) { " ^
     "    $p = Join-Path $d $name; " ^
     "    if (Test-Path $p) { Remove-Item $p -Force -EA SilentlyContinue; if (-not (Test-Path $p)) { Write-Host ('       Removed: ' + $name) } } " ^
     "  } " ^
@@ -54,7 +54,7 @@ powershell -NoProfile -Command ^
     "$vbsPath = Join-Path $projDir 'launch-claude.vbs'; " ^
     "$icoPath = Join-Path $projDir 'claude.ico'; " ^
     "$desktop = [Environment]::GetFolderPath('Desktop'); " ^
-    "$lnkPath = Join-Path $desktop 'Claude.lnk'; " ^
+    "$lnkPath = Join-Path $desktop 'Claude Code.lnk'; " ^
     "$ws = New-Object -ComObject WScript.Shell; " ^
     "$lnk = $ws.CreateShortcut($lnkPath); " ^
     "$lnk.TargetPath = $vbsPath; " ^

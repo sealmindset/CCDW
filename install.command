@@ -847,8 +847,8 @@ open "http://localhost:3000" 2>/dev/null || xdg-open "http://localhost:3000" 2>/
 # ---------------------------------------------------------------------------
 # Desktop shortcut (macOS .webloc) with Claude icon
 # ---------------------------------------------------------------------------
-DESKTOP_SHORTCUT="$HOME/Desktop/Claude.webloc"
-OLD_SHORTCUT="$HOME/Desktop/Claude Code.webloc"
+DESKTOP_SHORTCUT="$HOME/Desktop/Claude Code.webloc"
+OLD_SHORTCUT="$HOME/Desktop/Claude.webloc"
 [ -f "$OLD_SHORTCUT" ] && rm -f "$OLD_SHORTCUT"
 
 if [ ! -f "$DESKTOP_SHORTCUT" ]; then
