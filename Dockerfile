@@ -58,6 +58,7 @@ RUN update-ca-certificates
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENV CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+ENV NODE_OPTIONS="--use-openssl-ca"
 
 # ---------------------------------------------------------------------------
 # Install code-server (VS Code in browser) via standalone release

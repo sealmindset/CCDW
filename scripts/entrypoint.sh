@@ -203,6 +203,7 @@ fi
 
 export NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:-/etc/ssl/certs/ca-certificates.crt}"
 export SSL_CERT_FILE="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}"
+export NODE_OPTIONS="--use-openssl-ca ${NODE_OPTIONS:-}"
 su-exec coder code-server \
     --bind-addr 0.0.0.0:8080 \
     --auth "$CS_AUTH" \
