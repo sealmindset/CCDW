@@ -840,8 +840,8 @@
                         ghDot.className = 'status-dot green';
                         ghStatus.textContent = data.github_user || 'Authenticated';
                     } else {
-                        ghDot.className = 'status-dot yellow';
-                        ghStatus.textContent = 'Signing in...';
+                        ghDot.className = 'status-dot red';
+                        ghStatus.textContent = 'Not connected';
                     }
 
                     // System (Docker)
