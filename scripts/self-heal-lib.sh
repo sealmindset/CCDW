@@ -452,7 +452,7 @@ sh_remediate_code_server() {
         --config /tmp/.config/code-server/config.yaml \
         --disable-telemetry \
         --disable-update-check \
-        /home/coder/Documents/GitHub &
+        "${PROJECTS_DIR:-/home/coder/Documents}" &
 
     sleep 3
 

@@ -25,7 +25,17 @@ process.on('unhandledRejection', (reason) => {
 
 const PORT = parseInt(process.env.WORKSHOP_PORT || '9200', 10);
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const PROJECTS_DIR = process.env.PROJECTS_DIR || '/home/coder/Documents/GitHub';
+const PROJECTS_DIR = (() => {
+  const dir = process.env.PROJECTS_DIR || '/home/coder/Documents/GitHub';
+  try {
+    const stat = fs.lstatSync(dir);
+    if (stat.isDirectory()) return dir;
+  } catch {}
+  // Fallback: use ~/Documents (always a real directory from bind mount)
+  const fallback = '/home/coder/Documents';
+  try { fs.mkdirSync(fallback, { recursive: true }); } catch {}
+  return fallback;
+})();
 const COMMANDS_DIR = process.env.COMMANDS_DIR || '/home/coder/.claude/commands';
 const HOME_DIR = process.env.HOME || '/home/coder';
 

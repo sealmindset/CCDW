@@ -44,6 +44,9 @@ else
     fi
 fi
 
+# Export resolved workspace dir so Workshop and other services use it
+export PROJECTS_DIR="$GITHUB_DIR"
+
 # ---------------------------------------------------------------------------
 # Ensure ~/Drives directory exists for external drive mounts
 # ---------------------------------------------------------------------------
@@ -210,7 +213,7 @@ su-exec coder code-server \
     --config /tmp/.config/code-server/config.yaml \
     --disable-telemetry \
     --disable-update-check \
-    /home/coder/Documents/GitHub &
+    "$PROJECTS_DIR" &
 
 # ---------------------------------------------------------------------------
 # Start Workshop server (Business User IDE)

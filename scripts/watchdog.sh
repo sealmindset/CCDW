@@ -56,7 +56,7 @@ restart_code_server() {
         --config /tmp/.config/code-server/config.yaml \
         --disable-telemetry \
         --disable-update-check \
-        /home/coder/Documents/GitHub &
+        ${PROJECTS_DIR:-/home/coder/Documents} &
 
     sleep 3
     if curl -s -o /dev/null http://127.0.0.1:8080/ 2>/dev/null; then

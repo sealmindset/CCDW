@@ -25,9 +25,11 @@ CONFIG_FILE="/opt/claude-code-docker/config/providers.yml"
 # ---------------------------------------------------------------------------
 # Load .env if it exists in workspace
 # ---------------------------------------------------------------------------
-if [ -f /home/coder/Documents/GitHub/.env ]; then
+WORKSPACE="${PROJECTS_DIR:-/home/coder/Documents/GitHub}"
+[ ! -d "$WORKSPACE" ] && WORKSPACE="/home/coder/Documents"
+if [ -f "$WORKSPACE/.env" ]; then
     set -a
-    source /home/coder/Documents/GitHub/.env
+    source "$WORKSPACE/.env"
     set +a
 fi
 

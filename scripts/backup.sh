@@ -12,7 +12,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-DEFAULT_OUTPUT="/home/coder/Documents/GitHub/claude-code-backup-${TIMESTAMP}.tar.gz"
+DEFAULT_OUTPUT="${PROJECTS_DIR:-/home/coder/Documents}/claude-code-backup-${TIMESTAMP}.tar.gz"
 OUTPUT="${1:-$DEFAULT_OUTPUT}"
 
 echo ""
@@ -48,8 +48,8 @@ if [ -d /home/coder/.gitconfig.d ]; then
 fi
 
 # Environment files
-if [ -f /home/coder/Documents/GitHub/.env ]; then
-    cp /home/coder/Documents/GitHub/.env "$BACKUP_DIR/env/"
+if [ -f ${PROJECTS_DIR:-/home/coder/Documents}/.env ]; then
+    cp ${PROJECTS_DIR:-/home/coder/Documents}/.env "$BACKUP_DIR/env/"
 fi
 
 # Shell customizations

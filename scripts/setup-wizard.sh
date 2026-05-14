@@ -128,8 +128,8 @@ print(cfg.get('providers',{}).get('bedrock',{}).get('region','us-east-1'))
         "$SCRIPTS_DIR/configure-provider.sh"
 
         # Save key to .env so it persists
-        mkdir -p /home/coder/Documents/GitHub
-        echo "ANTHROPIC_API_KEY=$API_KEY" > /home/coder/Documents/GitHub/.env
+        mkdir -p ${PROJECTS_DIR:-/home/coder/Documents}
+        echo "ANTHROPIC_API_KEY=$API_KEY" > ${PROJECTS_DIR:-/home/coder/Documents}/.env
         ;;
 esac
 

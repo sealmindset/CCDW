@@ -25,7 +25,7 @@ if [ -z "$BACKUP_FILE" ]; then
     echo -e "  Usage: ${GREEN}restore /path/to/claude-code-backup-YYYYMMDD-HHMMSS.tar.gz${NC}"
     echo ""
     echo "  Available backups in your projects folder:"
-    ls -1 /home/coder/Documents/GitHub/claude-code-backup-*.tar.gz 2>/dev/null || echo "    (none found)"
+    ls -1 ${PROJECTS_DIR:-/home/coder/Documents}/claude-code-backup-*.tar.gz 2>/dev/null || echo "    (none found)"
     echo ""
     exit 1
 fi
@@ -79,7 +79,7 @@ fi
 
 # Environment
 if [ -d "$RESTORE_DIR/env" ] && [ -f "$RESTORE_DIR/env/.env" ]; then
-    cp "$RESTORE_DIR/env/.env" /home/coder/Documents/GitHub/.env 2>/dev/null && \
+    cp "$RESTORE_DIR/env/.env" ${PROJECTS_DIR:-/home/coder/Documents}/.env 2>/dev/null && \
         echo -e "  ${GREEN}[OK]${NC} Environment file restored"
 fi
 

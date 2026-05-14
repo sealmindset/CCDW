@@ -209,7 +209,7 @@ echo ""
 # ---------------------------------------------------------------------------
 echo -e "${BOLD}Workspace & Disk${NC}"
 
-GITHUB_DIR="/home/coder/Documents/GitHub"
+GITHUB_DIR="${PROJECTS_DIR:-/home/coder/Documents}"
 if [ -d "$GITHUB_DIR" ]; then
     pass "Projects folder exists: $GITHUB_DIR"
 else
