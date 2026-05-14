@@ -390,32 +390,6 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    if (req.url === '/auth/github-token' && req.method === 'POST') {
-        let body = '';
-        req.on('data', c => body += c);
-        req.on('end', () => {
-            const h = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
-            try {
-                const { token } = JSON.parse(body);
-                if (!token || !token.trim()) {
-                    res.writeHead(400, h);
-                    res.end(JSON.stringify({ ok: false, error: 'No token provided' }));
-                    return;
-                }
-                execSync('gh auth login --with-token', { input: token.trim() + '\n', stdio: ['pipe', 'ignore', 'ignore'], timeout: 15000 });
-                execSync('gh auth setup-git', { stdio: 'ignore', timeout: 10000 });
-                let user = '';
-                try { user = execSync('gh api user -q .login 2>/dev/null', { timeout: 10000 }).toString().trim(); } catch (e) {}
-                res.writeHead(200, h);
-                res.end(JSON.stringify({ ok: true, user }));
-            } catch (e) {
-                res.writeHead(200, h);
-                res.end(JSON.stringify({ ok: false, error: 'Token rejected — check scopes and expiry' }));
-            }
-        });
-        return;
-    }
-
     if (req.method === 'OPTIONS' && (req.url.startsWith('/auth/') || req.url.startsWith('/api/'))) {
         res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' });
         res.end();
@@ -555,24 +529,35 @@ function startupLog(msg) {
 server.listen(port, '0.0.0.0', () => {
     startupLog('ok|Welcome server|Listening on port ' + port);
 
-    // Auto-login GitHub if GH_TOKEN is set (non-blocking — runs after server is up)
-    if (process.env.GH_TOKEN) {
-        setImmediate(() => {
+    // Background GitHub auth: check status, try refresh, log result
+    setImmediate(() => {
+        try {
+            execSync('gh auth status', { stdio: 'ignore', timeout: 10000 });
+            let user = '';
+            try { user = execSync('gh api user -q .login 2>/dev/null', { timeout: 10000 }).toString().trim(); } catch (e2) {}
+            startupLog('ok|GitHub|' + (user || 'Authenticated'));
+        } catch (e) {
+            // Try silent refresh (works if refresh token is still valid in gh-config volume)
             try {
-                execSync('gh auth status', { stdio: 'ignore', timeout: 10000 });
-                startupLog('ok|GitHub|Already authenticated');
-            } catch (e) {
-                startupLog('busy|GitHub|Authenticating with token...');
-                try {
-                    execSync('gh auth login --with-token', { input: process.env.GH_TOKEN + '\n', stdio: ['pipe', 'ignore', 'ignore'], timeout: 15000 });
-                    execSync('gh auth setup-git', { stdio: 'ignore', timeout: 10000 });
-                    let user = '';
-                    try { user = execSync('gh api user -q .login 2>/dev/null', { timeout: 10000 }).toString().trim(); } catch (e2) {}
-                    startupLog('ok|GitHub|' + (user || 'Authenticated'));
-                } catch (e2) {
-                    startupLog('error|GitHub|Token rejected — check GH_TOKEN in .env');
+                execSync('gh auth refresh', { stdio: 'ignore', timeout: 15000 });
+                execSync('gh auth setup-git', { stdio: 'ignore', timeout: 10000 });
+                let user = '';
+                try { user = execSync('gh api user -q .login 2>/dev/null', { timeout: 10000 }).toString().trim(); } catch (e2) {}
+                startupLog('ok|GitHub|' + (user || 'Refreshed'));
+            } catch (e2) {
+                // Try GH_TOKEN env var as last resort before device code
+                if (process.env.GH_TOKEN) {
+                    try {
+                        execSync('gh auth login --with-token', { input: process.env.GH_TOKEN + '\n', stdio: ['pipe', 'ignore', 'ignore'], timeout: 15000 });
+                        execSync('gh auth setup-git', { stdio: 'ignore', timeout: 10000 });
+                        startupLog('ok|GitHub|Authenticated via token');
+                    } catch (e3) {
+                        startupLog('info|GitHub|Sign in via terminal or dashboard');
+                    }
+                } else {
+                    startupLog('info|GitHub|Sign in via terminal or dashboard');
                 }
             }
-        });
-    }
+        }
+    });
 });

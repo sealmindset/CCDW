@@ -600,8 +600,18 @@
             </div>
         </div>
 
-        <!-- Auth notification banner (hidden — token-based login, no device code) -->
-        <div class="banner banner-auth" id="authNotify" style="display:none;"></div>
+        <!-- Auth notification banner (device code flow — auto-hides after successful auth) -->
+        <div class="banner banner-auth" id="authNotify" style="display:none;">
+            <div class="banner-auth-inner">
+                <div class="banner-auth-icon">&#128273;</div>
+                <div class="banner-auth-text">
+                    <strong>Sign-in required</strong>
+                    <span id="authNotifyDetail">Enter the code at the sign-in page</span>
+                </div>
+                <div class="banner-auth-code" id="authNotifyCode" title="Click to copy">---<span class="copy-hint">click to copy</span></div>
+                <a class="banner-auth-btn" id="authNotifyLink" href="#" target="_blank">Open Sign-in Page</a>
+            </div>
+        </div>
 
         <!-- SSL proxy notice -->
         <div class="banner banner-ssl" id="sslNotice">
@@ -725,22 +735,6 @@
             </div>
         </div>
 
-        <!-- GitHub Token Input (shown when not authenticated) -->
-        <div id="ghTokenSection" style="display:none;margin-bottom:1.5rem;">
-            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:1rem 1.25rem;">
-                <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
-                    <input type="password" id="ghTokenInput" placeholder="ghp_... or github_pat_..."
-                        style="flex:1;min-width:200px;background:var(--bg-primary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.45rem 0.75rem;color:var(--text-primary);font-family:var(--font-mono);font-size:0.85rem;outline:none;"
-                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" />
-                    <button class="btn btn-accent" id="ghTokenSubmit">Connect GitHub</button>
-                </div>
-                <div style="margin-top:0.5rem;color:var(--text-muted);font-size:0.75rem;">
-                    Paste a <a href="https://github.com/settings/tokens" target="_blank" style="color:var(--accent-hover);">Personal Access Token</a> (scopes: repo, read:org, workflow)
-                </div>
-                <div id="ghTokenError" style="display:none;margin-top:0.4rem;color:var(--error);font-size:0.8rem;"></div>
-            </div>
-        </div>
-
         <!-- Usage Stats -->
         <div id="usage-section" style="display:none;">
             <div class="section-label">Usage</div>
@@ -840,17 +834,14 @@
                     var tokenEl = document.getElementById('status-token');
                     var ghDot = document.getElementById('dot-github');
                     var ghStatus = document.getElementById('status-github');
-                    var ghTokenSection = document.getElementById('ghTokenSection');
 
                     // GitHub status
                     if (data.github === 'ok') {
                         ghDot.className = 'status-dot green';
                         ghStatus.textContent = data.github_user || 'Authenticated';
-                        ghTokenSection.style.display = 'none';
                     } else {
-                        ghDot.className = 'status-dot red';
-                        ghStatus.textContent = 'Not connected';
-                        ghTokenSection.style.display = '';
+                        ghDot.className = 'status-dot yellow';
+                        ghStatus.textContent = 'Signing in...';
                     }
 
                     // System (Docker)
@@ -1052,45 +1043,41 @@
         setInterval(checkSslProxy, 30000);
         setInterval(checkApps, 5000);
 
-        // GitHub token paste handler
-        document.getElementById('ghTokenSubmit').addEventListener('click', async function() {
-            var btn = document.getElementById('ghTokenSubmit');
-            var input = document.getElementById('ghTokenInput');
-            var errorEl = document.getElementById('ghTokenError');
-            var token = input.value.trim();
-            if (!token) { errorEl.textContent = 'Paste a token first'; errorEl.style.display = ''; return; }
-            btn.disabled = true;
-            btn.textContent = 'Connecting...';
-            errorEl.style.display = 'none';
+        // Device code auth polling — shows banner when login-wizard sends a code,
+        // auto-hides when auth completes (fixes the "banner stays after auth" bug)
+        document.getElementById('authNotifyCode').addEventListener('click', function() { copyCode(this); });
+        var authAutoOpened = false;
+        var authBannerVisible = false;
+        async function checkAuthPending() {
             try {
-                var resp = await fetch('/auth/github-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: token })
-                });
+                var resp = await fetch('/auth/pending');
+                if (!resp.ok) return;
                 var data = await resp.json();
-                if (data.ok) {
-                    btn.textContent = 'Connected!';
-                    btn.style.background = 'var(--success)';
-                    input.value = '';
-                    document.getElementById('ghTokenSection').style.display = 'none';
-                    checkAll();
-                } else {
-                    errorEl.textContent = data.error || 'Token rejected';
-                    errorEl.style.display = '';
-                    btn.disabled = false;
-                    btn.textContent = 'Connect GitHub';
+                var banner = document.getElementById('authNotify');
+                if (!data.pending) {
+                    if (authBannerVisible) {
+                        banner.style.display = 'none';
+                        authBannerVisible = false;
+                        authAutoOpened = false;
+                        checkAll();
+                    }
+                    return;
                 }
-            } catch(e) {
-                errorEl.textContent = 'Connection failed — try again';
-                errorEl.style.display = '';
-                btn.disabled = false;
-                btn.textContent = 'Connect GitHub';
-            }
-        });
-        document.getElementById('ghTokenInput').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') document.getElementById('ghTokenSubmit').click();
-        });
+                document.getElementById('authNotifyCode').childNodes[0].textContent = data.code || '---';
+                document.getElementById('authNotifyLink').href = data.url;
+                var provider = data.provider === 'azure' ? 'Microsoft' : data.provider === 'github' ? 'GitHub' : 'AWS';
+                document.getElementById('authNotifyDetail').textContent =
+                    'Enter the code at the ' + provider + ' sign-in page';
+                banner.style.display = 'block';
+                authBannerVisible = true;
+                if (!authAutoOpened) {
+                    authAutoOpened = true;
+                    window.open(data.url, '_blank');
+                }
+            } catch(e) {}
+        }
+        setInterval(checkAuthPending, 3000);
+        checkAuthPending();
 
         var signinPolling = null;
 

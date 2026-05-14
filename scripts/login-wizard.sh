@@ -746,7 +746,16 @@ github_signin() {
         return 0
     fi
 
-    # Token-based login: GH_TOKEN env var → no browser interaction needed
+    # Try silent refresh first (works if token expired but refresh token valid)
+    if gh auth refresh &>/dev/null 2>&1; then
+        gh auth setup-git 2>/dev/null
+        local gh_user
+        gh_user=$(gh api user -q .login 2>/dev/null || echo "authenticated")
+        echo -e "  ${OK} GitHub        ${GREEN}${gh_user}${NC} (refreshed)"
+        return 0
+    fi
+
+    # Token-based login if GH_TOKEN env var is set (CI/advanced users)
     if [ -n "${GH_TOKEN:-}" ]; then
         echo -ne "  ${DIM}○${NC} GitHub        Authenticating..."
         if echo "$GH_TOKEN" | gh auth login --with-token 2>/dev/null; then
@@ -760,7 +769,7 @@ github_signin() {
         fi
     fi
 
-    # Fallback: device code flow (browser-based)
+    # Device code flow (browser-based — user-friendly for business users)
     echo -ne "  ${DIM}○${NC} GitHub        Signing in..."
 
     local tmpfile
