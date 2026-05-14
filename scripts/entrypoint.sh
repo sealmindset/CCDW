@@ -24,20 +24,24 @@ echo -e "${BLUE}========================================${NC}"
 # ---------------------------------------------------------------------------
 # Ensure workspace directory exists
 # ---------------------------------------------------------------------------
-if [ ! -d "$GITHUB_DIR" ]; then
-    echo -e "${YELLOW}[...]${NC} Creating workspace directory..."
-    # Parent may not exist if volume mount failed — create both levels
-    mkdir -p /home/coder/Documents 2>/dev/null || true
-    mkdir -p "$GITHUB_DIR" 2>/dev/null || true
-fi
-
 if [ -d "$GITHUB_DIR" ]; then
     chown -R coder:coder "$GITHUB_DIR" 2>/dev/null || true
     echo -e "${GREEN}[OK]${NC} Workspace: $GITHUB_DIR"
-else
-    echo -e "${YELLOW}[!]${NC} Could not create $GITHUB_DIR — using /home/coder/Documents"
+elif [ -L "$GITHUB_DIR" ] || [ -e "$GITHUB_DIR" ]; then
+    # Symlink or file exists but isn't a usable directory — don't touch it
     GITHUB_DIR="/home/coder/Documents"
     ENV_FILE="/home/coder/Documents/.env"
+    echo -e "${GREEN}[OK]${NC} Workspace: $GITHUB_DIR"
+else
+    mkdir -p "$GITHUB_DIR" 2>/dev/null || true
+    if [ -d "$GITHUB_DIR" ]; then
+        chown -R coder:coder "$GITHUB_DIR" 2>/dev/null || true
+        echo -e "${GREEN}[OK]${NC} Workspace: $GITHUB_DIR"
+    else
+        GITHUB_DIR="/home/coder/Documents"
+        ENV_FILE="/home/coder/Documents/.env"
+        echo -e "${GREEN}[OK]${NC} Workspace: $GITHUB_DIR"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
