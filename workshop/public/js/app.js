@@ -15,6 +15,47 @@
     appUrl: null,   // detected URL for the built app (for try-it embed)
   };
 
+  // --- Session persistence keys ---
+  const STORE = {
+    project: 'ws-project',
+    phase: 'ws-phase',
+    view: 'ws-view',
+    chat: 'ws-chat',
+    appUrl: 'ws-appurl',
+    bifrost: 'ws-bifrost',
+  };
+
+  let initialized = false;
+
+  function saveState() {
+    try {
+      if (state.projectName) {
+        localStorage.setItem(STORE.project, state.projectName);
+      } else {
+        localStorage.removeItem(STORE.project);
+      }
+      localStorage.setItem(STORE.phase, state.phase || 'idle');
+      localStorage.setItem(STORE.view, state.currentView || 'home');
+      if (state.appUrl) localStorage.setItem(STORE.appUrl, state.appUrl);
+      if (mainChat) {
+        const msgs = mainChat.getMessages();
+        if (msgs.length > 0) localStorage.setItem(STORE.chat, JSON.stringify(msgs.slice(-50)));
+      }
+      const bifrostPhase = window.bifrost.phases[window.bifrost.currentPhaseIndex];
+      if (bifrostPhase) localStorage.setItem(STORE.bifrost, bifrostPhase);
+    } catch {}
+  }
+
+  let _saveTimer = null;
+  function debouncedSave() {
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(saveState, 500);
+  }
+
+  function clearSavedState() {
+    try { Object.values(STORE).forEach(k => localStorage.removeItem(k)); } catch {}
+  }
+
   // --- Chat instances ---
   let mainChat = null;
   let iterateChat = null;
@@ -55,6 +96,11 @@
     }
 
     state.currentView = name;
+
+    // Clear recovery state when user deliberately navigates home
+    if (name === 'home' && initialized) {
+      clearSavedState();
+    }
 
     // Update nav buttons
     document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
@@ -100,10 +146,14 @@
       data.projects.forEach(project => {
         const card = document.createElement('div');
         card.className = 'project-card';
+        const badgeText = project.activeSession
+          ? 'In progress'
+          : (project.builtWithMakeIt ? 'Workshop' : '');
+        const badgeClass = project.activeSession ? 'project-card-badge active-session' : 'project-card-badge';
         card.innerHTML = `
           <div class="project-card-name">${escapeHtml(project.name)}</div>
           <div class="project-card-status">${project.builtWithMakeIt ? 'Built with Workshop' : 'Project'}</div>
-          ${project.builtWithMakeIt ? '<span class="project-card-badge">Workshop</span>' : ''}
+          ${badgeText ? '<span class="' + badgeClass + '">' + badgeText + '</span>' : ''}
         `;
         card.addEventListener('click', () => openProject(project.name));
         grid.appendChild(card);
@@ -115,6 +165,7 @@
 
   function openProject(name) {
     state.projectName = name;
+    clearSavedState();
     window.cliBridge.openProject(name);
 
     showView('chat');
@@ -268,6 +319,33 @@
       hideConnectionOverlay();
       updateBootstrapStep('ws', 'pass', 'Connected');
       bootstrapLog('WebSocket connected (session: ' + (bridge.sessionId || '?').slice(0, 8) + ')', 'ok');
+
+      if (state._pendingRecovery) {
+        const projectName = state._pendingRecovery;
+        state._pendingRecovery = null;
+        setStatus('Resuming session...', 'busy');
+        bootstrapLog('Recovering session for ' + projectName, 'ok');
+        bridge.recoverSession(projectName);
+      }
+    });
+
+    bridge.on('recovery-success', (msg) => {
+      state.phase = msg.phase;
+      if (msg.detectedAppPort) {
+        state.appUrl = 'http://' + window.location.hostname + ':' + msg.detectedAppPort;
+        updateSeeAppTag();
+      }
+      bootstrapLog('Session recovered: phase=' + msg.phase, 'ok');
+      setStatus(msg.waitingForUser ? 'Waiting for your answer' : 'Resuming build...', 'busy');
+    });
+
+    bridge.on('recovery-failed', (msg) => {
+      bootstrapLog('Session recovery failed: ' + (msg.reason || 'unknown'), 'warn');
+      clearSavedState();
+      state.projectName = null;
+      state.phase = 'idle';
+      showView('home');
+      setStatus('Ready', '');
     });
 
     bridge.on('disconnected', () => {
@@ -286,6 +364,7 @@
 
     bridge.on('phase-change', (msg) => {
       state.phase = msg.phase;
+      saveState();
       updateBootstrapStep('skill', 'pass', msg.message || msg.phase);
       bootstrapLog('Phase: ' + msg.phase + ' -- ' + (msg.message || ''));
 
@@ -358,12 +437,14 @@
           iterateChat.setQuickReplies(msg.quickReplies);
         }
       }
+      saveState();
     });
 
     bridge.on('activity', (msg) => {
       // Add to build dashboard feed
       window.dashboard.addFeedItem(msg.category || 'general', msg.message);
       bootstrapLog(msg.message);
+      debouncedSave();
 
       // In chat view: show as a muted status line (not a chat bubble)
       if (state.currentView === 'chat') {
@@ -373,6 +454,7 @@
 
     bridge.on('process-complete', (msg) => {
       if (msg.phase === 'testing') {
+        clearSavedState();
         const url = msg.appUrl
           ? msg.appUrl.replace('localhost', window.location.hostname)
           : state.appUrl;
@@ -405,6 +487,7 @@
         setStatus('Ready', '');
       } else if (msg.phase === 'complete') {
         // Build fully finished
+        clearSavedState();
         window.bifrost.complete();
         window.dashboard.completeAll();
         window.dashboard.showTryIt();
@@ -730,6 +813,29 @@
       iterateChat.showTyping();
     };
 
+    // --- Session recovery check (before UI setup) ---
+    let recoveryProject = null;
+    try {
+      const savedProject = localStorage.getItem(STORE.project);
+      const savedPhase = localStorage.getItem(STORE.phase);
+      if (savedProject && savedPhase && savedPhase !== 'idle' && savedPhase !== 'complete') {
+        recoveryProject = savedProject;
+        state.projectName = savedProject;
+        state.phase = savedPhase;
+        state.appUrl = localStorage.getItem(STORE.appUrl) || null;
+
+        const savedChat = localStorage.getItem(STORE.chat);
+        if (savedChat) {
+          try { mainChat.restoreMessages(JSON.parse(savedChat)); } catch {}
+        }
+
+        const savedBifrost = localStorage.getItem(STORE.bifrost);
+        if (savedBifrost) window.bifrost.restorePhase(savedBifrost);
+
+        if (state.appUrl) updateSeeAppTag();
+      }
+    } catch {}
+
     // Dashboard link (port 3000)
     var dashLink = document.getElementById('dashboardLink');
     if (dashLink) dashLink.href = 'http://' + window.location.hostname + ':3000';
@@ -755,11 +861,17 @@
     await checkAuth();
     loadProjects();
 
-    // Show home view
-    showView('home');
+    // Show the right view: recovery target or home
+    if (recoveryProject) {
+      const savedView = localStorage.getItem(STORE.view) || 'build';
+      showView(views[savedView] ? savedView : 'build');
+      state._pendingRecovery = recoveryProject;
+    } else {
+      showView('home');
+    }
 
-    // First visit walkthrough
-    showWalkthrough();
+    // First visit walkthrough (skip if recovering)
+    if (!recoveryProject) showWalkthrough();
 
     // Health banner links → dashboard
     var dashUrl = 'http://' + window.location.hostname + ':3000?dashboard';
@@ -768,6 +880,8 @@
 
     // Start background health monitoring (polls every 60s)
     startHealthPolling();
+
+    initialized = true;
   }
 
   // ============================================================

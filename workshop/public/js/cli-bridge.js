@@ -91,6 +91,14 @@ class CLIBridge {
         this.emit('debug', msg);
         break;
 
+      case 'recovery-success':
+        this.emit('recovery-success', msg);
+        break;
+
+      case 'recovery-failed':
+        this.emit('recovery-failed', msg);
+        break;
+
       default:
         this.emit('message', msg);
     }
@@ -133,6 +141,10 @@ class CLIBridge {
 
   argoIt() {
     this.send({ type: 'argo-it' });
+  }
+
+  recoverSession(projectName) {
+    this.send({ type: 'recover-session', projectName });
   }
 
   cancel() {

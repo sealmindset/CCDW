@@ -100,6 +100,19 @@ class BifrostController {
   }
 
   /**
+   * Restore to a specific phase instantly (no animation).
+   * Used for session recovery after browser refresh.
+   */
+  restorePhase(phaseName) {
+    const index = this.phases.indexOf(phaseName);
+    if (index === -1) return;
+    this.currentPhaseIndex = index;
+    this.updateProgress();
+    this.moveWalker();
+    this.updatePhaseNodes();
+  }
+
+  /**
    * Reset to initial state.
    */
   reset() {

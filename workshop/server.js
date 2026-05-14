@@ -58,6 +58,44 @@ const MIME_TYPES = {
 const sessions = new Map();
 
 // ---------------------------------------------------------------------------
+// Session Persistence -- survives browser refresh via per-project JSON file
+// ---------------------------------------------------------------------------
+const SESSION_FILE = '.workshop-session.json';
+const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function saveSessionState(session) {
+  if (!session.projectDir) return;
+  const data = {
+    claudeSessionId: session.claudeSessionId,
+    phase: session.phase,
+    waitingForUser: session.waitingForUser || false,
+    autoContCount: session.autoContCount || 0,
+    detectedAppPort: session.detectedAppPort,
+    lastQuestion: session.lastSentText || '',
+    lastQuickReplies: session.lastQuickReplies || null,
+    savedAt: new Date().toISOString(),
+  };
+  try {
+    fs.writeFileSync(path.join(session.projectDir, SESSION_FILE), JSON.stringify(data, null, 2));
+  } catch {}
+}
+
+function loadSessionState(projectDir) {
+  try {
+    const fp = path.join(projectDir, SESSION_FILE);
+    if (!fs.existsSync(fp)) return null;
+    const data = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+    if (!data.savedAt || Date.now() - new Date(data.savedAt).getTime() > SESSION_MAX_AGE_MS) return null;
+    return data;
+  } catch { return null; }
+}
+
+function clearSessionState(projectDir) {
+  if (!projectDir) return;
+  try { fs.unlinkSync(path.join(projectDir, SESSION_FILE)); } catch {}
+}
+
+// ---------------------------------------------------------------------------
 // Fresh Credential Reading
 // ---------------------------------------------------------------------------
 const SETTINGS_PATH = path.join(HOME_DIR, '.claude', 'settings.json');
@@ -374,6 +412,10 @@ function handleMessage(session, msg) {
       runSkill(session, '/argo-it');
       break;
 
+    case 'recover-session':
+      recoverSession(session, msg);
+      break;
+
     default:
       session.ws.send(JSON.stringify({ type: 'error', message: `Unknown message type: ${msg.type}` }));
   }
@@ -429,6 +471,7 @@ function startProject(session, msg) {
   session.autoContCount = 0;
   session.waitingForUser = false;
   session.detectedAppPort = null;
+  clearSessionState(projectDir);
 
   // Auto-detect: /make-it for new projects, /resume-it for existing ones
   const skill = detectSkill(projectDir);
@@ -476,6 +519,53 @@ function openProject(session, msg) {
     dir: projectDir,
     hasCode: skill === '/resume-it',
   }));
+}
+
+function recoverSession(session, msg) {
+  const name = sanitizeProjectName(msg.projectName || '');
+  if (!name) {
+    session.ws.send(JSON.stringify({ type: 'recovery-failed', reason: 'no-project' }));
+    return;
+  }
+
+  const projectDir = path.join(PROJECTS_DIR, name);
+  if (!fs.existsSync(projectDir)) {
+    session.ws.send(JSON.stringify({ type: 'recovery-failed', reason: 'not-found' }));
+    return;
+  }
+
+  const saved = loadSessionState(projectDir);
+  if (!saved || !saved.claudeSessionId) {
+    session.ws.send(JSON.stringify({ type: 'recovery-failed', reason: 'no-session' }));
+    return;
+  }
+
+  debugLog(session, 'recover', `Restoring session for ${name}: phase=${saved.phase}, claude=${saved.claudeSessionId.slice(0, 8)}`);
+
+  session.projectDir = projectDir;
+  session.claudeSessionId = saved.claudeSessionId;
+  session.phase = saved.phase;
+  session.waitingForUser = saved.waitingForUser || false;
+  session.autoContCount = saved.autoContCount || 0;
+  session.detectedAppPort = saved.detectedAppPort || null;
+
+  session.ws.send(JSON.stringify({
+    type: 'recovery-success',
+    phase: saved.phase,
+    waitingForUser: saved.waitingForUser || false,
+    detectedAppPort: saved.detectedAppPort || null,
+  }));
+
+  if (saved.waitingForUser && saved.lastQuestion) {
+    session.ws.send(JSON.stringify({
+      type: 'question',
+      text: saved.lastQuestion,
+      quickReplies: saved.lastQuickReplies || null,
+    }));
+  } else if (['ideation', 'design', 'building', 'verifying', 'iterating'].includes(saved.phase)) {
+    const contPrompt = 'Continue executing. Pick up where you left off. Do not repeat work already completed.';
+    spawnCLI(session, projectDir, contPrompt, saved.claudeSessionId);
+  }
 }
 
 function runSkill(session, skill) {
@@ -701,6 +791,7 @@ function spawnCLI(session, cwd, prompt, resumeId) {
       session.projectDir
     ) {
       session.autoContCount = (session.autoContCount || 0) + 1;
+      saveSessionState(session);
 
       // Safety valve: stop after too many consecutive auto-continuations
       if (session.autoContCount > 80) {
@@ -735,6 +826,7 @@ function spawnCLI(session, cwd, prompt, resumeId) {
     if (code === 0 && (session.phase === 'testing' || session.phase === 'complete')) {
       const port = session.detectedAppPort || detectAppUrl(session.projectDir);
       if (port) appUrl = `http://localhost:${port}`;
+      clearSessionState(session.projectDir);
     }
 
     session.ws.send(JSON.stringify({
@@ -764,6 +856,7 @@ function sendToProcess(session, text) {
   // User is responding -- reset continuation state
   session.waitingForUser = false;
   session.autoContCount = 0;
+  saveSessionState(session);
 
   // If a process is still running, it might be waiting for input (unlikely in -p mode)
   if (session.process && !session.process.killed) {
@@ -815,6 +908,7 @@ function handleStreamEvent(session, event, textAcc) {
   // --- System init ---
   if (type === 'system' && event.subtype === 'init') {
     session.claudeSessionId = event.session_id;
+    saveSessionState(session);
     debugLog(session, 'event', `Init: model=${event.model}, tools=${(event.tools || []).length}, session=${event.session_id?.slice(0, 8)}`);
 
     // Check for auth errors in the init event
@@ -868,11 +962,13 @@ function handleStreamEvent(session, event, textAcc) {
             const text = parts.join('\n');
             if (text) {
               session.lastSentText = text;
+              session.lastQuickReplies = quickReplies.length > 0 ? quickReplies : null;
               session.waitingForUser = true;
+              saveSessionState(session);
               session.ws.send(JSON.stringify({
                 type: 'question',
                 text,
-                quickReplies: quickReplies.length > 0 ? quickReplies : null,
+                quickReplies: session.lastQuickReplies,
               }));
             }
           }
@@ -896,6 +992,7 @@ function handleStreamEvent(session, event, textAcc) {
   if (type === 'result') {
     if (event.session_id) {
       session.claudeSessionId = event.session_id;
+      saveSessionState(session);
     }
     debugLog(session, 'event', `Result: turns=${event.num_turns}, cost=$${event.total_cost_usd}, duration=${event.duration_ms}ms`);
 
@@ -1091,6 +1188,7 @@ function processAssistantText(session, text) {
   if (!skipPhaseDetection) for (const { pattern, phase, label } of phasePatterns) {
     if (pattern.test(text) && session.phase !== phase) {
       session.phase = phase;
+      saveSessionState(session);
       session.ws.send(JSON.stringify({ type: 'phase-change', phase, message: label }));
       break;
     }
@@ -1100,6 +1198,7 @@ function processAssistantText(session, text) {
   const urlMatch = text.match(/https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})/);
   if (urlMatch && !SKIP_PORTS.has(parseInt(urlMatch[1], 10))) {
     session.detectedAppPort = parseInt(urlMatch[1], 10);
+    saveSessionState(session);
   }
 
   // Question detection: look for a question at the end of the text
@@ -1109,7 +1208,10 @@ function processAssistantText(session, text) {
   if (/\?\s*$/.test(lastLine)) {
     const quickReplies = extractQuickReplies(text, lastLine);
 
+    session.lastSentText = text;
+    session.lastQuickReplies = quickReplies;
     session.waitingForUser = true;
+    saveSessionState(session);
     session.ws.send(JSON.stringify({
       type: 'question',
       text: text,
@@ -1545,11 +1647,13 @@ function listProjects(res) {
         const dir = path.join(PROJECTS_DIR, e.name);
         const hasState = fs.existsSync(path.join(dir, '.make-it-state.md'));
         const hasContext = fs.existsSync(path.join(dir, '.make-it', 'app-context.json'));
+        const sessionData = loadSessionState(dir);
         return {
           name: e.name,
           hasState,
           hasContext,
           builtWithMakeIt: hasState || hasContext,
+          activeSession: sessionData ? { phase: sessionData.phase } : null,
         };
       })
       .sort((a, b) => b.builtWithMakeIt - a.builtWithMakeIt);

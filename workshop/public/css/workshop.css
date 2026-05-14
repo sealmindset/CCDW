@@ -471,6 +471,17 @@ body {
   position: relative;
 }
 
+.project-card-badge.active-session {
+  background: rgba(251, 191, 36, 0.15);
+  color: #f59e0b;
+  animation: pulse-badge 2s ease-in-out infinite;
+}
+
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 .project-card-actions {
   display: flex;
   gap: var(--space-xs);

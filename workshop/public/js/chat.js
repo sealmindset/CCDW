@@ -337,6 +337,46 @@ class ChatController {
   }
 
   /**
+   * Serialize chat messages for persistence.
+   * Returns [{ role: 'ai'|'user', text }] -- skips typing, status, errors.
+   */
+  getMessages() {
+    const messages = [];
+    for (const el of this.messagesEl.children) {
+      if (!el.classList.contains('message')) continue;
+      if (el.classList.contains('typing') || el.classList.contains('error') || el.classList.contains('tip-rotation')) continue;
+      const bubble = el.querySelector('.message-bubble');
+      if (!bubble) continue;
+      const role = el.classList.contains('user') ? 'user' : 'ai';
+      const text = role === 'ai' ? bubble.innerHTML : bubble.textContent;
+      if (text) messages.push({ role, text });
+    }
+    return messages;
+  }
+
+  /**
+   * Restore chat messages from a serialized array.
+   * Used for session recovery after browser refresh.
+   */
+  restoreMessages(messages) {
+    this.clear();
+    for (const m of messages) {
+      const msg = document.createElement('div');
+      msg.className = `message ${m.role}`;
+      const bubble = document.createElement('div');
+      bubble.className = 'message-bubble';
+      if (m.role === 'ai') {
+        bubble.innerHTML = m.text;
+      } else {
+        bubble.textContent = m.text;
+      }
+      msg.appendChild(bubble);
+      this.messagesEl.appendChild(msg);
+    }
+    this.scrollToBottom();
+  }
+
+  /**
    * Clear all messages.
    */
   clear() {

@@ -7,6 +7,9 @@ test-results/
 # Environment
 .env
 
+# Workshop session state (ephemeral, per-project)
+.workshop-session.json
+
 # OS
 .DS_Store
 Thumbs.db
