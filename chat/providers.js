@@ -102,7 +102,10 @@ function buildRequest(body) {
     throw new Error('Bedrock direct API not supported yet. Use Azure AI Foundry or Anthropic API.');
   }
 
-  const url = new URL('/v1/messages', baseUrl);
+  const fullUrl = baseUrl.replace(/\/+$/, '') + '/v1/messages';
+  const url = new URL(fullUrl);
+  const jsonBody = JSON.stringify(body);
+  headers['content-length'] = Buffer.byteLength(jsonBody).toString();
 
   return {
     hostname: url.hostname,
@@ -111,7 +114,7 @@ function buildRequest(body) {
     method: 'POST',
     headers,
     protocol: url.protocol,
-    body: JSON.stringify(body),
+    body: jsonBody,
   };
 }
 
