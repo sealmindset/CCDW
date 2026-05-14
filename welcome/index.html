@@ -839,6 +839,8 @@
                     if (data.github === 'ok') {
                         ghDot.className = 'status-dot green';
                         ghStatus.textContent = data.github_user || 'Authenticated';
+                        var authBanner = document.getElementById('authNotify');
+                        if (authBanner) { authBanner.style.display = 'none'; authBannerVisible = false; }
                     } else {
                         ghDot.className = 'status-dot red';
                         ghStatus.textContent = 'Not connected';
