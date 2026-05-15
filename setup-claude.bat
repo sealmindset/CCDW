@@ -447,16 +447,12 @@ if exist "%ProgramFiles%\Rancher Desktop\resources\resources\win32\bin\docker.ex
 if "!DOCKER_FOUND!"=="1" goto :docker_found
 REM Only fall back to generic docker if it's NOT Docker Desktop's
 where docker >nul 2>nul
-if !ERRORLEVEL! equ 0 (
-    for /f "delims=" %%P in ('where docker 2^>nul') do (
-        echo "%%P" | find /i "Docker Desktop" >nul 2>nul
-        if !ERRORLEVEL! neq 0 (
-            echo "%%P" | find /i "\Docker\" >nul 2>nul
-            if !ERRORLEVEL! neq 0 (
-                set "DOCKER_FOUND=1"
-            )
-        )
-    )
+if !ERRORLEVEL! neq 0 goto :docker_found
+for /f "delims=" %%P in ('where docker 2^>nul') do (
+    set "_SKIP=0"
+    echo "%%P" | find /i "Docker Desktop" >nul 2>nul && set "_SKIP=1"
+    echo "%%P" | find /i "\Docker\" >nul 2>nul && set "_SKIP=1"
+    if "!_SKIP!"=="0" set "DOCKER_FOUND=1"
 )
 :docker_found
 
@@ -726,36 +722,11 @@ if not defined RD_EXE if exist "%ProgramFiles%\Rancher Desktop\Rancher Desktop.e
 )
 
 REM Check if Rancher was installed under a different user profile (e.g. SSMITH admin)
-if not defined RD_EXE (
-    for /d %%U in (C:\Users\*) do (
-        if exist "%%U\AppData\Local\Programs\Rancher Desktop\Rancher Desktop.exe" (
-            if /i not "%%U"=="%USERPROFILE%" (
-                echo.
-                echo ========================================
-                echo   Rancher Desktop installed under
-                echo   a different Windows account
-                echo ========================================
-                echo.
-                echo   Rancher Desktop was installed under %%~nxU
-                echo   but you're logged in as %USERNAME%.
-                echo.
-                echo   Rancher Desktop needs to be installed for YOUR account.
-                echo   It does NOT need admin rights to install.
-                echo.
-                echo   I'll open the download page -- install it again:
-                echo     1. Click the Windows download button
-                echo     2. Run the installer
-                echo     3. Choose "Install for me only" if asked
-                echo     4. Restart your computer
-                echo     5. Then double-click this file again
-                echo.
-                start "" "https://rancherdesktop.io/"
-                pause
-                exit /b 1
-            )
-        )
-    )
+if defined RD_EXE goto :skip_other_user_rd_check
+for /d %%U in (C:\Users\*) do (
+    if exist "%%U\AppData\Local\Programs\Rancher Desktop\Rancher Desktop.exe" if /i not "%%U"=="%USERPROFILE%" call :notify_rd_other_user "%%U"
 )
+:skip_other_user_rd_check
 
 if defined RD_EXE (
     echo [...]  Starting Rancher Desktop...
@@ -941,6 +912,34 @@ echo.
 cd /d "!INSTALL_DIR!"
 call "!INSTALL_DIR!\install.bat" --ai=foundry
 goto :eof
+
+REM ---------------------------------------------------------------------------
+REM Subroutine: Notify user that Rancher Desktop is under another account
+REM Called from the for /d scan loop -- keeps parens out of the loop body.
+REM ---------------------------------------------------------------------------
+:notify_rd_other_user
+echo.
+echo ========================================
+echo   Rancher Desktop installed under
+echo   a different Windows account
+echo ========================================
+echo.
+echo   Rancher Desktop was installed under %~nx1
+echo   but you're logged in as %USERNAME%.
+echo.
+echo   Rancher Desktop needs to be installed for YOUR account.
+echo   It does NOT need admin rights to install.
+echo.
+echo   I'll open the download page -- install it again:
+echo     1. Click the Windows download button
+echo     2. Run the installer
+echo     3. Choose "Install for me only" if asked
+echo     4. Restart your computer
+echo     5. Then double-click this file again
+echo.
+start "" "https://rancherdesktop.io/"
+pause
+exit /b 1
 
 REM ---------------------------------------------------------------------------
 REM Subroutine: Schedule this script to auto-run after reboot

@@ -157,11 +157,11 @@ echo [...]  Rancher Desktop is not running. Starting it...
 set "RD_EXE="
 if exist "%LOCALAPPDATA%\Programs\Rancher Desktop\Rancher Desktop.exe" set "RD_EXE=%LOCALAPPDATA%\Programs\Rancher Desktop\Rancher Desktop.exe"
 if not defined RD_EXE if exist "%ProgramFiles%\Rancher Desktop\Rancher Desktop.exe" set "RD_EXE=%ProgramFiles%\Rancher Desktop\Rancher Desktop.exe"
-if not defined RD_EXE (
-    for /d %%D in (C:\Users\*) do (
-        if not defined RD_EXE if exist "%%D\AppData\Local\Programs\Rancher Desktop\Rancher Desktop.exe" set "RD_EXE=%%D\AppData\Local\Programs\Rancher Desktop\Rancher Desktop.exe"
-    )
+if defined RD_EXE goto :skip_rd_user_scan
+for /d %%D in (C:\Users\*) do (
+    if not defined RD_EXE if exist "%%D\AppData\Local\Programs\Rancher Desktop\Rancher Desktop.exe" set "RD_EXE=%%D\AppData\Local\Programs\Rancher Desktop\Rancher Desktop.exe"
 )
+:skip_rd_user_scan
 
 if defined RD_EXE (
     REM Detect first-run: no rancher-desktop distro registered in WSL yet
@@ -298,11 +298,9 @@ for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass
 
 REM --- 1h. Scan other user profiles for Rancher Desktop ---
 for /d %%D in (C:\Users\*) do (
-    if exist "%%D\.rd\bin\docker.exe" (
-        if /i "%%D" neq "%USERPROFILE%" (
-            set "FOUND_OTHER_USER=%%~nxD"
-            set "FOUND_OTHER_PATH=%%D\.rd\bin"
-        )
+    if exist "%%D\.rd\bin\docker.exe" if /i "%%D" neq "%USERPROFILE%" (
+        set "FOUND_OTHER_USER=%%~nxD"
+        set "FOUND_OTHER_PATH=%%D\.rd\bin"
     )
 )
 
@@ -919,20 +917,18 @@ REM ---------------------------------------------------------------------------
 REM Extra drive mounts (from EXTRA_MOUNTS in .env)
 REM ---------------------------------------------------------------------------
 set "EXTRA_VOL_ARGS="
-if exist "!ENV_FILE!" (
-    for /f "tokens=1,* delims==" %%a in ('findstr /b "EXTRA_MOUNTS=" "!ENV_FILE!" 2^>nul') do (
-        set "EXTRA_MOUNTS_RAW=%%b"
-    )
-    if defined EXTRA_MOUNTS_RAW (
-        for %%p in ("!EXTRA_MOUNTS_RAW:|=" "!") do (
-            if exist "%%~p\" (
-                for %%n in ("%%~p") do set "DRIVE_NAME=%%~nxn"
-                set "EXTRA_VOL_ARGS=!EXTRA_VOL_ARGS! -v "%%~p:/home/coder/Drives/!DRIVE_NAME!""
-                echo [OK] Extra mount: !DRIVE_NAME!
-            )
-        )
+set "EXTRA_MOUNTS_RAW="
+if not exist "!ENV_FILE!" goto :skip_extra_mounts
+for /f "tokens=1,* delims==" %%a in ('findstr /b "EXTRA_MOUNTS=" "!ENV_FILE!" 2^>nul') do set "EXTRA_MOUNTS_RAW=%%b"
+if not defined EXTRA_MOUNTS_RAW goto :skip_extra_mounts
+for %%p in ("!EXTRA_MOUNTS_RAW:|=" "!") do (
+    if exist "%%~p\" (
+        for %%n in ("%%~p") do set "DRIVE_NAME=%%~nxn"
+        set "EXTRA_VOL_ARGS=!EXTRA_VOL_ARGS! -v "%%~p:/home/coder/Drives/!DRIVE_NAME!""
+        echo [OK] Extra mount: !DRIVE_NAME!
     )
 )
+:skip_extra_mounts
 
 REM ---------------------------------------------------------------------------
 REM Stop existing container if running
