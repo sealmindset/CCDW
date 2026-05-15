@@ -175,9 +175,7 @@ if defined RD_EXE (
         set "RD_SETTINGS_DIR=%APPDATA%\rancher-desktop"
         if not exist "!RD_SETTINGS_DIR!" mkdir "!RD_SETTINGS_DIR!"
         if not exist "!RD_SETTINGS_DIR!\settings.json" (
-            powershell -NoProfile -Command ^
-                "$s = @{ version = 10; containerEngine = @{ name = 'moby' }; kubernetes = @{ enabled = $false } }; " ^
-                "$s | ConvertTo-Json -Depth 5 | Set-Content '!RD_SETTINGS_DIR!\settings.json' -Encoding UTF8"
+            powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\configure-rancher-settings.ps1" "!RD_SETTINGS_DIR!\settings.json"
         )
     )
 
@@ -212,29 +210,13 @@ REM Skip port check if our container is already running (reinstall scenario)
 docker inspect claude-code >nul 2>nul
 if !ERRORLEVEL! equ 0 goto :ports_ok
 
-powershell -NoProfile -Command ^
-    "$conflicts = @(); " ^
-    "foreach ($p in @(3000,7681,7682,8080,9200)) { " ^
-    "  $r = netstat -ano 2>$null | Select-String \":$p\s.*LISTENING\"; " ^
-    "  if ($r) { $conflicts += $p } " ^
-    "} " ^
-    "if ($conflicts.Count -gt 0) { " ^
-    "  foreach ($p in $conflicts) { Write-Host \"[WARN] Port $p is already in use.\" -ForegroundColor Yellow } " ^
-    "  exit 1 " ^
-    "} else { exit 0 }"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\check-ports.ps1"
 if !ERRORLEVEL! neq 0 (
     set "PORT_CONFLICT=1"
     echo.
     echo   Another program is using a port that Claude Code needs:
     echo.
-    powershell -NoProfile -Command ^
-        "foreach ($p in @(3000,7681,7682,8080,9200)) { " ^
-        "  try { " ^
-        "    $conn = Get-NetTCPConnection -LocalPort $p -State Listen -EA Stop; " ^
-        "    $proc = Get-Process -Id $conn[0].OwningProcess -EA Stop; " ^
-        "    Write-Host ('   Port ' + $p + ' is used by: ' + $proc.ProcessName) -ForegroundColor Yellow " ^
-        "  } catch { } " ^
-        "}"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\check-ports.ps1" -Detail
     echo.
     echo   Close those programs, then run this installer again.
     echo.
@@ -671,43 +653,7 @@ echo ========================================
 echo   Checking Your Setup
 echo ========================================
 echo.
-powershell -NoProfile -Command ^
-    "$cfg = Get-Content '!CONFIG_FILE!' | ConvertFrom-Json; " ^
-    "$prereqs = $cfg.prereqs.host; " ^
-    "if (-not $prereqs) { exit 0 } " ^
-    "$failCount = 0; " ^
-    "foreach ($p in $prereqs) { " ^
-    "  $label = $p.label; " ^
-    "  $check = $p.check; " ^
-    "  $required = [bool]$p.required; " ^
-    "  $failMsg = $p.fail_message; " ^
-    "  if ($check -eq 'manual') { " ^
-    "    Write-Host ('  ? ' + $label + ' (verify manually)') -ForegroundColor Yellow; " ^
-    "    if ($failMsg) { Write-Host ('    ' + $failMsg) -ForegroundColor Yellow } " ^
-    "    continue " ^
-    "  } " ^
-    "  if ($check -eq 'info') { " ^
-    "    Write-Host ('  i ' + $label) -ForegroundColor Cyan; " ^
-    "    if ($failMsg) { Write-Host ('    ' + $failMsg) -ForegroundColor DarkGray } " ^
-    "    continue " ^
-    "  } " ^
-    "  try { " ^
-    "    $result = cmd /c $check 2>&1; " ^
-    "    $expect = $p.expect; " ^
-    "    if ($LASTEXITCODE -eq 0 -and (-not $expect -or ($result -join ' ') -match $expect)) { " ^
-    "      Write-Host ('  OK ' + $label) -ForegroundColor Green " ^
-    "    } else { " ^
-    "      Write-Host ('  X  ' + $label) -ForegroundColor Red; " ^
-    "      if ($failMsg) { Write-Host ('    ' + $failMsg) -ForegroundColor Yellow } " ^
-    "      if ($required) { $failCount++ } " ^
-    "    } " ^
-    "  } catch { " ^
-    "    Write-Host ('  X  ' + $label) -ForegroundColor Red; " ^
-    "    if ($failMsg) { Write-Host ('    ' + $failMsg) -ForegroundColor Yellow } " ^
-    "    if ($required) { $failCount++ } " ^
-    "  } " ^
-    "} " ^
-    "if ($failCount -gt 0) { exit 1 } else { exit 0 }"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-preflight.ps1" "!CONFIG_FILE!"
 if !ERRORLEVEL! neq 0 (
     echo.
     echo ========================================
@@ -729,40 +675,16 @@ REM ---------------------------------------------------------------------------
 REM Prompt for missing values per provider (matches install.command behavior)
 REM ---------------------------------------------------------------------------
 if "!AI_PROVIDER!"=="foundry" (
-    powershell -NoProfile -Command ^
-        "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
-        "if (-not $cfg.endpoint) { " ^
-        "  $ep = Read-Host '  Foundry endpoint URL'; " ^
-        "  if ($ep) { $cfg.endpoint = $ep; $cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'; Write-Host '  [OK] Endpoint saved' } " ^
-        "}"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\prompt-foundry-endpoint.ps1" "!CONFIG_FILE!"
     call :foundry_key_setup
 )
 
 if "!AI_PROVIDER!"=="bedrock" (
-    powershell -NoProfile -Command ^
-        "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
-        "if (-not $cfg.sso_start_url) { " ^
-        "  $sso = Read-Host '  AWS SSO Start URL (https://d-xxx.awsapps.com/start)'; " ^
-        "  $acct = Read-Host '  AWS Account ID'; " ^
-        "  $role = Read-Host '  SSO Role Name'; " ^
-        "  $rgn = Read-Host '  Bedrock Region [us-east-1]'; " ^
-        "  if (-not $rgn) { $rgn = 'us-east-1' } " ^
-        "  $cfg.sso_start_url = $sso; $cfg.account_id = $acct; $cfg.role_name = $role; " ^
-        "  $cfg.region = $rgn; $cfg.sso_region = $rgn; " ^
-        "  $cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'; " ^
-        "  Write-Host '  [OK] Bedrock SSO config saved' " ^
-        "} " ^
-        "Write-Host '  Note: AWS SSO sign-in will happen after the container starts.' -ForegroundColor Cyan"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\prompt-bedrock-config.ps1" "!CONFIG_FILE!"
 )
 
 if "!AI_PROVIDER!"=="anthropic" (
-    powershell -NoProfile -Command ^
-        "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
-        "if (-not $cfg.api_key) { " ^
-        "  $key = Read-Host '  Anthropic API key (sk-ant-...)' -AsSecureString; " ^
-        "  $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($key)); " ^
-        "  if ($plain) { $cfg.api_key = $plain; $cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'; Write-Host '  [OK] API key saved' } " ^
-        "}"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\prompt-anthropic-key.ps1" "!CONFIG_FILE!"
 )
 
 REM ---------------------------------------------------------------------------
@@ -771,105 +693,11 @@ REM ---------------------------------------------------------------------------
 echo.
 echo [...]  Configuring AI provider from config\!AI_PROVIDER!.json...
 
-REM Use PowerShell to read config JSON, resolve templates, and write .env
-powershell -NoProfile -Command ^
-    "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
-    "$envPath = '!ENV_FILE!'; " ^
-    "" ^
-    "function Resolve-Template($val, $cfg) { " ^
-    "  if (-not $val) { return '' } " ^
-    "  [regex]::Replace([string]$val, '\{([^}]+)\}', { " ^
-    "    param($m) " ^
-    "    $keys = $m.Groups[1].Value -split '\.' ; " ^
-    "    $v = $cfg; " ^
-    "    foreach ($k in $keys) { " ^
-    "      if ($v.PSObject.Properties[$k]) { $v = $v.$k } else { return '' } " ^
-    "    }; " ^
-    "    return [string]$v " ^
-    "  }) " ^
-    "} " ^
-    "" ^
-    "$lines = @(); " ^
-    "if (Test-Path $envPath) { $lines = Get-Content $envPath } " ^
-    "" ^
-    "$commentKeys = @('ANTHROPIC_API_KEY','CLAUDE_CODE_USE_FOUNDRY','ANTHROPIC_FOUNDRY_BASE_URL'," ^
-    "  'ANTHROPIC_FOUNDRY_API_KEY','CLAUDE_CODE_USE_BEDROCK','AWS_PROFILE','AWS_REGION'," ^
-    "  'ANTHROPIC_MODEL','ANTHROPIC_DEFAULT_SONNET_MODEL','ANTHROPIC_DEFAULT_HAIKU_MODEL'," ^
-    "  'ANTHROPIC_DEFAULT_OPUS_MODEL','DISABLE_PROMPT_CACHING'); " ^
-    "" ^
-    "for ($i = 0; $i -lt $lines.Count; $i++) { " ^
-    "  $t = $lines[$i].Trim(); " ^
-    "  if ($t -and -not $t.StartsWith('#')) { " ^
-    "    $eq = $t.IndexOf('='); " ^
-    "    if ($eq -gt 0) { " ^
-    "      $k = $t.Substring(0, $eq).Trim(); " ^
-    "      if ($commentKeys -contains $k) { $lines[$i] = '# ' + $lines[$i] } " ^
-    "    } " ^
-    "  } " ^
-    "} " ^
-    "" ^
-    "$allVars = @{}; " ^
-    "if ($cfg.env_vars) { " ^
-    "  $cfg.env_vars.PSObject.Properties | ForEach-Object { $allVars[$_.Name] = $_.Value } " ^
-    "} " ^
-    "if ($cfg.env_vars_optional) { " ^
-    "  $cfg.env_vars_optional.PSObject.Properties | ForEach-Object { $allVars[$_.Name] = $_.Value } " ^
-    "} " ^
-    "" ^
-    "foreach ($entry in $allVars.GetEnumerator()) { " ^
-    "  $key = $entry.Key; " ^
-    "  $val = Resolve-Template $entry.Value $cfg; " ^
-    "  if (-not $val -and $cfg.env_vars_optional -and $cfg.env_vars_optional.PSObject.Properties[$key]) { continue } " ^
-    "  $found = $false; " ^
-    "  for ($i = 0; $i -lt $lines.Count; $i++) { " ^
-    "    $raw = $lines[$i] -replace '^#+\s*',''; " ^
-    "    $eq = $raw.IndexOf('='); " ^
-    "    if ($eq -gt 0 -and $raw.Substring(0,$eq).Trim() -eq $key) { " ^
-    "      $lines[$i] = $key + '=' + $val; " ^
-    "      $found = $true; break " ^
-    "    } " ^
-    "  } " ^
-    "  if (-not $found) { $lines += ($key + '=' + $val) } " ^
-    "} " ^
-    "" ^
-    "$lines -join \"`r`n\" | Set-Content $envPath -NoNewline; " ^
-    "Write-Host ('[OK] ' + $cfg.display_name + ' configured in .env')"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\configure-env.ps1" "!CONFIG_FILE!" "!ENV_FILE!"
 
 REM For Bedrock, also write AWS config
 if "!AI_PROVIDER!"=="bedrock" (
-    powershell -NoProfile -Command ^
-        "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
-        "if (-not $cfg.sso_start_url -or -not $cfg.account_id -or -not $cfg.role_name) { " ^
-        "  Write-Host '[INFO] Bedrock SSO not fully configured -- edit config\bedrock.json'; exit 0 " ^
-        "} " ^
-        "$awsDir = Join-Path $env:USERPROFILE '.aws'; " ^
-        "if (-not (Test-Path $awsDir)) { New-Item $awsDir -ItemType Directory | Out-Null } " ^
-        "$cfgPath = Join-Path $awsDir 'config'; " ^
-        "$profile = if ($cfg.profile_name) { $cfg.profile_name } else { 'sso-bedrock' }; " ^
-        "$session = 'aws-sso'; " ^
-        "$existing = ''; if (Test-Path $cfgPath) { $existing = Get-Content $cfgPath -Raw } " ^
-        "$out = @(); $skip = $false; " ^
-        "foreach ($line in $existing -split '`n') { " ^
-        "  if ($line -match ('^\[(sso-session\s+' + [regex]::Escape($session) + '|profile\s+' + [regex]::Escape($profile) + ')\]')) { $skip = $true } " ^
-        "  elseif ($line -match '^\[') { $skip = $false } " ^
-        "  if (-not $skip) { $out += $line } " ^
-        "} " ^
-        "$ssoRegion = if ($cfg.sso_region) { $cfg.sso_region } else { 'us-east-1' }; " ^
-        "$region = if ($cfg.region) { $cfg.region } else { 'us-east-1' }; " ^
-        "$out += ''; " ^
-        "$out += \"[sso-session $session]\"; " ^
-        "$out += \"sso_start_url = $($cfg.sso_start_url)\"; " ^
-        "$out += \"sso_region = $ssoRegion\"; " ^
-        "$out += 'sso_registration_scopes = sso:account:access'; " ^
-        "$out += ''; " ^
-        "$out += \"[profile $profile]\"; " ^
-        "$out += \"sso_session = $session\"; " ^
-        "$out += \"sso_account_id = $($cfg.account_id)\"; " ^
-        "$out += \"sso_role_name = $($cfg.role_name)\"; " ^
-        "$out += \"region = $region\"; " ^
-        "$out += 'output = json'; " ^
-        "$out -join \"`n\" | Set-Content $cfgPath -NoNewline; " ^
-        "Write-Host \"[OK] AWS config written to $cfgPath\""
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\configure-bedrock-aws.ps1" "!CONFIG_FILE!"
 )
 
 goto :skip_foundry_key_subs
@@ -896,11 +724,7 @@ if not defined DECRYPTED_KEY (
     goto :foundry_key_manual
 )
 REM Save decrypted key to config JSON and .env
-powershell -NoProfile -Command ^
-    "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
-    "$cfg.api_key = '!DECRYPTED_KEY!'; " ^
-    "$cfg.auth_mode = 'apikey'; " ^
-    "$cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\save-config-key.ps1" "!CONFIG_FILE!" "!DECRYPTED_KEY!" "apikey"
 echo [OK] API key configured.
 exit /b
 
@@ -910,11 +734,7 @@ echo   Or enter the API key directly (press Enter to skip):
 set "MANUAL_KEY="
 set /p "MANUAL_KEY=  AI Foundry API key: "
 if defined MANUAL_KEY (
-    powershell -NoProfile -Command ^
-        "$cfg = Get-Content '!CONFIG_FILE!' -Raw | ConvertFrom-Json; " ^
-        "$cfg.api_key = '!MANUAL_KEY!'; " ^
-        "$cfg.auth_mode = 'apikey'; " ^
-        "$cfg | ConvertTo-Json -Depth 10 | Set-Content '!CONFIG_FILE!'"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\save-config-key.ps1" "!CONFIG_FILE!" "!MANUAL_KEY!" "apikey"
     echo [OK] API key saved.
 ) else (
     echo [OK] Using Azure SSO -- you will need to run az login inside the container.
@@ -1087,61 +907,13 @@ echo.
 echo [...]  Setting up desktop shortcut...
 
 REM Clean up unwanted desktop shortcuts (uses PowerShell to find real Desktop path)
-powershell -NoProfile -Command ^
-    "$desktop = [Environment]::GetFolderPath('Desktop'); " ^
-    "$pub = [Environment]::GetFolderPath('CommonDesktopDirectory'); " ^
-    "foreach ($d in @($desktop, $pub)) { " ^
-    "  foreach ($name in @('Rancher Desktop.lnk','Claude Code.url')) { " ^
-    "    $p = Join-Path $d $name; " ^
-    "    if (Test-Path $p) { Remove-Item $p -Force -EA SilentlyContinue } " ^
-    "  } " ^
-    "}"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\cleanup-shortcuts.ps1"
 
 REM Generate Claude icon (terracotta circle with white C)
-powershell -NoProfile -Command ^
-    "Add-Type -AssemblyName System.Drawing; " ^
-    "$sz = 64; " ^
-    "$bmp = New-Object System.Drawing.Bitmap $sz,$sz; " ^
-    "$g = [System.Drawing.Graphics]::FromImage($bmp); " ^
-    "$g.SmoothingMode = 'AntiAlias'; " ^
-    "$g.Clear([System.Drawing.Color]::Transparent); " ^
-    "$brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(217,119,87)); " ^
-    "$g.FillEllipse($brush, 2, 2, ($sz-4), ($sz-4)); " ^
-    "$white = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White); " ^
-    "$font = New-Object System.Drawing.Font('Segoe UI',28,[System.Drawing.FontStyle]::Bold); " ^
-    "$sf = New-Object System.Drawing.StringFormat; " ^
-    "$sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'; " ^
-    "$rect = New-Object System.Drawing.RectangleF(0,0,$sz,$sz); " ^
-    "$g.DrawString('C',$font,$white,$rect,$sf); " ^
-    "$g.Dispose(); " ^
-    "$ico = Join-Path '%~dp0' 'claude.ico'; " ^
-    "$ms = New-Object System.IO.MemoryStream; " ^
-    "$bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); " ^
-    "$png = $ms.ToArray(); $ms.Dispose(); $bmp.Dispose(); " ^
-    "$fs = [System.IO.File]::Create($ico); " ^
-    "$bw = New-Object System.IO.BinaryWriter($fs); " ^
-    "$bw.Write([Int16]0); $bw.Write([Int16]1); $bw.Write([Int16]1); " ^
-    "$bw.Write([byte]$sz); $bw.Write([byte]$sz); $bw.Write([byte]0); " ^
-    "$bw.Write([byte]0); $bw.Write([Int16]1); $bw.Write([Int16]32); " ^
-    "$bw.Write([int]$png.Length); $bw.Write([int]22); " ^
-    "$bw.Write($png); $bw.Close(); $fs.Close()"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\generate-icon.ps1" "%~dp0claude.ico"
 
 REM Create desktop shortcut with Claude icon (fall back to shell globe if .ico failed)
-powershell -NoProfile -Command ^
-    "$projDir = '%~dp0'.TrimEnd('\'); " ^
-    "$vbsPath = Join-Path $projDir 'launch-claude.vbs'; " ^
-    "$icoPath = Join-Path $projDir 'claude.ico'; " ^
-    "$desktop = [Environment]::GetFolderPath('Desktop'); " ^
-    "$lnkPath = Join-Path $desktop 'Claude.lnk'; " ^
-    "$ws = New-Object -ComObject WScript.Shell; " ^
-    "$lnk = $ws.CreateShortcut($lnkPath); " ^
-    "$lnk.TargetPath = $vbsPath; " ^
-    "$lnk.WorkingDirectory = $projDir; " ^
-    "$lnk.Description = 'Start Claude Code Docker and open in browser'; " ^
-    "if (Test-Path $icoPath) { $lnk.IconLocation = $icoPath + ',0' } " ^
-    "else { $lnk.IconLocation = 'shell32.dll,14' }; " ^
-    "$lnk.Save(); " ^
-    "Write-Host '[OK] Claude shortcut added to your desktop.' -ForegroundColor Green"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\create-shortcut.ps1" "%~dp0" "%~dp0claude.ico"
 
 REM ---------------------------------------------------------------------------
 REM Extra drive mounts (from EXTRA_MOUNTS in .env)
