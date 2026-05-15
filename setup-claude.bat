@@ -541,18 +541,7 @@ REM --- Strategy 2: Direct download from GitHub releases ---
 :try_direct_download
 echo [...]  Downloading Rancher Desktop installer...
 set "RD_INSTALLER=%TEMP%\RancherDesktopSetup.msi"
-powershell -NoProfile -Command ^
-    "$ProgressPreference = 'SilentlyContinue'; " ^
-    "try { " ^
-    "  $headers = @{}; " ^
-    "  $rel = Invoke-RestMethod 'https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest' -Headers $headers -TimeoutSec 20; " ^
-    "  $msi = $rel.assets | Where-Object { $_.name -like 'Rancher.Desktop.Setup*.msi' -and $_.name -notlike '*.sha512*' } | Select-Object -First 1; " ^
-    "  if (-not $msi) { Write-Host 'No MSI found in latest release'; exit 1 }; " ^
-    "  Write-Host ('   Downloading ' + $msi.name + ' (' + [math]::Round($msi.size/1MB,1) + ' MB)...'); " ^
-    "  Invoke-WebRequest $msi.browser_download_url -OutFile '%RD_INSTALLER%' -UseBasicParsing; " ^
-    "  if ((Get-Item '%RD_INSTALLER%').Length -lt 1MB) { Write-Host 'Download too small -- likely blocked'; exit 1 }; " ^
-    "  exit 0 " ^
-    "} catch { Write-Host ('Download failed: ' + $_.Exception.Message); exit 1 }"
+powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try{$headers=@{};$rel=Invoke-RestMethod 'https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest' -Headers $headers -TimeoutSec 20;$msi=$rel.assets|Where-Object{$_.name -like 'Rancher.Desktop.Setup*.msi' -and $_.name -notlike '*.sha512*'}|Select-Object -First 1;if(-not $msi){Write-Host 'No MSI found in latest release';exit 1};Write-Host('Downloading '+$msi.name+' ('+[math]::Round($msi.size/1MB,1)+' MB)...');Invoke-WebRequest $msi.browser_download_url -OutFile '%RD_INSTALLER%' -UseBasicParsing;if((Get-Item '%RD_INSTALLER%').Length -lt 1MB){Write-Host 'Download too small -- likely blocked';exit 1};exit 0}catch{Write-Host('Download failed: '+$_.Exception.Message);exit 1}"
 if !ERRORLEVEL! neq 0 goto :download_failed
 
 echo.
@@ -685,9 +674,7 @@ REM This prevents the first-run dialog from asking the user to choose an engine.
 set "RD_SETTINGS_DIR=%APPDATA%\rancher-desktop"
 if not exist "!RD_SETTINGS_DIR!" mkdir "!RD_SETTINGS_DIR!"
 if not exist "!RD_SETTINGS_DIR!\settings.json" (
-    powershell -NoProfile -Command ^
-        "$s = @{ version = 10; containerEngine = @{ name = 'moby' }; kubernetes = @{ enabled = $false } }; " ^
-        "$s | ConvertTo-Json -Depth 5 | Set-Content '%RD_SETTINGS_DIR%\settings.json' -Encoding UTF8"
+    powershell -NoProfile -Command "$s=@{version=10;containerEngine=@{name='moby'};kubernetes=@{enabled=$false}};$s|ConvertTo-Json -Depth 5|Set-Content '%RD_SETTINGS_DIR%\settings.json' -Encoding UTF8"
     echo [OK]  Pre-configured Rancher Desktop to use the correct engine.
 )
 
@@ -961,14 +948,7 @@ REM Uses HKCU\...\RunOnce -- no admin needed, runs once then deletes itself
 REM ---------------------------------------------------------------------------
 :schedule_resume
 set "SELF_PATH=%~f0"
-powershell -NoProfile -Command ^
-    "try { " ^
-    "  $path = '%SELF_PATH%'; " ^
-    "  $val = 'cmd.exe /c \"' + $path + '\"'; " ^
-    "  New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce' " ^
-    "    -Name 'ClaudeCodeSetup' -Value $val -PropertyType String -Force | Out-Null; " ^
-    "  exit 0 " ^
-    "} catch { exit 1 }"
+powershell -NoProfile -Command "try{$path='%SELF_PATH%';$val='cmd.exe /c \"'+$path+'\"';New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Name 'ClaudeCodeSetup' -Value $val -PropertyType String -Force|Out-Null;exit 0}catch{exit 1}"
 if !ERRORLEVEL! equ 0 (
     echo [OK]  Setup will resume automatically after restart.
 ) else (
