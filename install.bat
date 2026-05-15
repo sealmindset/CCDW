@@ -199,7 +199,7 @@ if defined RD_EXE (
 REM --- Check: Disk space (need at least 5 GB for image build) ---
 for /f "tokens=3" %%S in ('dir /-C "%~dp0." 2^>nul ^| findstr /c:"bytes free"') do set "FREE_BYTES=%%S"
 if defined FREE_BYTES (
-    powershell -NoProfile -Command "if ([long]'!FREE_BYTES!' -lt 5368709120) { Write-Host '[WARN] Less than 5 GB free disk space. Docker build may fail.' -ForegroundColor Yellow } else { Write-Host '[OK] Disk space is sufficient.' -ForegroundColor Green }"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\check-disk-space.ps1" "!FREE_BYTES!"
 ) else (
     echo [OK] Disk space check skipped.
 )
@@ -289,7 +289,7 @@ if exist "%LOCALAPPDATA%\Programs\Rancher Desktop\resources\resources\win32\bin\
 
 REM --- 1g. Search Windows registry for Rancher Desktop install path ---
 echo [...]  Searching for Docker...
-for /f "delims=" %%P in ('powershell -NoProfile -Command "foreach ($loc in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*')) { foreach ($x in (Get-ItemProperty $loc -EA 0)) { if ($x.DisplayName -like '*Rancher Desktop*' -and $x.InstallLocation) { $d = Join-Path $x.InstallLocation 'resources\resources\win32\bin\docker.exe'; if (Test-Path $d) { $d; exit } } } }" 2^>nul') do (
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\find-rancher-registry.ps1" 2^>nul`) do (
     set "DOCKER_CMD=%%P"
     set "DOCKER_SOURCE=Rancher Desktop - registry"
     for %%F in ("%%~dpP.") do set "PATH=%%~fF;!PATH!"
@@ -326,10 +326,10 @@ exit /b
 REM --- 1j. Docker pipe exists but no docker.exe ---
 :check_pipe_hint
 set "PIPE_HINT=0"
-powershell -NoProfile -Command "if (Test-Path \\.\pipe\docker_engine) { exit 0 } else { exit 1 }" >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\test-pipe.ps1" "\\.\pipe\docker_engine" >nul 2>nul
 if !ERRORLEVEL! equ 0 set "PIPE_HINT=1"
 if "!PIPE_HINT!"=="0" (
-    powershell -NoProfile -Command "if (Test-Path \\.\pipe\dockerDesktopLinuxEngine) { exit 0 } else { exit 1 }" >nul 2>nul
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\test-pipe.ps1" "\\.\pipe\dockerDesktopLinuxEngine" >nul 2>nul
     if !ERRORLEVEL! equ 0 set "PIPE_HINT=1"
 )
 
@@ -435,11 +435,11 @@ REM ---------------------------------------------------------------------------
 REM Step 2: Wait for the Docker engine to be ready
 REM ---------------------------------------------------------------------------
 set "PIPE_OK=0"
-powershell -NoProfile -Command "if (Test-Path \\.\pipe\docker_engine) { exit 0 } else { exit 1 }" >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\test-pipe.ps1" "\\.\pipe\docker_engine" >nul 2>nul
 if !ERRORLEVEL! equ 0 set "PIPE_OK=1"
 
 if "!PIPE_OK!"=="0" (
-    powershell -NoProfile -Command "if (Test-Path \\.\pipe\dockerDesktopLinuxEngine) { exit 0 } else { exit 1 }" >nul 2>nul
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\test-pipe.ps1" "\\.\pipe\dockerDesktopLinuxEngine" >nul 2>nul
     if !ERRORLEVEL! equ 0 set "PIPE_OK=1"
 )
 
