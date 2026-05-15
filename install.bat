@@ -608,7 +608,7 @@ if exist "!ENV_FILE!" (
 
 if "!HAS_PROVIDER!"=="1" if not defined AI_PROVIDER (
     echo [OK] AI provider already configured in .env
-    REM Check if Foundry provider is missing API key (causes auth failure inside container)
+    REM Check if Foundry provider is missing API key -- causes auth failure inside container
     set "NEEDS_FOUNDRY_KEY=0"
     findstr /i /b "ANTHROPIC_FOUNDRY_BASE_URL=" "!ENV_FILE!" >nul 2>nul && set "NEEDS_FOUNDRY_KEY=1"
     findstr /i /b "ANTHROPIC_FOUNDRY_API_KEY=" "!ENV_FILE!" >nul 2>nul && set "NEEDS_FOUNDRY_KEY=0"

@@ -314,7 +314,7 @@ echo.
 
 wsl --install --no-launch
 if !ERRORLEVEL! neq 0 (
-    REM wsl --install may fail but still succeed (Windows quirk).
+    REM wsl --install may fail but still succeed -- Windows quirk.
     REM Also try wsl --update as a fallback.
     echo [...]  Trying WSL update as fallback...
     wsl --update >nul 2>nul
@@ -722,26 +722,50 @@ if not defined RD_EXE if exist "%ProgramFiles%\Rancher Desktop\Rancher Desktop.e
 )
 
 REM Check if Rancher was installed under a different user profile (e.g. SSMITH admin)
+set "RD_OTHER_USER="
 if defined RD_EXE goto :skip_other_user_rd_check
 for /d %%U in (C:\Users\*) do (
-    if exist "%%U\AppData\Local\Programs\Rancher Desktop\Rancher Desktop.exe" if /i not "%%U"=="%USERPROFILE%" call :notify_rd_other_user "%%U"
+    if exist "%%U\AppData\Local\Programs\Rancher Desktop\Rancher Desktop.exe" if /i not "%%U"=="%USERPROFILE%" set "RD_OTHER_USER=%%~nxU"
 )
+if not defined RD_OTHER_USER goto :skip_other_user_rd_check
+echo.
+echo ========================================
+echo   Rancher Desktop installed under
+echo   a different Windows account
+echo ========================================
+echo.
+echo   Rancher Desktop was installed under !RD_OTHER_USER!
+echo   but you're logged in as %USERNAME%.
+echo.
+echo   Rancher Desktop needs to be installed for YOUR account.
+echo   It does NOT need admin rights to install.
+echo.
+echo   I'll open the download page -- install it again:
+echo     1. Click the Windows download button
+echo     2. Run the installer
+echo     3. Choose "Install for me only" if asked
+echo     4. Restart your computer
+echo     5. Then double-click this file again
+echo.
+start "" "https://rancherdesktop.io/"
+pause
+exit /b 1
 :skip_other_user_rd_check
 
-if defined RD_EXE (
-    echo [...]  Starting Rancher Desktop...
-    start "" "!RD_EXE!"
-    echo [WAIT] Waiting for Docker to start ^(this can take 30-60 seconds^)...
-    set "DOCKER_WAIT=0"
-    :docker_wait_loop
-    if !DOCKER_WAIT! GEQ 12 goto :docker_wait_done
-    timeout /t 5 /nobreak >nul
-    docker info >nul 2>nul
-    if !ERRORLEVEL! equ 0 goto :docker_running
-    set /a DOCKER_WAIT+=1
-    goto :docker_wait_loop
-    :docker_wait_done
-)
+if not defined RD_EXE goto :skip_rd_start
+echo [...]  Starting Rancher Desktop...
+start "" "!RD_EXE!"
+echo [WAIT] Waiting for Docker to start (this can take 30-60 seconds)...
+set "DOCKER_WAIT=0"
+:docker_wait_loop
+if !DOCKER_WAIT! GEQ 12 goto :docker_wait_done
+timeout /t 5 /nobreak >nul
+docker info >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :docker_running
+set /a DOCKER_WAIT+=1
+goto :docker_wait_loop
+:docker_wait_done
+:skip_rd_start
 
 echo.
 echo [WAIT] Docker is installed but not running yet.
@@ -912,34 +936,6 @@ echo.
 cd /d "!INSTALL_DIR!"
 call "!INSTALL_DIR!\install.bat" --ai=foundry
 goto :eof
-
-REM ---------------------------------------------------------------------------
-REM Subroutine: Notify user that Rancher Desktop is under another account
-REM Called from the for /d scan loop -- keeps parens out of the loop body.
-REM ---------------------------------------------------------------------------
-:notify_rd_other_user
-echo.
-echo ========================================
-echo   Rancher Desktop installed under
-echo   a different Windows account
-echo ========================================
-echo.
-echo   Rancher Desktop was installed under %~nx1
-echo   but you're logged in as %USERNAME%.
-echo.
-echo   Rancher Desktop needs to be installed for YOUR account.
-echo   It does NOT need admin rights to install.
-echo.
-echo   I'll open the download page -- install it again:
-echo     1. Click the Windows download button
-echo     2. Run the installer
-echo     3. Choose "Install for me only" if asked
-echo     4. Restart your computer
-echo     5. Then double-click this file again
-echo.
-start "" "https://rancherdesktop.io/"
-pause
-exit /b 1
 
 REM ---------------------------------------------------------------------------
 REM Subroutine: Schedule this script to auto-run after reboot
