@@ -257,11 +257,8 @@ if defined WIN_BUILD (
 
 REM --- Pre-flight: CPU virtualization check (VT-x / AMD-V) ---
 REM Advisory only -- some vPro/enterprise systems report false even when working.
-powershell -NoProfile -Command ^
-    "$p = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue; " ^
-    "if ($p.VirtualizationFirmwareEnabled -eq $true) { exit 0 } " ^
-    "elseif ($p.VirtualizationFirmwareEnabled -eq $false) { exit 1 } " ^
-    "else { exit 0 }" >nul 2>nul
+REM Single-line PowerShell to avoid cmd.exe misinterpreting parentheses in multi-line commands.
+powershell -NoProfile -Command "$p=Get-CimInstance Win32_Processor -EA SilentlyContinue; if($p.VirtualizationFirmwareEnabled -eq $true){exit 0}elseif($p.VirtualizationFirmwareEnabled -eq $false){exit 1}else{exit 0}" >nul 2>nul
 if !ERRORLEVEL! equ 1 (
     echo [NOTE] VT-x check could not confirm hardware virtualization is enabled.
     echo        This is normal on some corporate/vPro systems.
@@ -722,11 +719,8 @@ if !ERRORLEVEL! equ 0 goto :docker_running
 
 REM Docker not running -- check VT-x as a diagnostic hint (not a blocker).
 REM Some vPro/enterprise systems report VT-x as disabled even when working.
-powershell -NoProfile -Command ^
-    "$p = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue; " ^
-    "if ($p.VirtualizationFirmwareEnabled -eq $true) { exit 0 } " ^
-    "elseif ($p.VirtualizationFirmwareEnabled -eq $false) { exit 1 } " ^
-    "else { exit 0 }" >nul 2>nul
+REM Single-line PowerShell to avoid cmd.exe misinterpreting parentheses in multi-line commands.
+powershell -NoProfile -Command "$p=Get-CimInstance Win32_Processor -EA SilentlyContinue; if($p.VirtualizationFirmwareEnabled -eq $true){exit 0}elseif($p.VirtualizationFirmwareEnabled -eq $false){exit 1}else{exit 0}" >nul 2>nul
 if !ERRORLEVEL! equ 1 (
     echo.
     echo [NOTE] VT-x check could not confirm hardware virtualization.
