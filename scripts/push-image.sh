@@ -24,16 +24,35 @@ if ! curl -s --connect-timeout 5 "https://${ACR_HOST}/v2/" -o /dev/null -w '' 2>
 fi
 echo -e "${GREEN}[OK]${NC} ACR reachable."
 
-# --- Build ---
+# --- Build multi-platform ---
 if [[ "${1:-}" != "--skip-build" ]]; then
-    echo -e "${YELLOW}[...]${NC} Building image..."
-    docker build -t "$GHCR_IMAGE" "$REPO_ROOT"
-    echo -e "${GREEN}[OK]${NC} Build complete."
+    echo -e "${YELLOW}[...]${NC} Building multi-platform image (amd64 + arm64)..."
+    # Ensure buildx builder exists
+    docker buildx inspect multiarch >/dev/null 2>&1 || \
+        docker buildx create --name multiarch --use
+    docker buildx use multiarch
+    docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        -t "$GHCR_IMAGE" \
+        -t "$ACR_IMAGE" \
+        --push \
+        "$REPO_ROOT"
+    echo -e "${GREEN}[OK]${NC} Multi-platform build pushed to GHCR and ACR."
+    # Pull back for local use
+    docker pull "$GHCR_IMAGE"
+    echo -e "${GREEN}[OK]${NC} Local image updated."
+    echo ""
+    echo -e "${GREEN}[OK]${NC} Both registries updated:"
+    echo "  GHCR: $GHCR_IMAGE"
+    echo "  ACR:  $ACR_IMAGE"
+    echo ""
+    echo "Safe to re-enable Zscaler."
+    exit 0
 else
     echo -e "${GREEN}[OK]${NC} Skipping build (--skip-build)."
 fi
 
-# --- Tag for ACR ---
+# --- Tag for ACR (skip-build path only) ---
 docker tag "$GHCR_IMAGE" "$ACR_IMAGE"
 
 # --- Auth: ACR (refresh token if needed) ---
