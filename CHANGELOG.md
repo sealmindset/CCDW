@@ -10,6 +10,12 @@
 - Git identity passthrough: container inherits your name and email from host git config
   - Priority: GitHub API > host ~/.gitconfig > manual configuration
   - Host config mounted read-only; container can override without affecting host
+- macOS setup: system requirement checks (macOS version, disk space) before install begins
+- macOS setup: progress bar with elapsed time and phase descriptions for Rancher Desktop first-run
+  - Shows "Provisioning Docker engine" → "Starting services" → "Almost ready" with visual fill bar
+- ACR image pull: installer tries internal registry (dockyardgwprod) before GHCR
+  - 4-layer fallback: ACR → GHCR → cached image → local build
+  - Bypasses Zscaler/SSL inspection on corporate networks
 
 ### Changed
 - docker-compose.yml: added `extra_hosts` for host.docker.internal resolution

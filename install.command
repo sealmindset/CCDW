@@ -611,12 +611,17 @@ if [ -n "$REGISTRY_MIRROR" ]; then
     ACR_HOST="${REGISTRY_MIRROR%%/*}"
     ACR_NAME="${ACR_HOST%.azurecr.io}"
 
-    # Silently authenticate to ACR using existing Azure session
+    # Authenticate to ACR (needed for both base images and app image pull)
+    ACR_SUBSCRIPTION=$(grep -E "^ACR_SUBSCRIPTION=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-)
+    ACR_LOGGED_IN=0
     if command -v az &>/dev/null; then
-        if az acr login --name "$ACR_NAME" &>/dev/null; then
+        ACR_LOGIN_ARGS="--name $ACR_NAME"
+        [ -n "$ACR_SUBSCRIPTION" ] && ACR_LOGIN_ARGS="$ACR_LOGIN_ARGS --subscription $ACR_SUBSCRIPTION"
+        if az acr login $ACR_LOGIN_ARGS &>/dev/null; then
             echo -e "${GREEN}[OK]${NC} Image registry authenticated."
+            ACR_LOGGED_IN=1
         else
-            echo -e "${YELLOW}[WARN]${NC} Image registry not authenticated. Will use public Docker Hub instead."
+            echo -e "${YELLOW}[WARN]${NC} Image registry not authenticated. Will try public registries."
         fi
     fi
 fi
@@ -645,19 +650,50 @@ fi
 if [ "${IMAGE_LOADED:-0}" = "1" ]; then
     : # Already loaded from .tar
 else
-    printf "  Downloading"
-    docker pull ghcr.io/sealmindset/claude-code-docker:latest >"$PULL_LOG" 2>&1 &
-    PULL_PID=$!
-    while kill -0 "$PULL_PID" 2>/dev/null; do printf "."; sleep 3; done
-    wait "$PULL_PID" 2>/dev/null
-    PULL_EXIT=$?
-    echo ""
+    PULL_OK=0
 
-    if [ $PULL_EXIT -eq 0 ]; then
-        echo -e "${GREEN}[OK]${NC} Download complete."
-    elif docker image inspect ghcr.io/sealmindset/claude-code-docker:latest &>/dev/null; then
+    # Try 1: ACR pull (bypasses Zscaler — works on corporate network)
+    if [ -n "$REGISTRY_MIRROR" ]; then
+        ACR_IMAGE="${REGISTRY_MIRROR}claude-code-docker:latest"
+        printf "  Downloading from internal registry"
+        docker pull "$ACR_IMAGE" >"$PULL_LOG" 2>&1 &
+        PULL_PID=$!
+        while kill -0 "$PULL_PID" 2>/dev/null; do printf "."; sleep 3; done
+        wait "$PULL_PID" 2>/dev/null
+        PULL_EXIT=$?
+        echo ""
+        if [ $PULL_EXIT -eq 0 ]; then
+            docker tag "$ACR_IMAGE" ghcr.io/sealmindset/claude-code-docker:latest 2>/dev/null
+            echo -e "${GREEN}[OK]${NC} Download complete."
+            PULL_OK=1
+        else
+            echo -e "${YELLOW}[...]${NC} Internal registry unavailable, trying public..."
+        fi
+    fi
+
+    # Try 2: GHCR pull (direct, may be blocked by Zscaler)
+    if [ "$PULL_OK" = "0" ]; then
+        printf "  Downloading"
+        docker pull ghcr.io/sealmindset/claude-code-docker:latest >"$PULL_LOG" 2>&1 &
+        PULL_PID=$!
+        while kill -0 "$PULL_PID" 2>/dev/null; do printf "."; sleep 3; done
+        wait "$PULL_PID" 2>/dev/null
+        PULL_EXIT=$?
+        echo ""
+        if [ $PULL_EXIT -eq 0 ]; then
+            echo -e "${GREEN}[OK]${NC} Download complete."
+            PULL_OK=1
+        fi
+    fi
+
+    # Try 3: Cached image
+    if [ "$PULL_OK" = "0" ] && docker image inspect ghcr.io/sealmindset/claude-code-docker:latest &>/dev/null; then
         echo -e "${GREEN}[OK]${NC} Using previously downloaded version."
-    else
+        PULL_OK=1
+    fi
+
+    # Try 4: Local build (last resort)
+    if [ "$PULL_OK" = "0" ]; then
         printf "  Building locally"
         BUILD_ARGS=""
         [ -n "$REGISTRY_MIRROR" ] && BUILD_ARGS="--build-arg REGISTRY_MIRROR=${REGISTRY_MIRROR}"

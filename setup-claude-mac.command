@@ -127,7 +127,48 @@ if [ ${#SOCK_TEST} -gt 104 ] && [ ! -L "$LIMA_ORIGINAL" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 0c: Connectivity checks
+# Step 0c: System requirements
+# ---------------------------------------------------------------------------
+step_wait "Checking system requirements..."
+
+# macOS version check
+MACOS_VER=$(sw_vers -productVersion 2>/dev/null)
+MACOS_MAJOR=$(echo "$MACOS_VER" | cut -d. -f1)
+ARCH=$(uname -m)
+if [ "$ARCH" = "arm64" ] && [ "$MACOS_MAJOR" -lt 12 ] 2>/dev/null; then
+    step_fail "macOS 12 (Monterey) or later is required on Apple Silicon."
+    echo "  You have macOS $MACOS_VER. Please update in System Preferences > Software Update."
+    echo ""
+    read -p "Press Enter to close..."
+    exit 1
+elif [ "$ARCH" = "x86_64" ] && [ "$MACOS_MAJOR" -lt 10 ] 2>/dev/null; then
+    step_fail "macOS 10.15 (Catalina) or later is required."
+    echo "  You have macOS $MACOS_VER."
+    echo ""
+    read -p "Press Enter to close..."
+    exit 1
+fi
+step_ok "macOS $MACOS_VER ($ARCH)"
+
+# Disk space check (need ~8GB for Rancher Desktop VM + Docker images)
+AVAIL_GB=$(df -g "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
+if [ -n "$AVAIL_GB" ] && [ "$AVAIL_GB" -lt 8 ] 2>/dev/null; then
+    step_fail "Low disk space: ${AVAIL_GB}GB available, 8GB recommended."
+    echo ""
+    echo "  Claude Code needs about 8 GB of free space:"
+    echo "    - Rancher Desktop: ~5 GB (Docker engine + VM)"
+    echo "    - Claude Code image: ~2 GB"
+    echo "    - Working space: ~1 GB"
+    echo ""
+    echo "  Free up some space, then double-click this file again."
+    echo ""
+    read -p "Press Enter to close..."
+    exit 1
+fi
+step_ok "Disk space: ${AVAIL_GB}GB available"
+
+# ---------------------------------------------------------------------------
+# Step 0d: Connectivity checks
 # ---------------------------------------------------------------------------
 step_wait "Checking internet connection..."
 if curl -s --connect-timeout 5 -o /dev/null https://github.com 2>/dev/null; then
@@ -336,11 +377,17 @@ if ! docker info &>/dev/null 2>&1; then
 
         open -a "$RANCHER_APP"
 
-        step_wait "Waiting for Docker to start (this can take 30-60 seconds)..."
-        echo -e "  ${DIM}The Rancher Desktop icon in your menu bar will stop animating when ready.${NC}"
+        echo ""
+        echo -e "  ${DIM}First-time setup takes 2-3 minutes while Docker gets ready.${NC}"
+        echo -e "  ${DIM}Returning users: about 30 seconds.${NC}"
+        echo ""
 
         DOCKER_READY=0
-        for i in $(seq 1 24); do
+        WAIT_START=$(date +%s)
+        MAX_WAIT=300
+        BAR_WIDTH=30
+
+        for i in $(seq 1 60); do
             if docker info &>/dev/null 2>&1; then
                 DOCKER_READY=1
                 break
@@ -349,8 +396,38 @@ if ! docker info &>/dev/null 2>&1; then
             if ! command -v docker &>/dev/null && [ -f "$HOME/.rd/bin/docker" ]; then
                 export PATH="$HOME/.rd/bin:$PATH"
             fi
+
+            ELAPSED=$(( $(date +%s) - WAIT_START ))
+            MINS=$(( ELAPSED / 60 ))
+            SECS=$(( ELAPSED % 60 ))
+
+            # Phase description based on elapsed time
+            if [ $ELAPSED -lt 30 ]; then
+                PHASE="Provisioning Docker engine"
+            elif [ $ELAPSED -lt 90 ]; then
+                PHASE="Starting services        "
+            elif [ $ELAPSED -lt 180 ]; then
+                PHASE="Almost ready              "
+            else
+                PHASE="Still working (be patient)"
+            fi
+
+            # Progress bar (fills over MAX_WAIT seconds)
+            PCT=$(( ELAPSED * 100 / MAX_WAIT ))
+            [ $PCT -gt 95 ] && PCT=95
+            FILLED=$(( PCT * BAR_WIDTH / 100 ))
+            EMPTY=$(( BAR_WIDTH - FILLED ))
+            BAR=$(printf '%0.s█' $(seq 1 $FILLED 2>/dev/null) 2>/dev/null)
+            SPC=$(printf '%0.s░' $(seq 1 $EMPTY 2>/dev/null) 2>/dev/null)
+
+            printf "\r  ${YELLOW}%s${NC} ${DIM}[${NC}${GREEN}%s${NC}${DIM}%s${NC}${DIM}]${NC} ${DIM}%dm %02ds${NC}  " \
+                "$PHASE" "$BAR" "$SPC" "$MINS" "$SECS"
+
             sleep 5
         done
+
+        # Clear the progress line
+        printf "\r%-80s\r" ""
 
         if [ "$DOCKER_READY" = "0" ]; then
             echo ""
