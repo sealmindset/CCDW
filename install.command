@@ -384,12 +384,21 @@ echo -e "${GREEN}[OK]${NC} Docker is running."
 PROJECTS_DIR="$HOME/Documents"
 AZURE_DIR="$HOME/.azure"
 AWS_DIR="$HOME/.aws"
+KUBE_DIR="$HOME/.kube"
+HOST_GITCONFIG="$HOME/.gitconfig"
 
 [ ! -d "$PROJECTS_DIR" ] && mkdir -p "$PROJECTS_DIR"
 echo -e "${GREEN}[OK]${NC} Projects folder: $PROJECTS_DIR"
 
 mkdir -p "$AZURE_DIR"
 mkdir -p "$AWS_DIR"
+mkdir -p "$KUBE_DIR"
+
+# Build host-access args: host networking, kube config, and git identity
+HOST_ACCESS_ARGS=(--add-host host.docker.internal:host-gateway -v "$KUBE_DIR:/home/coder/.kube")
+if [ -f "$HOST_GITCONFIG" ]; then
+    HOST_ACCESS_ARGS+=(-v "$HOST_GITCONFIG:/home/coder/.host-gitconfig:ro")
+fi
 
 # ---------------------------------------------------------------------------
 # Create .env from template if it doesn't exist
@@ -731,6 +740,7 @@ if ! docker run -d \
     -v claude-code-continue:/home/coder/.continue \
     -v claude-code-npm:/home/coder/.npm \
     -v claude-code-bash-history:/home/coder/.shell-persist \
+    "${HOST_ACCESS_ARGS[@]}" \
     "${EXTRA_VOL_ARGS[@]}" \
     ghcr.io/sealmindset/claude-code-docker:latest >/tmp/claude-code-start.log 2>&1; then
 
@@ -777,6 +787,7 @@ if ! docker run -d \
                 -v claude-code-continue:/home/coder/.continue \
                 -v claude-code-npm:/home/coder/.npm \
                 -v claude-code-bash-history:/home/coder/.shell-persist \
+                "${HOST_ACCESS_ARGS[@]}" \
                 "${EXTRA_VOL_ARGS[@]}" \
                 ghcr.io/sealmindset/claude-code-docker:latest >/tmp/claude-code-start.log 2>&1; then
                 echo -e "${GREEN}[OK]${NC} Claude Code is running!"

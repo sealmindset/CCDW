@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.1] - 2026-05-19
+
+### Added
+- Host network access: apps inside the container can reach host services via `host.docker.internal`
+  - Databases, APIs, and other services running on your computer are now reachable
+  - Works on Docker Desktop (Mac/Windows) and Rancher Desktop
+- Kubernetes config mount: `~/.kube` mounted automatically for kubectl and /argo-it
+- Git identity passthrough: container inherits your name and email from host git config
+  - Priority: GitHub API > host ~/.gitconfig > manual configuration
+  - Host config mounted read-only; container can override without affecting host
+
+### Changed
+- docker-compose.yml: added `extra_hosts` for host.docker.internal resolution
+- Install scripts: all docker run commands now include host-access arguments
+- .env.example: documented host access features
+
 ## [0.6.0] - 2026-05-13
 
 ### Added

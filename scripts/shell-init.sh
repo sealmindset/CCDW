@@ -177,13 +177,16 @@ fi
 # Credential helper (written to main .gitconfig, recreated each start)
 git config --global credential.https://github.com.helper '!/opt/claude-code-docker/scripts/gh-credential-helper.sh' 2>/dev/null
 
-# Auto-configure git identity from GitHub if not already in persistent config
+# Auto-configure git identity if not already in persistent config
+# Priority: 1) GitHub API  2) Host ~/.gitconfig (mounted read-only)  3) manual
 if [ ! -f "$GITCONFIG_D/user.conf" ] || ! grep -q '\[user\]' "$GITCONFIG_D/user.conf" 2>/dev/null; then
+    GIT_ID_SET=false
+
+    # Try GitHub API first
     if gh auth status &>/dev/null; then
         GH_NAME=$(gh api user -q .name 2>/dev/null)
         GH_EMAIL=$(gh api user -q .email 2>/dev/null)
         GH_LOGIN=$(gh api user -q .login 2>/dev/null)
-        # Fall back to login@users.noreply.github.com if email is private
         [ -z "$GH_EMAIL" ] || [ "$GH_EMAIL" = "null" ] && GH_EMAIL="${GH_LOGIN}@users.noreply.github.com"
         [ -z "$GH_NAME" ] || [ "$GH_NAME" = "null" ] && GH_NAME="$GH_LOGIN"
         if [ -n "$GH_NAME" ] && [ -n "$GH_EMAIL" ]; then
@@ -193,6 +196,21 @@ if [ ! -f "$GITCONFIG_D/user.conf" ] || ! grep -q '\[user\]' "$GITCONFIG_D/user.
 	email = $GH_EMAIL
 GITEOF
             echo -e "  ${GREEN}✓${NC} Git identity: $GH_NAME <$GH_EMAIL>"
+            GIT_ID_SET=true
+        fi
+    fi
+
+    # Fall back to host gitconfig (mounted read-only at ~/.host-gitconfig)
+    if [ "$GIT_ID_SET" = "false" ] && [ -f /home/coder/.host-gitconfig ]; then
+        HOST_NAME=$(git config -f /home/coder/.host-gitconfig user.name 2>/dev/null)
+        HOST_EMAIL=$(git config -f /home/coder/.host-gitconfig user.email 2>/dev/null)
+        if [ -n "$HOST_NAME" ] && [ -n "$HOST_EMAIL" ]; then
+            cat > "$GITCONFIG_D/user.conf" <<GITEOF
+[user]
+	name = $HOST_NAME
+	email = $HOST_EMAIL
+GITEOF
+            echo -e "  ${GREEN}✓${NC} Git identity (from host): $HOST_NAME <$HOST_EMAIL>"
         fi
     fi
 fi

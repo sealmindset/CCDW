@@ -65,7 +65,7 @@
   - kubectl + Helm added to Docker image
 - [ ] End-to-end test: build app with /make-it, then /ship-it creates PR on GitHub
 - [ ] End-to-end test: build app with /make-it, then /argo-it generates K8s manifests + PR
-- [ ] Add kubeconfig mounting from host for /argo-it cluster access
+- [x] Add kubeconfig mounting from host for /argo-it cluster access
 
 ## Medium Priority
 - [x] Add VS Code extensions for common languages (Python, TypeScript, Go)
