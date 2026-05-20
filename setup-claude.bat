@@ -480,6 +480,24 @@ if "!DOCKER_FOUND!"=="1" (
     goto :docker_ok
 )
 
+REM --- Rancher Desktop installed but docker CLI not in PATH yet? ---
+REM This catches the case where Rancher is installed but has never been
+REM fully started, so .rd\bin\docker.exe does not exist yet.
+set "RD_INSTALLED=0"
+if exist "%LOCALAPPDATA%\Programs\Rancher Desktop\Rancher Desktop.exe" set "RD_INSTALLED=1"
+if exist "%ProgramFiles%\Rancher Desktop\Rancher Desktop.exe" set "RD_INSTALLED=1"
+REM Also detect if it's already running
+tasklist /fi "imagename eq Rancher Desktop.exe" 2>nul | findstr /i "Rancher" >nul 2>nul
+if !ERRORLEVEL! equ 0 set "RD_INSTALLED=1"
+tasklist /fi "imagename eq rdctl.exe" 2>nul | findstr /i "rdctl" >nul 2>nul
+if !ERRORLEVEL! equ 0 set "RD_INSTALLED=1"
+
+if "!RD_INSTALLED!"=="1" (
+    echo [OK]  Rancher Desktop is installed -- just needs to start.
+    >> "!STATE_FILE!" echo DOCKER=1
+    goto :docker_ok
+)
+
 echo.
 echo ========================================
 echo   Rancher Desktop needs to be installed
