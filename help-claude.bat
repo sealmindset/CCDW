@@ -166,6 +166,22 @@ wsl --status >> "!REPORT!" 2>&1
 echo. >> "!REPORT!"
 wsl -l -v >> "!REPORT!" 2>&1
 echo. >> "!REPORT!"
+(
+    echo === RANCHER WSL HEALTH CHECK ===
+) >> "!REPORT!"
+wsl -l 2>nul | findstr /i "rancher-desktop" >nul 2>nul
+if !ERRORLEVEL! neq 0 (
+    echo No Rancher Desktop WSL distributions found. >> "!REPORT!"
+) else (
+    wsl -d rancher-desktop -- echo ok >nul 2>nul
+    if !ERRORLEVEL! equ 0 (
+        echo rancher-desktop distro: HEALTHY >> "!REPORT!"
+    ) else (
+        echo rancher-desktop distro: CORRUPTED ^(exit code 4294967295^) >> "!REPORT!"
+        echo Recommended fix: run fix-rancher.bat >> "!REPORT!"
+    )
+)
+echo. >> "!REPORT!"
 
 REM ---------------------------------------------------------------------------
 REM Rancher Desktop info

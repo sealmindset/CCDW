@@ -362,6 +362,25 @@ echo [WARN] Continuing without confirmed WSL2. Rancher Desktop may fail to insta
 :wsl_ok
 
 REM ---------------------------------------------------------------------------
+REM Step 2b: Check Rancher Desktop WSL distribution health
+REM ---------------------------------------------------------------------------
+wsl -l 2>nul | findstr /i "rancher-desktop" >nul 2>nul
+if !ERRORLEVEL! neq 0 goto :wsl_distros_ok
+wsl -d rancher-desktop -- echo ok >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :wsl_distros_ok
+echo [%date% %time%] Rancher WSL distros corrupted -- auto-repairing >> "!SETUP_LOG!"
+echo [WARN] Rancher Desktop's internal system is corrupted. Repairing...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\fix-rancher-wsl.ps1" -Quiet
+if !ERRORLEVEL! equ 0 (
+    echo [OK]  Rancher Desktop repaired.
+    echo [%date% %time%] Rancher WSL repair successful >> "!SETUP_LOG!"
+) else (
+    echo [WARN] Auto-repair did not fully complete. Continuing...
+    echo [%date% %time%] Rancher WSL repair incomplete >> "!SETUP_LOG!"
+)
+:wsl_distros_ok
+
+REM ---------------------------------------------------------------------------
 REM Step 3: Check for Docker (Rancher Desktop)
 REM ---------------------------------------------------------------------------
 echo [%date% %time%] Step 3: Docker check >> "!SETUP_LOG!"

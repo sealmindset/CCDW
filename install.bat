@@ -135,6 +135,22 @@ if !ERRORLEVEL! equ 0 (
 )
 echo [OK] WSL2 is ready.
 
+REM --- Check: Rancher Desktop WSL distros are healthy (not corrupted) ---
+wsl -l 2>nul | findstr /i "rancher-desktop" >nul 2>nul
+if !ERRORLEVEL! neq 0 goto :wsl_distros_ok
+REM Distros exist -- test if they respond
+wsl -d rancher-desktop -- echo ok >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :wsl_distros_ok
+echo [WARN] Rancher Desktop WSL distributions are corrupted.
+echo        Repairing automatically...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\fix-rancher-wsl.ps1" -Quiet
+if !ERRORLEVEL! equ 0 (
+    echo [OK] Rancher Desktop repaired.
+) else (
+    echo [WARN] Auto-repair did not fully complete. Continuing anyway...
+)
+:wsl_distros_ok
+
 REM --- Check: Rancher Desktop or Docker Desktop is running (auto-start if not) ---
 tasklist /fi "imagename eq Rancher Desktop.exe" 2>nul | findstr /i "Rancher" >nul 2>nul
 if !ERRORLEVEL! equ 0 (
@@ -489,6 +505,28 @@ pause
 exit /b 1
 
 :engine_fail_generic
+REM --- Check if this is the WSL corruption issue before giving generic advice ---
+wsl -l 2>nul | findstr /i "rancher-desktop" >nul 2>nul
+if !ERRORLEVEL! neq 0 goto :engine_fail_no_wsl_fix
+wsl -d rancher-desktop -- echo ok >nul 2>nul
+if !ERRORLEVEL! equ 0 goto :engine_fail_no_wsl_fix
+echo   Rancher Desktop's internal system is corrupted.
+echo   This is a common issue -- fixing it now...
+echo.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\fix-rancher-wsl.ps1"
+if !ERRORLEVEL! equ 0 (
+    echo.
+    echo [OK] Repair complete. Retrying Docker engine check...
+    goto :engine_ok
+)
+echo.
+echo   Automatic repair did not fully complete.
+echo   Try running fix-rancher.bat and then install.bat again.
+echo.
+pause
+exit /b 1
+
+:engine_fail_no_wsl_fix
 echo   How to fix:
 echo.
 echo     Rancher Desktop:
@@ -502,6 +540,8 @@ echo     Docker Desktop:
 echo       1. Open Docker Desktop from the Start menu
 echo       2. Wait for it to say "running" in the system tray
 echo       3. Double-click install.bat again
+echo.
+echo     Still stuck? Try running fix-rancher.bat
 echo.
 pause
 exit /b 1

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.2] - 2026-05-20
+
+### Added
+- fix-rancher.bat: standalone repair script for corrupted Rancher Desktop WSL distributions
+  - Detects the "wsl.exe exited with code 4294967295" corruption issue
+  - Closes Rancher Desktop, unregisters corrupted internal distros, restarts fresh
+  - Preserves Ubuntu and other personal WSL distributions
+  - Preserves Docker containers, images, and project files
+  - Waits for Docker engine to become ready after repair
+- scripts/fix-rancher-wsl.ps1: PowerShell engine for WSL distro repair
+  - Health check mode (-DiagOnly) for diagnostics without repair
+  - Preserves Rancher Desktop settings (dockerd engine) across repair
+  - Graceful shutdown via rdctl before force-kill fallback
+- Auto-repair in install.bat: detects corrupted WSL distros during preflight and engine wait
+  - If Rancher distros exist but don't respond, repairs automatically before continuing
+  - Engine failure path now attempts WSL repair before showing manual fix instructions
+- Auto-repair in setup-claude.bat: WSL distro health check after WSL2 verification
+- help-claude.bat: diagnostic report now includes Rancher WSL health check section
+
 ## [0.6.1] - 2026-05-19
 
 ### Added
