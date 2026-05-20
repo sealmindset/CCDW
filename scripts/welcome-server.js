@@ -139,9 +139,27 @@ function getUsageStats() {
 
         if (sessionCount === 0) return { has_data: false };
 
+        // Raw cost: what it would cost without prompt caching
+        // All cache_read tokens would have been full-price input tokens
+        // All cache_create tokens would have been full-price input tokens (no 1.25x write premium)
+        let rawCost = 0;
+        // Re-walk to compute per-model raw cost (cache tokens priced at full input rate)
+        // Simpler: use totals with a representative model
+        const p = PRICING[model] || PRICING['claude-opus-4-6'];
+        rawCost += inputTokens * p.input / 1e6;
+        rawCost += outputTokens * p.output / 1e6;
+        rawCost += cacheCreateTokens * p.input / 1e6;  // full input price, not cache_write
+        rawCost += cacheReadTokens * p.input / 1e6;     // full input price, not cache_read
+
+        const rawTokens = inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens;
+        const actualCost = Math.round(cost * 100) / 100;
+        const savings = Math.round((rawCost - cost) * 100) / 100;
+        const savingsPct = rawCost > 0 ? Math.round((1 - cost / rawCost) * 100) : 0;
+        const tokensSaved = cacheReadTokens; // tokens served from cache instead of re-sent
+
         return {
             has_data: true,
-            total_tokens: inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens,
+            total_tokens: rawTokens,
             input_tokens: inputTokens,
             output_tokens: outputTokens,
             cache_creation_tokens: cacheCreateTokens,
@@ -149,7 +167,11 @@ function getUsageStats() {
             model: model,
             session_count: sessionCount,
             duration_ms: maxTs > minTs ? maxTs - minTs : 0,
-            estimated_cost: Math.round(cost * 100) / 100
+            estimated_cost: actualCost,
+            raw_cost: Math.round(rawCost * 100) / 100,
+            savings: savings,
+            savings_pct: savingsPct,
+            tokens_saved: tokensSaved
         };
     } catch (e) {
         return { has_data: false };

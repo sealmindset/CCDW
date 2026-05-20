@@ -16,7 +16,137 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
+
+# ---------------------------------------------------------------------------
+# Log file — append to existing (from setup-claude-mac) or create new
+# ---------------------------------------------------------------------------
+LOG_FILE="${CLAUDE_SETUP_LOG:-$HOME/Desktop/claude-setup.log}"
+if [ -z "${CLAUDE_SETUP_LOG:-}" ]; then
+    echo "=== Claude Code Install — $(date) ===" >> "$LOG_FILE"
+    exec > >(tee -a "$LOG_FILE") 2>&1
+fi
+
+# ---------------------------------------------------------------------------
+# Parse arguments
+# ---------------------------------------------------------------------------
+AI_PROVIDER=""
+RUN_DOCTOR=0
+for arg in "$@"; do
+    case "$arg" in
+        --ai=*) AI_PROVIDER="${arg#--ai=}" ;;
+        --doctor) RUN_DOCTOR=1 ;;
+    esac
+done
+
+# ---------------------------------------------------------------------------
+# Doctor mode: diagnostics without reinstalling
+# ---------------------------------------------------------------------------
+if [ "$RUN_DOCTOR" = "1" ]; then
+    echo ""
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}  Claude Code — Doctor${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo ""
+
+    # Docker
+    if command -v docker &>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} Docker CLI found: $(which docker)"
+        if docker info &>/dev/null 2>&1; then
+            echo -e "  ${GREEN}✓${NC} Docker daemon running"
+            DOCKER_VER=$(docker version --format '{{.Server.Version}}' 2>/dev/null)
+            echo -e "  ${BLUE}i${NC} Docker version: ${DOCKER_VER:-unknown}"
+        else
+            echo -e "  ${RED}✗${NC} Docker daemon not responding"
+        fi
+    else
+        echo -e "  ${RED}✗${NC} Docker CLI not found"
+    fi
+
+    # Image
+    if docker image inspect ghcr.io/sealmindset/claude-code-docker:latest &>/dev/null 2>&1; then
+        IMG_CREATED=$(docker image inspect ghcr.io/sealmindset/claude-code-docker:latest --format '{{.Created}}' 2>/dev/null | cut -dT -f1)
+        IMG_SIZE=$(docker image inspect ghcr.io/sealmindset/claude-code-docker:latest --format '{{.Size}}' 2>/dev/null)
+        IMG_SIZE_MB=$(( ${IMG_SIZE:-0} / 1048576 ))
+        echo -e "  ${GREEN}✓${NC} Image present (${IMG_SIZE_MB}MB, built ${IMG_CREATED:-unknown})"
+    else
+        echo -e "  ${RED}✗${NC} Image not found — run install.command to download"
+    fi
+
+    # Container
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^claude-code$'; then
+        UPTIME=$(docker ps --format '{{.Status}}' --filter name=claude-code 2>/dev/null)
+        echo -e "  ${GREEN}✓${NC} Container running ($UPTIME)"
+        HEALTH=$(docker inspect --format '{{.State.Health.Status}}' claude-code 2>/dev/null)
+        if [ -n "$HEALTH" ]; then
+            if [ "$HEALTH" = "healthy" ]; then
+                echo -e "  ${GREEN}✓${NC} Health: $HEALTH"
+            else
+                echo -e "  ${YELLOW}!${NC} Health: $HEALTH"
+            fi
+        fi
+    elif docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^claude-code$'; then
+        echo -e "  ${RED}✗${NC} Container exists but not running"
+        echo -e "  ${DIM}  Last 10 log lines:${NC}"
+        docker logs claude-code 2>&1 | tail -10 | sed 's/^/    /'
+    else
+        echo -e "  ${YELLOW}!${NC} No container found"
+    fi
+
+    # Ports
+    echo ""
+    for port in 3000 7681 7682 8080 3002 9200; do
+        if curl -s -o /dev/null --connect-timeout 2 "http://localhost:$port" 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} Port $port responding"
+        elif lsof -iTCP:"$port" -sTCP:LISTEN -P -n 2>/dev/null | grep -q LISTEN; then
+            occupant=$(lsof -iTCP:"$port" -sTCP:LISTEN -P -n 2>/dev/null | awk 'NR==2{print $1}')
+            echo -e "  ${YELLOW}!${NC} Port $port bound (by: $occupant) but not responding to HTTP"
+        else
+            echo -e "  ${DIM}  Port $port: not in use${NC}"
+        fi
+    done
+
+    # Network
+    echo ""
+    if curl -s --connect-timeout 5 -o /dev/null https://github.com 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} Internet connectivity"
+    else
+        echo -e "  ${RED}✗${NC} No internet"
+    fi
+    if curl -so /dev/null -w '%{http_code}' --connect-timeout 10 https://snapistg-scus.azure.sleepnumber.com 2>/dev/null | grep -qv '^000$'; then
+        echo -e "  ${GREEN}✓${NC} Sleep Number network reachable"
+    else
+        echo -e "  ${RED}✗${NC} Sleep Number network not reachable (VPN?)"
+    fi
+
+    # Disk
+    AVAIL_GB=$(df -g "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
+    if [ -n "$AVAIL_GB" ]; then
+        if [ "$AVAIL_GB" -lt 4 ] 2>/dev/null; then
+            echo -e "  ${RED}✗${NC} Disk space: ${AVAIL_GB}GB (low!)"
+        else
+            echo -e "  ${GREEN}✓${NC} Disk space: ${AVAIL_GB}GB available"
+        fi
+    fi
+
+    # .env
+    ENV_FILE="$(pwd)/.env"
+    if [ -f "$ENV_FILE" ]; then
+        PROVIDER="unknown"
+        grep -q "^CLAUDE_CODE_USE_FOUNDRY=1" "$ENV_FILE" 2>/dev/null && PROVIDER="Azure AI Foundry"
+        grep -q "^CLAUDE_CODE_USE_BEDROCK=1" "$ENV_FILE" 2>/dev/null && PROVIDER="AWS Bedrock"
+        grep -q "^ANTHROPIC_API_KEY=sk-" "$ENV_FILE" 2>/dev/null && PROVIDER="Anthropic API"
+        echo -e "  ${GREEN}✓${NC} .env configured (provider: $PROVIDER)"
+    else
+        echo -e "  ${RED}✗${NC} No .env file"
+    fi
+
+    echo ""
+    echo -e "  ${DIM}Log file: $LOG_FILE${NC}"
+    echo ""
+    exit 0
+fi
 
 echo ""
 echo -e "${BLUE}========================================${NC}"
@@ -26,16 +156,6 @@ echo ""
 echo -e "  This will set up your AI development environment."
 echo -e "  It takes about 2-3 minutes on a good connection."
 echo ""
-
-# ---------------------------------------------------------------------------
-# Parse --ai= argument
-# ---------------------------------------------------------------------------
-AI_PROVIDER=""
-for arg in "$@"; do
-    case "$arg" in
-        --ai=*) AI_PROVIDER="${arg#--ai=}" ;;
-    esac
-done
 
 # Normalize provider name
 case "$AI_PROVIDER" in
@@ -343,6 +463,31 @@ sys.exit(fail_count)
 # ---------------------------------------------------------------------------
 # Check for Docker
 # ---------------------------------------------------------------------------
+docker_ready() {
+    docker info &>/dev/null 2>&1 &
+    local pid=$!
+    ( sleep 10 && kill "$pid" 2>/dev/null ) &
+    local watchdog=$!
+    wait "$pid" 2>/dev/null
+    local rc=$?
+    kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null
+    return $rc
+}
+
+# Spinner with elapsed time — replaces blind dot-printing for background ops
+spin_wait() {
+    local pid=$1 label=$2
+    local start=$(date +%s)
+    local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    while kill -0 "$pid" 2>/dev/null; do
+        local elapsed=$(( $(date +%s) - start ))
+        local i=$(( elapsed % ${#frames[@]} ))
+        printf "\r  ${frames[$i]} %s %dm %02ds" "$label" $((elapsed/60)) $((elapsed%60))
+        sleep 1
+    done
+    printf "\r%-70s\r" ""
+}
+
 if ! command -v docker &> /dev/null; then
     echo -e "${RED}[!]${NC} Docker needs to be installed first."
     echo ""
@@ -356,17 +501,17 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-if ! docker info &> /dev/null; then
+if ! docker_ready; then
     echo -e "${YELLOW}[...]${NC} Waiting for Docker to start..."
     for i in $(seq 1 15); do
-        docker info &>/dev/null && break
+        docker_ready && break
         printf "."
         sleep 2
     done
     echo ""
 fi
 
-if ! docker info &> /dev/null; then
+if ! docker_ready; then
     echo -e "${RED}[!]${NC} Docker is installed but not running yet."
     echo ""
     echo "  Open Docker Desktop (or Rancher Desktop) from your Applications folder,"
@@ -548,6 +693,18 @@ with open('$CONFIG_FILE', 'w') as f: json.dump(cfg, f, indent=2)
 fi
 
 # ---------------------------------------------------------------------------
+# Azure CLI host pre-auth: if host is already signed in, container inherits tokens
+# ---------------------------------------------------------------------------
+if [ "${AI_PROVIDER:-}" = "foundry" ] && command -v az &>/dev/null; then
+    if az account show &>/dev/null 2>&1; then
+        AZ_USER=$(az account show --query user.name -o tsv 2>/dev/null)
+        AZ_SUB=$(az account show --query name -o tsv 2>/dev/null)
+        echo -e "${GREEN}[OK]${NC} Azure CLI signed in as ${AZ_USER:-unknown} (${AZ_SUB:-unknown})"
+        echo -e "  ${DIM}Container will inherit your Azure session — no device-code login needed.${NC}"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Auto-extract SSL inspection proxy certificates (Zscaler, Netskope, etc.)
 # Searches macOS Keychain and exports any proxy CA certs to certs/
 # so Docker builds trust corporate HTTPS inspection.
@@ -627,10 +784,20 @@ if [ -n "$REGISTRY_MIRROR" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Pre-pull disk space check
+# ---------------------------------------------------------------------------
+AVAIL_GB=$(df -g "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
+if [ -n "$AVAIL_GB" ] && [ "$AVAIL_GB" -lt 4 ] 2>/dev/null; then
+    echo -e "${YELLOW}[WARN]${NC} Low disk space: ${AVAIL_GB}GB free (4GB+ recommended for image download)."
+    echo "  If the download fails, free up space and try again."
+    echo ""
+fi
+
+# ---------------------------------------------------------------------------
 # Auto-update: pull latest image
 # ---------------------------------------------------------------------------
 echo ""
-echo -e "${YELLOW}[...]${NC} Downloading latest version (this may take a minute)..."
+echo -e "${YELLOW}[...]${NC} Downloading latest version..."
 
 PULL_LOG="/tmp/claude-code-install-pull.log"
 
@@ -655,13 +822,11 @@ else
     # Try 1: ACR pull (bypasses Zscaler — works on corporate network)
     if [ -n "$REGISTRY_MIRROR" ]; then
         ACR_IMAGE="${REGISTRY_MIRROR}claude-code-docker:latest"
-        printf "  Downloading from internal registry"
         docker pull "$ACR_IMAGE" >"$PULL_LOG" 2>&1 &
         PULL_PID=$!
-        while kill -0 "$PULL_PID" 2>/dev/null; do printf "."; sleep 3; done
+        spin_wait "$PULL_PID" "Downloading from internal registry..."
         wait "$PULL_PID" 2>/dev/null
         PULL_EXIT=$?
-        echo ""
         if [ $PULL_EXIT -eq 0 ]; then
             docker tag "$ACR_IMAGE" ghcr.io/sealmindset/claude-code-docker:latest 2>/dev/null
             echo -e "${GREEN}[OK]${NC} Download complete."
@@ -673,13 +838,11 @@ else
 
     # Try 2: GHCR pull (direct, may be blocked by Zscaler)
     if [ "$PULL_OK" = "0" ]; then
-        printf "  Downloading"
         docker pull ghcr.io/sealmindset/claude-code-docker:latest >"$PULL_LOG" 2>&1 &
         PULL_PID=$!
-        while kill -0 "$PULL_PID" 2>/dev/null; do printf "."; sleep 3; done
+        spin_wait "$PULL_PID" "Downloading..."
         wait "$PULL_PID" 2>/dev/null
         PULL_EXIT=$?
-        echo ""
         if [ $PULL_EXIT -eq 0 ]; then
             echo -e "${GREEN}[OK]${NC} Download complete."
             PULL_OK=1
@@ -694,15 +857,13 @@ else
 
     # Try 4: Local build (last resort)
     if [ "$PULL_OK" = "0" ]; then
-        printf "  Building locally"
         BUILD_ARGS=""
         [ -n "$REGISTRY_MIRROR" ] && BUILD_ARGS="--build-arg REGISTRY_MIRROR=${REGISTRY_MIRROR}"
         docker build $BUILD_ARGS -t ghcr.io/sealmindset/claude-code-docker:latest . >"$PULL_LOG" 2>&1 &
         BUILD_PID=$!
-        while kill -0 "$BUILD_PID" 2>/dev/null; do printf "."; sleep 5; done
+        spin_wait "$BUILD_PID" "Building locally..."
         wait "$BUILD_PID" 2>/dev/null
         BUILD_EXIT=$?
-        echo ""
 
         if [ $BUILD_EXIT -ne 0 ]; then
             echo -e "${RED}[!]${NC} Setup could not download the required files."
@@ -748,6 +909,34 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Pre-flight: check for port conflicts
+# ---------------------------------------------------------------------------
+PORT_CONFLICT=0
+for port_pair in "WELCOME_PORT:3000" "TTYD_PORT:7681" "TTYD_NEW_PORT:7682" "CODE_SERVER_PORT:8080" "CHAT_PORT:3002" "WORKSHOP_PORT:9200"; do
+    var_name="${port_pair%%:*}"
+    default="${port_pair##*:}"
+    port="${!var_name:-$default}"
+    if lsof -iTCP:"$port" -sTCP:LISTEN -P -n 2>/dev/null | grep -q LISTEN; then
+        occupant=$(lsof -iTCP:"$port" -sTCP:LISTEN -P -n 2>/dev/null | awk 'NR==2{print $1}')
+        echo -e "${YELLOW}[WARN]${NC} Port $port is already in use (by: $occupant)"
+        PORT_CONFLICT=1
+    fi
+done
+
+if [ "$PORT_CONFLICT" = "1" ]; then
+    echo ""
+    echo -e "  ${YELLOW}Some ports Claude Code needs are occupied.${NC}"
+    echo "  This can happen if Claude Code is already running,"
+    echo "  or another app uses the same ports."
+    echo ""
+    echo "  Options:"
+    echo "    1. Close the app using those ports"
+    echo "    2. If Claude Code is already running, visit http://localhost:3000"
+    echo ""
+    read -p "  Press Enter to try anyway, or Ctrl+C to exit... " _
+fi
+
+# ---------------------------------------------------------------------------
 # Start the container
 # ---------------------------------------------------------------------------
 echo ""
@@ -787,13 +976,11 @@ if ! docker run -d \
         docker rmi ghcr.io/sealmindset/claude-code-docker:latest &>/dev/null || true
         BUILD_ARGS=""
         [ -n "$REGISTRY_MIRROR" ] && BUILD_ARGS="--build-arg REGISTRY_MIRROR=${REGISTRY_MIRROR}"
-        printf "  Building"
         docker build $BUILD_ARGS -t ghcr.io/sealmindset/claude-code-docker:latest . >/tmp/claude-code-build.log 2>&1 &
         BUILD_PID=$!
-        while kill -0 "$BUILD_PID" 2>/dev/null; do printf "."; sleep 5; done
+        spin_wait "$BUILD_PID" "Rebuilding..."
         wait "$BUILD_PID" 2>/dev/null
         BUILD_EXIT=$?
-        echo ""
 
         if [ $BUILD_EXIT -eq 0 ]; then
             echo -e "${GREEN}[OK]${NC} Rebuild complete."
@@ -869,6 +1056,30 @@ if [ "${CONTAINER_STARTED:-0}" != "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Container crash detection — catch immediate exit
+# ---------------------------------------------------------------------------
+sleep 3
+if ! docker ps --format '{{.Names}}' | grep -q '^claude-code$'; then
+    echo ""
+    echo -e "${RED}========================================${NC}"
+    echo -e "${RED}  Container started but crashed${NC}"
+    echo -e "${RED}========================================${NC}"
+    echo ""
+    echo "  Container logs (last 20 lines):"
+    docker logs claude-code 2>&1 | tail -20 | sed 's/^/    /'
+    echo ""
+    echo "  Common causes:"
+    echo "    - Missing or invalid .env configuration"
+    echo "    - Port already in use by another app"
+    echo "    - Docker ran out of memory"
+    echo ""
+    echo "  Log file saved to: $LOG_FILE"
+    echo ""
+    read -p "Press Enter to close..."
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
 # Wait for dashboard
 # ---------------------------------------------------------------------------
 echo ""
@@ -929,5 +1140,8 @@ echo -e "  ${GREEN}http://localhost:3000${NC}"
 echo ""
 echo -e "  A desktop shortcut has been created so you can come back anytime."
 echo -e "  To stop Claude Code: double-click ${BOLD}stop-claude.command${NC} or close Docker."
+echo -e "  To diagnose issues:  ${DIM}./install.command --doctor${NC}"
+echo ""
+echo -e "  ${DIM}Setup log: $LOG_FILE${NC}"
 echo ""
 read -p "Press Enter to close..."

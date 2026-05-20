@@ -36,6 +36,13 @@ NC='\033[0m'
 # ---------------------------------------------------------------------------
 SETUP_START=$(date +%s)
 
+# ---------------------------------------------------------------------------
+# Log file — capture all output for troubleshooting
+# ---------------------------------------------------------------------------
+LOG_FILE="$HOME/Desktop/claude-setup.log"
+echo "=== Claude Code Setup — $(date) ===" > "$LOG_FILE"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 elapsed() {
     local now=$(date +%s)
     local secs=$(( now - SETUP_START ))
@@ -245,15 +252,12 @@ elif [ -f "$HOME/.rd/bin/docker" ]; then
     DOCKER_FOUND=1
 fi
 
-if [ "$DOCKER_FOUND" = "0" ] && [ -z "$RANCHER_APP" ]; then
-    echo ""
-    echo -e "${YELLOW}========================================${NC}"
-    echo -e "${YELLOW}  Rancher Desktop needs to be installed${NC}"
-    echo -e "${YELLOW}========================================${NC}"
-    echo ""
-    echo "  Rancher Desktop provides Docker for your Mac."
-    echo "  It's free and open-source."
-    echo ""
+# ---------------------------------------------------------------------------
+# Helper: install or upgrade Rancher Desktop to latest
+# ---------------------------------------------------------------------------
+install_rancher_desktop() {
+    local action="${1:-install}"  # "install" or "upgrade"
+    local target_dir="${RANCHER_APP:-/Applications/Rancher Desktop.app}"
 
     # Detect architecture for download
     ARCH=$(uname -m)
@@ -265,24 +269,31 @@ if [ "$DOCKER_FOUND" = "0" ] && [ -z "$RANCHER_APP" ]; then
 
     # Strategy 1: Try brew (if available)
     if command -v brew &>/dev/null; then
-        step_wait "Installing Rancher Desktop via Homebrew..."
-        if brew install --cask rancher 2>/dev/null; then
-            step_ok "Rancher Desktop installed via Homebrew."
-            RANCHER_APP="/Applications/Rancher Desktop.app"
+        if [ "$action" = "upgrade" ]; then
+            step_wait "Updating Rancher Desktop via Homebrew..."
+            if brew upgrade --cask rancher 2>/dev/null; then
+                step_ok "Rancher Desktop updated via Homebrew."
+                RANCHER_APP="/Applications/Rancher Desktop.app"
+                return 0
+            fi
         else
-            step_warn "Homebrew install failed. Trying direct download..."
+            step_wait "Installing Rancher Desktop via Homebrew..."
+            if brew install --cask rancher 2>/dev/null; then
+                step_ok "Rancher Desktop installed via Homebrew."
+                RANCHER_APP="/Applications/Rancher Desktop.app"
+                return 0
+            fi
         fi
+        step_warn "Homebrew ${action} failed. Trying direct download..."
     fi
 
     # Strategy 2: Direct download from GitHub releases
-    if [ -z "$RANCHER_APP" ]; then
-        step_wait "Downloading Rancher Desktop..."
+    step_wait "Downloading latest Rancher Desktop..."
 
-        DMG_PATH="$TMPDIR/RancherDesktop.dmg"
+    DMG_PATH="$TMPDIR/RancherDesktop.dmg"
 
-        # Get latest release URL
-        DOWNLOAD_URL=$(curl -s "https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest" \
-            | python3 -c "
+    DOWNLOAD_URL=$(curl -s "https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest" \
+        | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 for asset in data.get('assets', []):
@@ -292,34 +303,74 @@ for asset in data.get('assets', []):
         break
 " 2>/dev/null)
 
-        if [ -n "$DOWNLOAD_URL" ]; then
-            echo "  Downloading $(basename "$DOWNLOAD_URL")..."
-            if curl -L --progress-bar -o "$DMG_PATH" "$DOWNLOAD_URL"; then
-                step_wait "Installing (this opens the DMG)..."
+    if [ -n "$DOWNLOAD_URL" ]; then
+        echo "  Downloading $(basename "$DOWNLOAD_URL")..."
+        if curl -L --progress-bar -o "$DMG_PATH" "$DOWNLOAD_URL"; then
+            step_wait "Installing..."
 
-                # Mount DMG and copy app
-                MOUNT_POINT=$(hdiutil attach -nobrowse "$DMG_PATH" 2>/dev/null | tail -1 | awk '{print $NF}')
-                if [ -d "$MOUNT_POINT/Rancher Desktop.app" ]; then
-                    cp -R "$MOUNT_POINT/Rancher Desktop.app" "/Applications/" 2>/dev/null \
-                        || cp -R "$MOUNT_POINT/Rancher Desktop.app" "$HOME/Applications/" 2>/dev/null
-                    hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
-                    rm -f "$DMG_PATH"
-                    step_ok "Rancher Desktop installed."
-                    if [ -d "/Applications/Rancher Desktop.app" ]; then
-                        RANCHER_APP="/Applications/Rancher Desktop.app"
-                    else
-                        RANCHER_APP="$HOME/Applications/Rancher Desktop.app"
-                    fi
+            MOUNT_POINT=$(hdiutil attach -nobrowse "$DMG_PATH" 2>/dev/null | tail -1 | awk '{print $NF}')
+            if [ -d "$MOUNT_POINT/Rancher Desktop.app" ]; then
+                cp -R "$MOUNT_POINT/Rancher Desktop.app" "/Applications/" 2>/dev/null \
+                    || cp -R "$MOUNT_POINT/Rancher Desktop.app" "$HOME/Applications/" 2>/dev/null
+                hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
+                rm -f "$DMG_PATH"
+                step_ok "Rancher Desktop ${action}d."
+                if [ -d "/Applications/Rancher Desktop.app" ]; then
+                    RANCHER_APP="/Applications/Rancher Desktop.app"
                 else
-                    hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
-                    step_warn "DMG mount succeeded but app not found inside."
+                    RANCHER_APP="$HOME/Applications/Rancher Desktop.app"
                 fi
+                return 0
             else
-                step_warn "Download failed."
+                hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
+                step_warn "DMG mount succeeded but app not found inside."
             fi
-            rm -f "$DMG_PATH" 2>/dev/null || true
+        else
+            step_warn "Download failed."
+        fi
+        rm -f "$DMG_PATH" 2>/dev/null || true
+    fi
+
+    return 1
+}
+
+# Check Rancher Desktop version — auto-upgrade if outdated
+RD_NEEDS_UPGRADE=0
+if [ -n "$RANCHER_APP" ]; then
+    RD_VERSION=$(defaults read "$RANCHER_APP/Contents/Info" CFBundleShortVersionString 2>/dev/null)
+    if [ -n "$RD_VERSION" ]; then
+        RD_MINOR=$(echo "$RD_VERSION" | cut -d. -f2)
+        if [ "${RD_MINOR:-0}" -lt 12 ] 2>/dev/null; then
+            step_warn "Rancher Desktop $RD_VERSION is outdated. Upgrading automatically..."
+
+            if pgrep -q "Rancher Desktop"; then
+                osascript -e 'quit app "Rancher Desktop"' 2>/dev/null || true
+                sleep 3
+            fi
+
+            if install_rancher_desktop "upgrade"; then
+                NEW_VER=$(defaults read "$RANCHER_APP/Contents/Info" CFBundleShortVersionString 2>/dev/null)
+                step_ok "Rancher Desktop upgraded: $RD_VERSION → ${NEW_VER:-latest}"
+            else
+                step_warn "Auto-upgrade failed. Continuing with $RD_VERSION."
+            fi
+        else
+            step_ok "Rancher Desktop $RD_VERSION"
         fi
     fi
+fi
+
+if [ "$DOCKER_FOUND" = "0" ] && [ -z "$RANCHER_APP" ]; then
+    echo ""
+    echo -e "${YELLOW}========================================${NC}"
+    echo -e "${YELLOW}  Rancher Desktop needs to be installed${NC}"
+    echo -e "${YELLOW}========================================${NC}"
+    echo ""
+    echo "  Rancher Desktop provides Docker for your Mac."
+    echo "  It's free and open-source."
+    echo ""
+
+    install_rancher_desktop "install"
 
     # Strategy 3: Open browser (last resort)
     if [ -z "$RANCHER_APP" ]; then
@@ -363,12 +414,46 @@ if [ ! -f "$RD_SETTINGS" ]; then
 }
 JSON
     step_ok "Pre-configured Docker engine (skips first-run dialog)."
+elif ! python3 -c "
+import json, sys
+with open('$RD_SETTINGS') as f: cfg = json.load(f)
+engine = cfg.get('containerEngine', {}).get('name', '')
+sys.exit(0 if engine in ('moby', 'dockerd', '') else 1)
+" 2>/dev/null; then
+    step_warn "Rancher Desktop is configured for containerd (not Docker)."
+    step_wait "Switching to Docker engine..."
+
+    if pgrep -q "Rancher Desktop"; then
+        osascript -e 'quit app "Rancher Desktop"' 2>/dev/null || true
+        sleep 3
+    fi
+
+    python3 -c "
+import json
+with open('$RD_SETTINGS') as f: cfg = json.load(f)
+cfg.setdefault('containerEngine', {})['name'] = 'moby'
+cfg.setdefault('kubernetes', {})['enabled'] = False
+with open('$RD_SETTINGS', 'w') as f: json.dump(cfg, f, indent=2)
+" 2>/dev/null
+    step_ok "Switched to Docker engine. Rancher Desktop will restart."
+    RANCHER_APP="${RANCHER_APP:-/Applications/Rancher Desktop.app}"
 fi
 
 # ---------------------------------------------------------------------------
 # Step 3: Launch Rancher Desktop and wait for Docker daemon
 # ---------------------------------------------------------------------------
-if ! docker info &>/dev/null 2>&1; then
+docker_ready() {
+    docker info &>/dev/null 2>&1 &
+    local pid=$!
+    ( sleep 10 && kill "$pid" 2>/dev/null ) &
+    local watchdog=$!
+    wait "$pid" 2>/dev/null
+    local rc=$?
+    kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null
+    return $rc
+}
+
+if ! docker_ready; then
     if [ -n "${RANCHER_APP:-}" ]; then
         step_wait "Launching Rancher Desktop..."
 
@@ -388,7 +473,7 @@ if ! docker info &>/dev/null 2>&1; then
         BAR_WIDTH=30
 
         for i in $(seq 1 60); do
-            if docker info &>/dev/null 2>&1; then
+            if docker_ready; then
                 DOCKER_READY=1
                 break
             fi
@@ -447,7 +532,7 @@ if ! docker info &>/dev/null 2>&1; then
                 export PATH="$HOME/.rd/bin:$PATH"
             fi
 
-            if ! docker info &>/dev/null 2>&1; then
+            if ! docker_ready; then
                 step_fail "Docker still not running."
                 echo ""
                 echo "  Try these steps:"
@@ -589,4 +674,5 @@ step_info "Pre-checks done in $(elapsed). Starting installer..."
 echo ""
 
 cd "$INSTALL_DIR"
+export CLAUDE_SETUP_LOG="$LOG_FILE"
 exec "$INSTALL_DIR/install.command" --ai=foundry

@@ -437,6 +437,47 @@
             letter-spacing: 0.05em;
         }
 
+        /* ---- Savings Banner ---- */
+        .savings-banner {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(99, 102, 241, 0.08));
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .savings-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .savings-icon {
+            width: 28px; height: 28px;
+            border-radius: 8px;
+            background: rgba(34, 197, 94, 0.15);
+            color: var(--success);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem;
+        }
+        .savings-title {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+        .savings-body {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        .savings-highlight {
+            color: var(--success);
+            font-weight: 700;
+        }
+        .savings-raw {
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
         /* ---- Getting Started ---- */
         .steps-card {
             background: var(--bg-card);
@@ -748,8 +789,8 @@
             </div>
         </div>
 
-        <!-- Usage Stats -->
-        <div id="usage-section" style="display:none;">
+        <!-- Usage Stats (hidden from UI; backend API still available at /api/usage) -->
+        <div id="usage-section" style="display:none !important;">
             <div class="section-label">Usage</div>
             <div class="usage-grid">
                 <div class="usage-item">
@@ -767,6 +808,24 @@
                 <div class="usage-item">
                     <div class="usage-value" id="usage-model">--</div>
                     <div class="usage-label">Model</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Savings Banner -->
+        <div id="savings-section" style="display:none;">
+            <div class="savings-banner">
+                <div class="savings-header">
+                    <div class="savings-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                    </div>
+                    <div class="savings-title">/make-it Efficiency</div>
+                </div>
+                <div class="savings-body">
+                    You've saved <span class="savings-highlight" id="savings-tokens">--</span> tokens
+                    with a potential cost of <span class="savings-highlight" id="savings-cost">--</span> with <strong>/make-it</strong>,
+                    which otherwise would have taken <span class="savings-raw" id="savings-raw-tokens">--</span> tokens
+                    for the total cost of <span class="savings-raw" id="savings-raw-cost">--</span>.
                 </div>
             </div>
         </div>
@@ -921,11 +980,20 @@
                 if (resp.ok) {
                     var usage = await resp.json();
                     if (usage.has_data) {
-                        document.getElementById('usage-section').style.display = '';
+                        // Usage section hidden from UI (data still fetched for /api/usage)
                         document.getElementById('usage-tokens').textContent = formatTokens(usage.total_tokens);
                         document.getElementById('usage-cost').textContent = '$' + usage.estimated_cost.toFixed(2);
                         document.getElementById('usage-duration').textContent = formatDuration(usage.duration_ms);
                         document.getElementById('usage-model').textContent = formatModel(usage.model);
+
+                        // Savings banner — show when cache savings exist
+                        if (usage.savings > 0 && usage.tokens_saved > 0) {
+                            document.getElementById('savings-section').style.display = '';
+                            document.getElementById('savings-tokens').textContent = formatTokens(usage.tokens_saved);
+                            document.getElementById('savings-cost').textContent = '$' + usage.savings.toFixed(2);
+                            document.getElementById('savings-raw-tokens').textContent = formatTokens(usage.total_tokens);
+                            document.getElementById('savings-raw-cost').textContent = '$' + usage.raw_cost.toFixed(2);
+                        }
                     }
                 }
             } catch (e) {}
