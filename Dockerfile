@@ -167,7 +167,7 @@ RUN code-server --install-extension ms-python.python \
     && code-server --install-extension Continue.continue
 
 # Go language server (gopls) for the Go extension
-RUN go install golang.org/x/tools/gopls@latest
+RUN go install golang.org/x/tools/gopls@v0.21.0
 
 # /make-it skills
 RUN curl -fsSL https://raw.githubusercontent.com/sealmindset/make-it/main/install.sh | bash
