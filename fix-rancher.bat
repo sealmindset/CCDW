@@ -59,7 +59,7 @@ REM ---------------------------------------------------------------------------
 echo [...]  Testing Rancher Desktop WSL health...
 set "NEEDS_REPAIR=0"
 
-REM Try to run a simple command inside the rancher-desktop distro
+REM Test rancher-desktop distro
 wsl -d rancher-desktop -- echo ok >nul 2>nul
 if !ERRORLEVEL! neq 0 (
     set "NEEDS_REPAIR=1"
@@ -68,7 +68,19 @@ if !ERRORLEVEL! neq 0 (
     echo [OK]   rancher-desktop distribution is healthy.
 )
 
-REM Also check if Docker itself is working
+REM Test Ubuntu distro (Rancher uses it for docker-plugins and kubeconfig)
+wsl -l 2>nul | findstr /i "Ubuntu" >nul 2>nul
+if !ERRORLEVEL! equ 0 (
+    wsl -d Ubuntu -- echo ok >nul 2>nul
+    if !ERRORLEVEL! neq 0 (
+        set "NEEDS_REPAIR=1"
+        echo [FAIL] Ubuntu distribution is not responding.
+    ) else (
+        echo [OK]   Ubuntu distribution is healthy.
+    )
+)
+
+REM Check if Docker itself is working
 docker info >nul 2>nul
 if !ERRORLEVEL! neq 0 (
     set "NEEDS_REPAIR=1"

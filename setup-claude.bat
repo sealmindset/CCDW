@@ -363,13 +363,25 @@ echo [WARN] Continuing without confirmed WSL2. Rancher Desktop may fail to insta
 
 REM ---------------------------------------------------------------------------
 REM Step 2b: Check Rancher Desktop WSL distribution health
+REM Rancher uses three distros: rancher-desktop, rancher-desktop-data, Ubuntu.
+REM If any are corrupted (exit code 4294967295), auto-repair all of them.
 REM ---------------------------------------------------------------------------
+set "WSL_CORRUPT=0"
 wsl -l 2>nul | findstr /i "rancher-desktop" >nul 2>nul
-if !ERRORLEVEL! neq 0 goto :wsl_distros_ok
-wsl -d rancher-desktop -- echo ok >nul 2>nul
-if !ERRORLEVEL! equ 0 goto :wsl_distros_ok
-echo [%date% %time%] Rancher WSL distros corrupted -- auto-repairing >> "!SETUP_LOG!"
-echo [WARN] Rancher Desktop's internal system is corrupted. Repairing...
+if !ERRORLEVEL! equ 0 (
+    wsl -d rancher-desktop -- echo ok >nul 2>nul
+    if !ERRORLEVEL! neq 0 set "WSL_CORRUPT=1"
+)
+if "!WSL_CORRUPT!"=="0" (
+    wsl -l 2>nul | findstr /i "Ubuntu" >nul 2>nul
+    if !ERRORLEVEL! equ 0 (
+        wsl -d Ubuntu -- echo ok >nul 2>nul
+        if !ERRORLEVEL! neq 0 set "WSL_CORRUPT=1"
+    )
+)
+if "!WSL_CORRUPT!"=="0" goto :wsl_distros_ok
+echo [%date% %time%] WSL distros corrupted -- auto-repairing >> "!SETUP_LOG!"
+echo [WARN] WSL distributions are corrupted. Repairing...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\fix-rancher-wsl.ps1" -Quiet
 if !ERRORLEVEL! equ 0 (
     echo [OK]  Rancher Desktop repaired.

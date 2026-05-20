@@ -14,29 +14,44 @@ function Write-Status($msg) {
     if (-not $Quiet) { Write-Host $msg }
 }
 
-# --- Step 1: Detect if Rancher WSL distros are registered ---
+# --- Step 1: Detect all WSL distros Rancher Desktop depends on ---
 $distroList = wsl -l -q 2>&1 | ForEach-Object { $_ -replace '\x00','' } | Where-Object { $_.Trim() -ne '' }
 $hasRD      = $distroList | Where-Object { $_ -match '^rancher-desktop$' }
 $hasRDData  = $distroList | Where-Object { $_ -match '^rancher-desktop-data$' }
+$hasUbuntu  = $distroList | Where-Object { $_ -match '^Ubuntu$' }
 
-if (-not $hasRD -and -not $hasRDData) {
-    Write-Status "[OK]  No Rancher Desktop WSL distributions found -- nothing to repair."
+if (-not $hasRD -and -not $hasRDData -and -not $hasUbuntu) {
+    Write-Status "[OK]  No Rancher-related WSL distributions found -- nothing to repair."
     exit 1
 }
 
 # --- Step 2: Test if the distros are healthy ---
+# Rancher Desktop uses three distros: rancher-desktop, rancher-desktop-data, and Ubuntu.
+# Ubuntu is used for docker-plugins and kubeconfig integration.
 $healthy = $true
+$corruptedDistros = @()
+
 if ($hasRD) {
     $testOut = wsl -d rancher-desktop -- echo ok 2>&1
     if ($LASTEXITCODE -ne 0 -or $testOut -notmatch 'ok') {
         $healthy = $false
+        $corruptedDistros += 'rancher-desktop'
         Write-Status "[FAIL] rancher-desktop distro is not responding."
     } else {
         Write-Status "[OK]  rancher-desktop distro is healthy."
     }
 }
+if ($hasUbuntu) {
+    $testOut = wsl -d Ubuntu -- echo ok 2>&1
+    if ($LASTEXITCODE -ne 0 -or $testOut -notmatch 'ok') {
+        $healthy = $false
+        $corruptedDistros += 'Ubuntu'
+        Write-Status "[FAIL] Ubuntu distro is not responding (used by Rancher for docker-plugins)."
+    } else {
+        Write-Status "[OK]  Ubuntu distro is healthy."
+    }
+}
 if ($hasRDData) {
-    # rancher-desktop-data is a data-only distro, just check if wsl can list its status
     $statusOut = wsl -l -v 2>&1 | ForEach-Object { $_ -replace '\x00','' }
     $dataLine = $statusOut | Where-Object { $_ -match 'rancher-desktop-data' }
     if ($dataLine -match 'Stopped|Running') {
@@ -45,7 +60,7 @@ if ($hasRDData) {
 }
 
 if ($healthy -and -not $DiagOnly) {
-    Write-Status "[OK]  Rancher Desktop WSL distributions appear healthy."
+    Write-Status "[OK]  All WSL distributions appear healthy."
     Write-Status "      If you are still having issues, run with -DiagOnly to see details,"
     Write-Status "      or re-run fix-rancher.bat and choose Force Repair."
     exit 1
@@ -57,9 +72,9 @@ if ($DiagOnly) {
     wsl -l -v 2>&1 | ForEach-Object { $_ -replace '\x00','' } | ForEach-Object { Write-Status "  $_" }
     Write-Status ""
     if ($healthy) {
-        Write-Status "  Result: Distributions look healthy."
+        Write-Status "  Result: All distributions look healthy."
     } else {
-        Write-Status "  Result: One or more distributions are corrupted."
+        Write-Status "  Result: Corrupted: $($corruptedDistros -join ', ')"
         Write-Status "  Fix: Re-run fix-rancher.bat and choose Repair."
     }
     exit 0
@@ -92,23 +107,30 @@ Start-Sleep -Seconds 3
 Write-Status "[OK]  WSL shut down."
 
 # --- Step 5: Unregister corrupted distros ---
-if ($hasRD) {
-    Write-Status "[...]  Removing corrupted rancher-desktop distribution..."
-    wsl --unregister rancher-desktop 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Status "[OK]  rancher-desktop removed."
-    } else {
-        Write-Status "[WARN] Could not remove rancher-desktop (may already be gone)."
+# Unregister ALL three if any are corrupted -- Rancher Desktop needs a clean slate.
+# Even if only Ubuntu is broken, Rancher's docker-plugins and kubeconfig fail,
+# so a full reset is the reliable fix.
+foreach ($distro in @('rancher-desktop', 'rancher-desktop-data', 'Ubuntu')) {
+    $present = $distroList | Where-Object { $_ -match "^${distro}$" }
+    if ($present) {
+        Write-Status "[...]  Removing $distro distribution..."
+        wsl --unregister $distro 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Status "[OK]  $distro removed."
+        } else {
+            Write-Status "[WARN] Could not remove $distro (may already be gone)."
+        }
     }
 }
-if ($hasRDData) {
-    Write-Status "[...]  Removing corrupted rancher-desktop-data distribution..."
-    wsl --unregister rancher-desktop-data 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Status "[OK]  rancher-desktop-data removed."
-    } else {
-        Write-Status "[WARN] Could not remove rancher-desktop-data (may already be gone)."
-    }
+
+# --- Step 5b: Reinstall Ubuntu (Rancher needs it for docker-plugins/kubeconfig) ---
+Write-Status "[...]  Reinstalling Ubuntu for WSL..."
+wsl --install -d Ubuntu --no-launch 2>$null
+if ($LASTEXITCODE -eq 0) {
+    Write-Status "[OK]  Ubuntu reinstalled."
+} else {
+    # wsl --install sometimes returns non-zero even on success (Windows quirk)
+    Write-Status "[WARN] Ubuntu install returned non-zero -- may still work after restart."
 }
 
 # --- Step 6: Pre-configure Rancher Desktop settings for clean start ---
