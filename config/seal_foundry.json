@@ -1,0 +1,93 @@
+{
+  "provider": "foundry",
+  "display_name": "Azure AI Foundry",
+  "endpoint": "",
+  "auth_mode": "sso",
+  "api_key": "",
+  "token_resource": "https://cognitiveservices.azure.com",
+  "subscription_id": "",
+  "subscription_name": "",
+  "models": {
+    "sonnet": "",
+    "haiku": "",
+    "opus": ""
+  },
+  "default_model": "opus",
+  "env_vars": {
+    "CLAUDE_CODE_USE_FOUNDRY": "1",
+    "ANTHROPIC_FOUNDRY_BASE_URL": "{endpoint}",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "{models.sonnet}",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "{models.haiku}",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "{models.opus}"
+  },
+  "env_vars_optional": {
+    "ANTHROPIC_FOUNDRY_API_KEY": "{api_key}"
+  },
+  "settings_json": {
+    "apiKeyHelper": "/home/coder/.claude/get-claude-token.sh",
+    "env": {
+      "CLAUDE_CODE_USE_FOUNDRY": "1",
+      "ANTHROPIC_FOUNDRY_BASE_URL": "{endpoint}",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "{models.sonnet}",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "{models.haiku}",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "{models.opus}"
+    }
+  },
+  "prereqs": {
+    "host": [
+      {
+        "id": "endpoint",
+        "label": "AI Foundry endpoint reachable",
+        "check": "curl -sf --connect-timeout 8 {endpoint}",
+        "required": true,
+        "fail_message": "Cannot reach the AI Foundry endpoint. Check your network connection and verify the endpoint URL is correct.",
+        "retry": true
+      },
+      {
+        "id": "azure-subscription",
+        "label": "Azure sign-in happens automatically after install (no action needed now)",
+        "check": "info",
+        "required": false,
+        "fail_message": ""
+      },
+      {
+        "id": "internet",
+        "label": "Internet connectivity",
+        "check": "curl -sf --connect-timeout 5 https://login.microsoftonline.com",
+        "required": true,
+        "fail_message": "No internet connection. Check your network."
+      }
+    ],
+    "container": [
+      {
+        "id": "azure-cli",
+        "label": "Azure CLI",
+        "check": "az --version",
+        "expect": "azure-cli"
+      },
+      {
+        "id": "azure-login",
+        "label": "Azure AD signed in",
+        "check": "az account show",
+        "fail_message": "Not signed in to Azure. Run: az login --use-device-code"
+      },
+      {
+        "id": "azure-token",
+        "label": "Azure token for Cognitive Services",
+        "check": "az account get-access-token --resource {token_resource} --query accessToken -o tsv",
+        "fail_message": "Cannot get Azure token. Run: login (to re-authenticate)"
+      }
+    ]
+  },
+  "docker_requires": ["azure-cli"],
+  "container_login": "azure-device-code",
+  "_help": {
+    "endpoint": "Your Azure AI Foundry endpoint URL (e.g. https://your-resource.services.ai.azure.com/anthropic)",
+    "auth_mode": "sso = Azure AD device-code login at container start; apikey = static API key",
+    "api_key": "Required only if auth_mode is apikey. Leave blank for SSO.",
+    "token_resource": "Azure token audience. Default works for most deployments.",
+    "subscription_id": "Azure subscription ID for auto-selecting after az login (optional)",
+    "subscription_name": "Friendly name shown during login (optional)",
+    "models": "Your model deployment names from the Azure AI Foundry portal"
+  }
+}
