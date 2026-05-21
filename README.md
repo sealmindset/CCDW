@@ -12,13 +12,13 @@ No clone needed. Just run one command:
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sealmindset/CCDW/main/bootstrap.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-irm https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/sealmindset/CCDW/main/bootstrap.ps1 | iex
 ```
 
 The installer handles everything automatically: Rancher Desktop, Docker, AI provider configuration, and a desktop shortcut. Re-run to update.
@@ -31,7 +31,7 @@ The installer handles everything automatically: Rancher Desktop, Docker, AI prov
 ### Pull from Registry
 
 ```bash
-docker pull ghcr.io/SleepNumberInc/CCDW:latest
+docker pull ghcr.io/sealmindset/CCDW:latest
 
 docker run -d \
   --name claude-code \
@@ -40,7 +40,7 @@ docker run -d \
   -p 8080:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v ~/Documents:/home/coder/Documents \
-  ghcr.io/SleepNumberInc/CCDW:latest
+  ghcr.io/sealmindset/CCDW:latest
 ```
 
 Then open **http://localhost:3000** in your browser.
@@ -48,7 +48,7 @@ Then open **http://localhost:3000** in your browser.
 ### Docker Compose (Power Users)
 
 ```bash
-git clone https://github.com/SleepNumberInc/CCDW.git
+git clone https://github.com/sealmindset/CCDW.git
 cd claude-code-docker
 bash scripts/first-run.sh
 docker compose up -d
