@@ -25,8 +25,8 @@ The installer handles everything automatically: Rancher Desktop, Docker, AI prov
 
 ### One-Click Install (If You Have the Repo)
 
-- **macOS:** Double-click `setup-claude-mac.command`
-- **Windows:** Double-click `setup-claude.bat`
+- **macOS:** Double-click `seal_setup-claude-mac.command`
+- **Windows:** Double-click `seal_setup-claude.bat`
 
 ### Pull from Registry
 
