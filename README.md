@@ -12,13 +12,13 @@ No clone needed. Just run one command:
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sealmindset/CCDW/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sealmindset/CCDW/main/seal_bootstrap.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-irm https://raw.githubusercontent.com/sealmindset/CCDW/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/sealmindset/CCDW/main/seal_bootstrap.ps1 | iex
 ```
 
 The installer handles everything automatically: Rancher Desktop, Docker, AI provider configuration, and a desktop shortcut. Re-run to update.
