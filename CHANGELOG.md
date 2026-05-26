@@ -27,6 +27,8 @@
 - Bedrock: first-run status display missing AWS SSO auth line
 - Bedrock: fallback profile name `sso-bedrock` corrected to `sso-bedrock-model-access` (8 files)
 - welcome-server.js: Bedrock auth method now shows `sso` instead of `none` when using SSO
+- SigV4 signature mismatch for Bedrock model IDs containing colons (e.g., v1:0)
+- AWS CLI `--format json` flag not supported on Alpine (removed, default output is JSON)
 
 ## [0.6.2] - 2026-05-20
 
