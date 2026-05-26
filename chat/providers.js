@@ -90,9 +90,12 @@ function signAwsV4(method, urlStr, headers, body, region, service, credentials) 
     return `${k}:${headers[origKey].toString().trim()}`;
   }).join('\n') + '\n';
 
+  // URI-encode each path segment per AWS SigV4 spec
+  const canonicalUri = parsedUrl.pathname.split('/').map(s => encodeURIComponent(s)).join('/');
+
   const canonicalRequest = [
     method,
-    parsedUrl.pathname,
+    canonicalUri,
     '',
     canonicalHeaders,
     signedHeaders,
@@ -164,7 +167,7 @@ function buildRequest(body) {
     const modelId = body.model;
     const isStream = !!body.stream;
     const action = isStream ? 'invoke-with-response-stream' : 'invoke';
-    const endpoint = `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(modelId)}/${action}`;
+    const endpoint = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/${action}`;
 
     const bedrockBody = { ...body };
     delete bedrockBody.model;
