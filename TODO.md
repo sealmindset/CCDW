@@ -35,8 +35,10 @@
 - [x] Bedrock auth check in shell-init.sh
 - [ ] Test install.bat --ai=foundry on Windows
 - [ ] Test install.bat --ai=bedrock on Windows
-- [ ] Test install.command --ai=bedrock on macOS
+- [x] Test install.command --ai=bedrock on macOS
 - [ ] Test Bedrock aws sso login inside container with real AWS account
+- [ ] Test install.command --ai=claude on macOS
+- [ ] Test install.bat --ai=claude on Windows
 - [x] Clean up old workshop setup files (setup.html no longer primary)
 
 ## High Priority

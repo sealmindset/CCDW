@@ -62,12 +62,20 @@ function getStatus() {
         }
     } else if (bedrock === '1') {
         status.ai_provider = 'AWS Bedrock';
-        const prof = process.env.AWS_PROFILE || 'sso-bedrock';
+        const prof = process.env.AWS_PROFILE || 'sso-bedrock-model-access';
         try {
             execSync('aws sts get-caller-identity --profile ' + prof, { stdio: 'ignore', timeout: 10000 });
             status.ai_status = 'ok';
         } catch (e) {
             status.ai_status = 'Session expired';
+        }
+    } else if (process.env.CLAUDE_CODE_PROVIDER === 'claude') {
+        status.ai_provider = 'Claude Account';
+        try {
+            const authOut = execSync('claude auth status 2>/dev/null', { timeout: 10000 }).toString();
+            status.ai_status = authOut.includes('"loggedIn": true') ? 'ok' : 'Not logged in';
+        } catch (e) {
+            status.ai_status = 'Not logged in';
         }
     }
 
@@ -212,7 +220,11 @@ function getHealth() {
         auth.endpoint_reachable = state.failure_type !== 'vpn_down' && state.failure_type !== 'endpoint_unreachable';
     } else if (bedrock === '1') {
         auth.provider = 'AWS Bedrock';
-        auth.method = process.env.AWS_ACCESS_KEY_ID ? 'access_key' : 'none';
+        auth.method = process.env.AWS_ACCESS_KEY_ID ? 'access_key' : 'sso';
+    } else if (process.env.CLAUDE_CODE_PROVIDER === 'claude') {
+        auth.provider = 'Claude Account';
+        auth.method = 'oauth';
+        auth.endpoint_reachable = state.failure_type !== 'endpoint_unreachable';
     }
 
     let diskFreeMb = 0;
@@ -433,9 +445,13 @@ const server = http.createServer((req, res) => {
             authCmd = 'az'; authArgs = ['login', '--use-device-code'];
         } else if (useBedrock === '1') {
             provider = 'bedrock';
-            var prof = process.env.AWS_PROFILE || 'sso-bedrock';
+            var prof = process.env.AWS_PROFILE || 'sso-bedrock-model-access';
             try { execSync('aws sts get-caller-identity --profile ' + prof, { stdio: 'ignore', timeout: 10000 }); res.writeHead(200, h); res.end(JSON.stringify({ needed: false, provider: 'bedrock' })); return; } catch(e) {}
             res.writeHead(200, h); res.end(JSON.stringify({ needed: true, provider: 'bedrock', status: 'use-terminal' })); return;
+        } else if (process.env.CLAUDE_CODE_PROVIDER === 'claude') {
+            provider = 'claude';
+            try { var authOut = execSync('claude auth status 2>/dev/null', { timeout: 10000 }).toString(); if (authOut.includes('"loggedIn": true')) { res.writeHead(200, h); res.end(JSON.stringify({ needed: false, provider: 'claude' })); return; } } catch(e) {}
+            res.writeHead(200, h); res.end(JSON.stringify({ needed: true, provider: 'claude', status: 'use-terminal' })); return;
         }
 
         if (provider === 'none') { res.writeHead(200, h); res.end(JSON.stringify({ needed: false, provider: 'none' })); return; }
@@ -537,8 +553,11 @@ const server = http.createServer((req, res) => {
             try { execSync('az account show', { stdio: 'ignore', timeout: 10000 }); authed = true; } catch(e) {}
         } else if (process.env.CLAUDE_CODE_USE_BEDROCK === '1') {
             prov = 'bedrock';
-            var checkProf = process.env.AWS_PROFILE || 'sso-bedrock';
+            var checkProf = process.env.AWS_PROFILE || 'sso-bedrock-model-access';
             try { execSync('aws sts get-caller-identity --profile ' + checkProf, { stdio: 'ignore', timeout: 10000 }); authed = true; } catch(e) {}
+        } else if (process.env.CLAUDE_CODE_PROVIDER === 'claude') {
+            prov = 'claude';
+            try { var chkAuth = execSync('claude auth status 2>/dev/null', { timeout: 10000 }).toString(); if (chkAuth.includes('"loggedIn": true')) authed = true; } catch(e) {}
         }
         res.writeHead(200, ch);
         res.end(JSON.stringify({ authenticated: authed, provider: prov }));

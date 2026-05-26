@@ -273,6 +273,8 @@ elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
     AI_LABEL="Azure AI Foundry"; AI_OK=1
 elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
     AI_LABEL="AWS Bedrock"; AI_OK=1
+elif [ "${CLAUDE_CODE_PROVIDER}" = "claude" ]; then
+    AI_LABEL="Claude Account"; AI_OK=1
 fi
 
 AUTH_OK=0
@@ -288,8 +290,12 @@ elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
         az account show &>/dev/null 2>&1 && AUTH_OK=1
     fi
 elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
-    AWS_SSO_PROFILE="${AWS_PROFILE:-sso-bedrock}"
+    AWS_SSO_PROFILE="${AWS_PROFILE:-sso-bedrock-model-access}"
     if aws sts get-caller-identity --profile "$AWS_SSO_PROFILE" &>/dev/null 2>&1; then
+        AUTH_OK=1
+    fi
+elif [ "${CLAUDE_CODE_PROVIDER}" = "claude" ]; then
+    if claude auth status 2>/dev/null | grep -q '"loggedIn": true'; then
         AUTH_OK=1
     fi
 fi
@@ -318,7 +324,14 @@ if [ ! -f "$FIRST_RUN_MARKER" ]; then
         WIZARD_EXIT=$?
 
         # Re-check status after wizard (wizard now handles GitHub too)
-        az account show &>/dev/null 2>&1 && AZ_OK=1
+        if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+            az account show &>/dev/null 2>&1 && AUTH_OK=1
+        elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
+            aws sts get-caller-identity --profile "${AWS_PROFILE:-sso-bedrock-model-access}" &>/dev/null 2>&1 && AUTH_OK=1
+        elif [ "${CLAUDE_CODE_PROVIDER}" = "claude" ]; then
+            claude auth status 2>/dev/null | grep -q '"loggedIn": true' && AUTH_OK=1
+        fi
+        AZ_OK=$AUTH_OK
         gh auth status &>/dev/null 2>&1 && GH_OK=1
 
         # If wizard completed, first-run marker is already set by the wizard
@@ -332,6 +345,10 @@ if [ ! -f "$FIRST_RUN_MARKER" ]; then
             echo -e "  ${CHECK_PASS} Auth          ${GREEN}API Key (personal)${NC}"
         elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
             [ "$AZ_OK" = "1" ] && echo -e "  ${CHECK_PASS} Azure login" || echo -e "  ${CHECK_FAIL} Azure login"
+        elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
+            [ "$AUTH_OK" = "1" ] && echo -e "  ${CHECK_PASS} AWS SSO       ${GREEN}Active${NC}" || echo -e "  ${CHECK_FAIL} AWS SSO       ${RED}Not signed in${NC}"
+        elif [ "${CLAUDE_CODE_PROVIDER}" = "claude" ]; then
+            [ "$AUTH_OK" = "1" ] && echo -e "  ${CHECK_PASS} Auth          ${GREEN}OAuth (Claude Account)${NC}" || echo -e "  ${CHECK_FAIL} Auth          ${RED}Not signed in${NC}"
         fi
         [ "$DOCKER_OK" = "1" ] && echo -e "  ${CHECK_PASS} System" || echo -e "  ${CHECK_FAIL} System"
         if [ "$GH_OK" = "1" ]; then
@@ -413,6 +430,8 @@ else
         fi
     elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ] && [ "$AUTH_OK" = "0" ]; then
         NEEDS_REAUTH=1
+    elif [ "${CLAUDE_CODE_PROVIDER}" = "claude" ] && [ "$AUTH_OK" = "0" ]; then
+        NEEDS_REAUTH=1
     fi
 
     if [ "$NEEDS_REAUTH" = "1" ]; then
@@ -421,7 +440,9 @@ else
         if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
             az account show &>/dev/null 2>&1 && AUTH_OK=1 && NEEDS_REAUTH=0
         elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
-            aws sts get-caller-identity --profile "${AWS_PROFILE:-sso-bedrock}" &>/dev/null 2>&1 && AUTH_OK=1 && NEEDS_REAUTH=0
+            aws sts get-caller-identity --profile "${AWS_PROFILE:-sso-bedrock-model-access}" &>/dev/null 2>&1 && AUTH_OK=1 && NEEDS_REAUTH=0
+        elif [ "${CLAUDE_CODE_PROVIDER}" = "claude" ]; then
+            claude auth status 2>/dev/null | grep -q '"loggedIn": true' && AUTH_OK=1 && NEEDS_REAUTH=0
         fi
         AZ_OK=$AUTH_OK
         gh auth status &>/dev/null 2>&1 && GH_OK=1
@@ -459,6 +480,12 @@ else
             echo -e "  ${CHECK_PASS} AWS SSO       ${GREEN}Active${NC}"
         else
             echo -e "  ${CHECK_FAIL} AWS SSO       ${RED}Not signed in${NC}"
+        fi
+    elif [ "${CLAUDE_CODE_PROVIDER}" = "claude" ]; then
+        if [ "$AUTH_OK" = "1" ]; then
+            echo -e "  ${CHECK_PASS} Auth          ${GREEN}OAuth (Claude Account)${NC}"
+        else
+            echo -e "  ${CHECK_FAIL} Auth          ${RED}Not signed in${NC}"
         fi
     fi
 

@@ -102,6 +102,8 @@ elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
     PROVIDER="azure-foundry"
 elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
     PROVIDER="bedrock"
+elif [ "${CLAUDE_CODE_PROVIDER}" = "claude" ]; then
+    PROVIDER="claude"
 else
     DEFAULT_PROVIDER=$(read_yaml "default_provider")
     if [ "$DEFAULT_PROVIDER" = "azure-foundry" ] || [ "$DEFAULT_PROVIDER" = "bedrock" ]; then
@@ -127,7 +129,7 @@ elif [ "$PROVIDER" = "bedrock" ]; then
         # Try JSON config
         AWS_SSO_PROFILE=$(read_json "/opt/claude-code-docker/config/bedrock.json" "profile_name")
     fi
-    AWS_SSO_PROFILE="${AWS_SSO_PROFILE:-sso-bedrock}"
+    AWS_SSO_PROFILE="${AWS_SSO_PROFILE:-sso-bedrock-model-access}"
 fi
 
 # ---------------------------------------------------------------------------
@@ -153,8 +155,14 @@ elif [ "$PROVIDER" = "bedrock" ]; then
     if [ "$MODE" = "--force" ]; then
         NEED_LOGIN=1
     else
-        # Check if AWS SSO session is active
         aws sts get-caller-identity --profile "$AWS_SSO_PROFILE" &>/dev/null 2>&1 || NEED_LOGIN=1
+    fi
+elif [ "$PROVIDER" = "claude" ]; then
+    if [ "$MODE" = "--force" ]; then
+        NEED_LOGIN=1
+        claude auth logout &>/dev/null 2>&1
+    else
+        claude auth status 2>/dev/null | grep -q '"loggedIn": true' || NEED_LOGIN=1
     fi
 fi
 
@@ -735,6 +743,120 @@ bedrock_allset() {
 }
 
 # =============================================================================
+# CLAUDE ACCOUNT (OAUTH) LOGIN FLOW
+# =============================================================================
+
+claude_preflight() {
+    clear
+    draw_header "Checking Your Setup" 1 3
+    draw_progress 1 3
+
+    local all_pass=1
+
+    printf "  ${DIM}○${NC} Code sharing tools"
+    if command -v gh &>/dev/null; then
+        printf "\r  ${OK} Code sharing tools\n"
+    else
+        printf "\r  ${FAIL} Code sharing tools — not installed\n"
+        all_pass=0
+    fi
+
+    printf "  ${DIM}○${NC} Internet connection"
+    if curl -s --connect-timeout 5 -o /dev/null https://www.google.com 2>/dev/null; then
+        printf "\r  ${OK} Internet connection\n"
+    else
+        printf "\r  ${FAIL} Internet connection — no network\n"
+        all_pass=0
+    fi
+
+    printf "  ${DIM}○${NC} Claude API"
+    if curl -s --connect-timeout 5 -o /dev/null https://api.anthropic.com 2>/dev/null; then
+        printf "\r  ${OK} Claude API\n"
+    else
+        printf "\r  ${FAIL} Claude API — unreachable\n"
+        all_pass=0
+    fi
+
+    echo ""
+
+    if [ "$all_pass" = "0" ]; then
+        echo -e "  ${YELLOW}Some checks failed. Fix the items above and try again.${NC}"
+        echo ""
+        read -p "  Press Enter to retry, or Ctrl+C to exit... " _
+        claude_preflight
+        return $?
+    fi
+
+    echo -e "  ${GREEN}All checks passed.${NC}"
+    sleep 1.5
+    return 0
+}
+
+claude_signin() {
+    clear
+    draw_header "Sign In" 2 3
+    draw_progress 2 3
+
+    if [ "$NEED_LOGIN" = "0" ]; then
+        echo -e "  ${OK} Already signed in with your Claude account."
+        sleep 1.5
+        return 0
+    fi
+
+    echo -e "  ${BOLD}Sign in with your Claude account${NC}"
+    echo ""
+    echo -e "  A browser window will open for you to sign in."
+    echo -e "  ${DIM}If no browser opens, copy the URL shown below.${NC}"
+    echo ""
+
+    claude auth login 2>&1
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ] && claude auth status 2>/dev/null | grep -q '"loggedIn": true'; then
+        echo ""
+        echo -e "  ${OK} Claude account sign-in successful!"
+        NEED_LOGIN=0
+    else
+        echo ""
+        echo -e "  ${FAIL} Sign-in was not completed."
+        echo ""
+        read -p "  Press Enter to try again, or Ctrl+C to exit... " _
+        NEED_LOGIN=1
+        claude_signin
+        return $?
+    fi
+
+    sleep 1.5
+    return 0
+}
+
+claude_allset() {
+    clear
+    draw_header "All Set" 3 3
+    draw_progress 3 3
+
+    echo -e "  ${OK} Auth method        ${GREEN}Claude Account (OAuth)${NC}"
+
+    if curl -s --connect-timeout 5 -o /dev/null https://api.anthropic.com 2>/dev/null; then
+        echo -e "  ${OK} API endpoint       ${GREEN}Connected${NC}"
+    else
+        echo -e "  ${YELLOW}!${NC} API endpoint       ${YELLOW}Not reachable${NC}"
+    fi
+
+    if docker info >/dev/null 2>&1; then
+        echo -e "  ${OK} Docker             ${GREEN}Available${NC}"
+    fi
+
+    echo ""
+
+    "$SCRIPTS_DIR/configure-provider.sh" 2>/dev/null
+
+    echo -e "  ${GREEN}You're all set!${NC} Type ${GREEN}claude${NC} to start Claude Code."
+    echo -e "  Then type ${GREEN}/make-it${NC} to build your first app."
+    echo ""
+}
+
+# =============================================================================
 # GITHUB CLI LOGIN FLOW
 # =============================================================================
 
@@ -837,10 +959,15 @@ if [ "$NEED_LOGIN" = "1" ]; then
             echo -e "  Type ${GREEN}claude${NC} to start Claude Code."
             echo ""
             ;;
+        claude)
+            claude_preflight || exit 1
+            claude_signin
+            claude_allset
+            ;;
         *)
             echo ""
             echo -e "  ${YELLOW}No AI provider configured.${NC}"
-            echo -e "  Re-run the installer with --ai=foundry, --ai=bedrock, or --ai=anthropic"
+            echo -e "  Re-run the installer with --ai=foundry, --ai=bedrock, --ai=anthropic, or --ai=claude"
             echo ""
             exit 1
             ;;

@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.6.3] - 2026-05-26
+
+### Added
+- Claude Account provider (`--ai=claude`): OAuth-based auth for Max plan, free tier, or Teams
+  - No API key required -- sign in via browser on first launch
+  - install.command and install.bat both support `--ai=claude` (also `--ai=oauth`, `--ai=max`)
+  - config/claude.json + claude.template.json for provider configuration
+  - login-wizard.sh: `claude auth login` / `claude auth logout` integration
+  - shell-init.sh: OAuth status detection via `claude auth status`
+  - configure-provider.sh: minimal settings.json (permissions only, no token helper)
+  - claude-wrapper.sh: no false "no provider" error when CLAUDE_CODE_PROVIDER=claude
+  - welcome-server.js: status, health, auth/login, auth/check all detect Claude Account
+  - doctor.sh: Claude auth check + api.anthropic.com reachability
+  - self-heal-lib.sh: api.anthropic.com endpoint check for claude provider
+
+### Fixed
+- Workshop banner: "AI Provider not configured" when Bedrock or Claude Account is active
+- Workshop Chat: "Bedrock direct API not supported yet" error -- now fully supports Bedrock
+  - AWS SigV4 request signing (pure Node.js crypto, no SDK dependency)
+  - Binary event stream parser for Bedrock streaming responses
+  - Model list with cross-region inference profile IDs
+- Workshop Chat: added Claude Account detection (redirects to terminal for OAuth)
+- Workshop readiness checks: added Bedrock network check and provider-aware fix steps
+- Bedrock: post-wizard re-check in shell-init.sh was Azure-only, now provider-aware
+- Bedrock: first-run status display missing AWS SSO auth line
+- Bedrock: fallback profile name `sso-bedrock` corrected to `sso-bedrock-model-access` (8 files)
+- welcome-server.js: Bedrock auth method now shows `sso` instead of `none` when using SSO
+
 ## [0.6.2] - 2026-05-20
 
 ### Added

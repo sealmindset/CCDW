@@ -31,7 +31,7 @@ echo ""
 
 # Check for common issues and give specific guidance
 # 1. No API key / auth failure
-if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$ANTHROPIC_FOUNDRY_BASE_URL" ] && [ "${CLAUDE_CODE_USE_BEDROCK}" != "1" ]; then
+if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$ANTHROPIC_FOUNDRY_BASE_URL" ] && [ "${CLAUDE_CODE_USE_BEDROCK}" != "1" ] && [ "${CLAUDE_CODE_PROVIDER}" != "claude" ]; then
     echo -e "  ${BOLD}Problem:${NC} No AI provider is configured."
     echo ""
     echo -e "  ${BOLD}How to fix:${NC}"

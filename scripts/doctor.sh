@@ -118,11 +118,20 @@ elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
     fi
 elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
     pass "AWS Bedrock is configured"
-    if [ -n "$AWS_ACCESS_KEY_ID" ]; then
-        pass "AWS access key is set"
+    PROF="${AWS_PROFILE:-sso-bedrock-model-access}"
+    if aws sts get-caller-identity --profile "$PROF" &>/dev/null 2>&1; then
+        pass "AWS SSO session is active (profile: $PROF)"
     else
-        warn "AWS_ACCESS_KEY_ID is not set"
-        hint "Add AWS_ACCESS_KEY_ID to your .env file"
+        fail "AWS SSO session expired"
+        hint "Run: login"
+    fi
+elif [ "${CLAUDE_CODE_PROVIDER}" = "claude" ]; then
+    pass "Claude Account (OAuth) is configured"
+    if claude auth status 2>/dev/null | grep -q '"loggedIn": true'; then
+        pass "Claude auth is active"
+    else
+        fail "Claude auth is not active"
+        hint "Run: login"
     fi
 else
     fail "No AI provider is configured"
@@ -152,7 +161,7 @@ if [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
         fail "Cannot reach AI endpoint: $ANTHROPIC_FOUNDRY_BASE_URL"
         hint "Make sure you're connected to VPN (if required)"
     fi
-elif [ -n "$ANTHROPIC_API_KEY" ]; then
+elif [ -n "$ANTHROPIC_API_KEY" ] || [ "${CLAUDE_CODE_PROVIDER}" = "claude" ]; then
     if curl -s --connect-timeout 5 -o /dev/null https://api.anthropic.com 2>/dev/null; then
         pass "Anthropic API is reachable"
     else

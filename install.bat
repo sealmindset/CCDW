@@ -39,15 +39,19 @@ if /i "!AI_PROVIDER!"=="aws"             set "AI_PROVIDER=bedrock"
 if /i "!AI_PROVIDER!"=="anthropic"       set "AI_PROVIDER=anthropic"
 if /i "!AI_PROVIDER!"=="api-key"         set "AI_PROVIDER=anthropic"
 if /i "!AI_PROVIDER!"=="apikey"          set "AI_PROVIDER=anthropic"
+if /i "!AI_PROVIDER!"=="claude"          set "AI_PROVIDER=claude"
+if /i "!AI_PROVIDER!"=="oauth"           set "AI_PROVIDER=claude"
+if /i "!AI_PROVIDER!"=="max"             set "AI_PROVIDER=claude"
 
 if defined AI_PROVIDER (
-    if /i "!AI_PROVIDER!" neq "foundry" if /i "!AI_PROVIDER!" neq "bedrock" if /i "!AI_PROVIDER!" neq "anthropic" (
+    if /i "!AI_PROVIDER!" neq "foundry" if /i "!AI_PROVIDER!" neq "bedrock" if /i "!AI_PROVIDER!" neq "anthropic" if /i "!AI_PROVIDER!" neq "claude" (
         echo [ERROR] Unknown provider: !AI_PROVIDER!
         echo.
         echo   Valid options:
         echo     --ai=foundry     Azure AI Foundry
         echo     --ai=bedrock     AWS Bedrock
         echo     --ai=anthropic   Anthropic API key
+        echo     --ai=claude      Claude Account ^(Max plan or free tier^)
         echo.
         pause
         exit /b 1
@@ -661,6 +665,7 @@ if exist "!ENV_FILE!" (
     findstr /i /b "ANTHROPIC_API_KEY=" "!ENV_FILE!" >nul 2>nul && set "HAS_PROVIDER=1"
     findstr /i /b "ANTHROPIC_FOUNDRY_BASE_URL=" "!ENV_FILE!" >nul 2>nul && set "HAS_PROVIDER=1"
     findstr /i /b "CLAUDE_CODE_USE_BEDROCK=1" "!ENV_FILE!" >nul 2>nul && set "HAS_PROVIDER=1"
+    findstr /i /b "CLAUDE_CODE_PROVIDER=claude" "!ENV_FILE!" >nul 2>nul && set "HAS_PROVIDER=1"
 )
 
 if "!HAS_PROVIDER!"=="1" if not defined AI_PROVIDER (
@@ -683,10 +688,12 @@ if not defined AI_PROVIDER (
     echo     1. Azure AI Foundry  ^(Claude via Azure^)
     echo     2. AWS Bedrock       ^(Claude via AWS^)
     echo     3. Anthropic API     ^(direct API key^)
-    echo     4. Skip for now      ^(edit .env manually^)
+    echo     4. Claude Account    ^(Max plan or free tier^)
+    echo     5. Skip for now      ^(edit .env manually^)
     echo.
-    choice /C 1234 /M "Enter choice"
-    if !ERRORLEVEL! equ 4 goto :skip_setup
+    choice /C 12345 /M "Enter choice"
+    if !ERRORLEVEL! equ 5 goto :skip_setup
+    if !ERRORLEVEL! equ 4 set "AI_PROVIDER=claude"
     if !ERRORLEVEL! equ 3 set "AI_PROVIDER=anthropic"
     if !ERRORLEVEL! equ 2 set "AI_PROVIDER=bedrock"
     if !ERRORLEVEL! equ 1 set "AI_PROVIDER=foundry"
@@ -740,6 +747,13 @@ if "!AI_PROVIDER!"=="bedrock" (
 
 if "!AI_PROVIDER!"=="anthropic" (
     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\prompt-anthropic-key.ps1" "!CONFIG_FILE!"
+)
+
+if "!AI_PROVIDER!"=="claude" (
+    echo.
+    echo   Claude Account uses browser login -- no API key needed.
+    echo   You'll sign in when you first open Claude Code.
+    echo.
 )
 
 REM ---------------------------------------------------------------------------

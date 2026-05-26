@@ -1,0 +1,40 @@
+{
+  "_help": {
+    "auth_mode": "OAuth login via browser. No API key needed. Requires a Claude account (Max plan or free tier).",
+    "models": "Model names used by Claude Code. Defaults are the latest Claude models."
+  },
+  "provider": "claude",
+  "display_name": "Claude Account",
+  "auth_mode": "oauth",
+  "models": {
+    "sonnet": "claude-sonnet-4-6",
+    "haiku": "claude-haiku-4-5",
+    "opus": "claude-opus-4-6"
+  },
+  "default_model": "sonnet",
+  "env_vars": {
+    "CLAUDE_CODE_PROVIDER": "claude"
+  },
+  "settings_json": {
+    "permissions": {
+      "deny": [
+        "Read(./.env)",
+        "Read(./.env.*)",
+        "Read(./secrets/**)"
+      ]
+    }
+  },
+  "prereqs": {
+    "host": [
+      {
+        "id": "internet",
+        "label": "Internet connectivity",
+        "check": "curl -sf --connect-timeout 5 https://api.anthropic.com",
+        "required": true,
+        "fail_message": "Cannot reach api.anthropic.com. Check your internet connection."
+      }
+    ]
+  },
+  "docker_requires": [],
+  "container_login": "oauth"
+}

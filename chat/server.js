@@ -105,71 +105,98 @@ function streamToProvider(conv, userContent, model, res) {
       proxyRes.on('data', c => errBody += c);
       proxyRes.on('end', () => {
         let msg = `API returned ${proxyRes.statusCode}`;
-        try { msg = JSON.parse(errBody).error?.message || msg; } catch {}
+        try { const e = JSON.parse(errBody); msg = e.error?.message || e.message || msg; } catch {}
         res.write(`event: chat:error\ndata: ${JSON.stringify({ message: msg })}\n\n`);
         res.end();
       });
       return;
     }
 
-    let buf = '';
     let assistantText = '';
     let usage = { input_tokens: 0, output_tokens: 0 };
     let stopReason = '';
     let msgModel = '';
 
-    proxyRes.on('data', (chunk) => {
-      buf += chunk.toString();
-      const lines = buf.split('\n');
-      buf = lines.pop();
-
-      for (const line of lines) {
-        if (line.startsWith('event: ')) {
-          res.write(line + '\n');
-        } else if (line.startsWith('data: ')) {
-          res.write(line + '\n\n');
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.type === 'message_start' && data.message) {
-              usage.input_tokens = data.message.usage?.input_tokens || 0;
-              msgModel = data.message.model || '';
-            }
-            if (data.type === 'content_block_delta' && data.delta?.text) {
-              assistantText += data.delta.text;
-            }
-            if (data.type === 'message_delta') {
-              stopReason = data.delta?.stop_reason || '';
-              usage.output_tokens = data.usage?.output_tokens || 0;
-            }
-          } catch {}
-        } else if (line.trim() === '') {
-          // empty line between events
-        }
-      }
-    });
-
-    proxyRes.on('end', () => {
+    function onStreamEnd() {
       conversations.addMessage(conv.id, 'user', userContent);
       conversations.addMessage(conv.id, 'assistant',
         [{ type: 'text', text: assistantText }],
         { model: msgModel, usage, stop_reason: stopReason }
       );
-
       res.write(`event: chat:usage\ndata: ${JSON.stringify(usage)}\n\n`);
-
       if (conv.messages.length === 0) {
         generateTitle(conv.id, userContent, assistantText, msgModel || model);
       }
-
       activeStreams.delete(conv.id);
       res.end();
-    });
+    }
 
-    proxyRes.on('error', (e) => {
+    function onStreamError(e) {
       res.write(`event: chat:error\ndata: ${JSON.stringify({ message: e.message })}\n\n`);
       activeStreams.delete(conv.id);
       res.end();
-    });
+    }
+
+    function handleEvent(data) {
+      if (data.type === 'message_start' && data.message) {
+        usage.input_tokens = data.message.usage?.input_tokens || 0;
+        msgModel = data.message.model || '';
+      }
+      if (data.type === 'content_block_delta' && data.delta?.text) {
+        assistantText += data.delta.text;
+      }
+      if (data.type === 'message_delta') {
+        stopReason = data.delta?.stop_reason || '';
+        usage.output_tokens = data.usage?.output_tokens || 0;
+      }
+    }
+
+    if (reqOpts.bedrockStream) {
+      // Bedrock returns AWS binary event stream, not SSE text
+      let bedrockBuf = Buffer.alloc(0);
+      proxyRes.on('data', (chunk) => {
+        bedrockBuf = Buffer.concat([bedrockBuf, chunk]);
+        while (true) {
+          const msg = providers.parseEventStreamMessage(bedrockBuf, 0);
+          if (!msg) break;
+          bedrockBuf = bedrockBuf.slice(msg.totalLen);
+
+          if (msg.headers[':message-type'] === 'exception') {
+            try {
+              const err = JSON.parse(msg.payload.toString());
+              res.write(`event: chat:error\ndata: ${JSON.stringify({ message: err.message || 'Bedrock error' })}\n\n`);
+            } catch {}
+            continue;
+          }
+
+          const event = providers.extractBedrockEvent(msg.payload);
+          if (!event) continue;
+          res.write(`event: ${event.type || 'unknown'}\ndata: ${JSON.stringify(event)}\n\n`);
+          handleEvent(event);
+        }
+      });
+      proxyRes.on('end', onStreamEnd);
+      proxyRes.on('error', onStreamError);
+    } else {
+      // Anthropic/Foundry SSE text stream
+      let buf = '';
+      proxyRes.on('data', (chunk) => {
+        buf += chunk.toString();
+        const lines = buf.split('\n');
+        buf = lines.pop();
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            res.write(line + '\n');
+          } else if (line.startsWith('data: ')) {
+            res.write(line + '\n\n');
+            try { handleEvent(JSON.parse(line.slice(6))); } catch {}
+          }
+        }
+      });
+      proxyRes.on('end', onStreamEnd);
+      proxyRes.on('error', onStreamError);
+    }
   });
 
   proxyReq.on('error', (e) => {

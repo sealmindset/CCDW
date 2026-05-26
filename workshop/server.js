@@ -201,6 +201,37 @@ function detectAuthStatus() {
     return result;
   }
 
+  if (env.CLAUDE_CODE_USE_BEDROCK === '1') {
+    const prof = env.AWS_PROFILE || 'sso-bedrock-model-access';
+    try {
+      execSync('aws sts get-caller-identity --profile ' + prof + ' 2>/dev/null', { timeout: 10000 });
+      result.configured = true;
+      result.provider = 'AWS Bedrock';
+      result.detail = 'AWS SSO session active (profile: ' + prof + ')';
+    } catch {
+      result.configured = false;
+      result.provider = 'AWS Bedrock';
+      result.detail = 'AWS SSO session expired. Run "login" in the terminal.';
+    }
+    return result;
+  }
+
+  if (env.CLAUDE_CODE_PROVIDER === 'claude') {
+    try {
+      const authOut = execSync('claude auth status 2>/dev/null', { timeout: 10000 }).toString();
+      if (authOut.includes('"loggedIn": true')) {
+        result.configured = true;
+        result.provider = 'Claude Account';
+        result.detail = 'OAuth login active';
+        return result;
+      }
+    } catch {}
+    result.configured = false;
+    result.provider = 'Claude Account';
+    result.detail = 'Not logged in. Run "login" in the terminal.';
+    return result;
+  }
+
   result.detail = 'No AI provider credentials found. Open the Web Terminal and run "claude" to set up.';
   return result;
 }
@@ -1502,13 +1533,22 @@ async function runPreflight(res) {
     } catch {
       checks.network.detail = 'Cannot reach Azure AI Foundry -- VPN may be required';
     }
-  } else if (env.ANTHROPIC_API_KEY) {
+  } else if (env.ANTHROPIC_API_KEY || env.CLAUDE_CODE_PROVIDER === 'claude') {
     try {
       execSync('curl -sf --connect-timeout 5 --max-time 5 https://api.anthropic.com -o /dev/null', { timeout: 10000 });
       checks.network.pass = true;
       checks.network.detail = 'Connected to Anthropic API';
     } catch {
       checks.network.detail = 'Cannot reach Anthropic API -- check your network connection';
+    }
+  } else if (env.CLAUDE_CODE_USE_BEDROCK === '1') {
+    try {
+      execSync('curl -sf --connect-timeout 5 --max-time 5 https://bedrock-runtime.us-east-1.amazonaws.com -o /dev/null', { timeout: 10000 });
+      checks.network.pass = true;
+      checks.network.detail = 'Connected to AWS Bedrock';
+    } catch {
+      checks.network.pass = true;
+      checks.network.detail = 'AWS Bedrock (network check skipped -- uses AWS SDK)';
     }
   } else {
     checks.network.pass = true;
@@ -1533,6 +1573,20 @@ async function runPreflight(res) {
         id: 'az-login',
         label: 'Sign in to Azure',
         instruction: 'Open the Web Terminal and run: az login --use-device-code',
+        terminal: true,
+      });
+    } else if (env.CLAUDE_CODE_USE_BEDROCK === '1') {
+      steps.push({
+        id: 'aws-login',
+        label: 'Sign in to AWS',
+        instruction: 'Open the Web Terminal and run: login',
+        terminal: true,
+      });
+    } else if (env.CLAUDE_CODE_PROVIDER === 'claude') {
+      steps.push({
+        id: 'claude-login',
+        label: 'Sign in to Claude',
+        instruction: 'Open the Web Terminal and run: login',
         terminal: true,
       });
     } else {

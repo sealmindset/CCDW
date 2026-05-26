@@ -136,6 +136,8 @@ elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
     PROVIDER="azure-foundry"
 elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
     PROVIDER="bedrock"
+elif [ "${CLAUDE_CODE_PROVIDER}" = "claude" ]; then
+    PROVIDER="claude"
 else
     PROVIDER=$(read_yaml "default_provider")
 fi
@@ -292,6 +294,22 @@ print(json.dumps(settings, indent=2))
         if [ "${SKIP_DANGEROUS}" = "True" ]; then
             echo '{ "skipDangerousModePermissionPrompt": true }' > "$SETTINGS_FILE"
         fi
+        ;;
+
+    claude)
+        # OAuth login — Claude Code handles auth itself via browser.
+        # Write minimal settings with permissions only (no env overrides).
+        python3 -c "
+import json
+settings = {
+    'permissions': {
+        'deny': ['Read(./.env)', 'Read(./.env.*)', 'Read(./secrets/**)']
+    }
+}
+if '${SKIP_DANGEROUS}' == 'True':
+    settings['skipDangerousModePermissionPrompt'] = True
+print(json.dumps(settings, indent=2))
+" > "$SETTINGS_FILE"
         ;;
 esac
 

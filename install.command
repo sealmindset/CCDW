@@ -137,6 +137,7 @@ if [ "$RUN_DOCTOR" = "1" ]; then
         grep -q "^CLAUDE_CODE_USE_FOUNDRY=1" "$ENV_FILE" 2>/dev/null && PROVIDER="Azure AI Foundry"
         grep -q "^CLAUDE_CODE_USE_BEDROCK=1" "$ENV_FILE" 2>/dev/null && PROVIDER="AWS Bedrock"
         grep -q "^ANTHROPIC_API_KEY=sk-" "$ENV_FILE" 2>/dev/null && PROVIDER="Anthropic API"
+        grep -q "^CLAUDE_CODE_PROVIDER=claude" "$ENV_FILE" 2>/dev/null && PROVIDER="Claude Account (OAuth)"
         echo -e "  ${GREEN}✓${NC} .env configured (provider: $PROVIDER)"
     else
         echo -e "  ${RED}✗${NC} No .env file"
@@ -162,6 +163,7 @@ case "$AI_PROVIDER" in
     foundry|azure-foundry|azure|"Foundry Claude") AI_PROVIDER="foundry" ;;
     bedrock|aws-bedrock|aws|"AWS Bedrock")        AI_PROVIDER="bedrock" ;;
     anthropic|api-key|apikey|"Anthropic API Key")  AI_PROVIDER="anthropic" ;;
+    claude|oauth|max|"Claude Account")             AI_PROVIDER="claude" ;;
     "") ;; # no argument -- will prompt or auto-detect
     *)
         echo -e "${RED}[ERROR]${NC} Unknown provider: $AI_PROVIDER"
@@ -170,6 +172,7 @@ case "$AI_PROVIDER" in
         echo "    --ai=foundry     Azure AI Foundry"
         echo "    --ai=bedrock     AWS Bedrock"
         echo "    --ai=anthropic   Anthropic API key"
+        echo "    --ai=claude      Claude account (Max plan or free)"
         echo ""
         exit 1
         ;;
@@ -565,6 +568,7 @@ if [ -f "$ENV_FILE" ]; then
     grep -q "^ANTHROPIC_API_KEY=" "$ENV_FILE" 2>/dev/null && HAS_PROVIDER=1
     grep -q "^ANTHROPIC_FOUNDRY_BASE_URL=" "$ENV_FILE" 2>/dev/null && HAS_PROVIDER=1
     grep -q "^CLAUDE_CODE_USE_BEDROCK=1" "$ENV_FILE" 2>/dev/null && HAS_PROVIDER=1
+    grep -q "^CLAUDE_CODE_PROVIDER=claude" "$ENV_FILE" 2>/dev/null && HAS_PROVIDER=1
 fi
 
 if [ "$HAS_PROVIDER" = "1" ] && [ -z "$AI_PROVIDER" ]; then
@@ -578,13 +582,15 @@ else
         echo "    1. Azure AI Foundry  (Claude via Azure)"
         echo "    2. AWS Bedrock       (Claude via AWS)"
         echo "    3. Anthropic API     (direct API key)"
-        echo "    4. Skip for now      (edit .env manually later)"
+        echo "    4. Claude Account    (Max plan or free tier)"
+        echo "    5. Skip for now      (edit .env manually later)"
         echo ""
-        read -p "  Enter choice [1-4]: " PROVIDER_CHOICE
+        read -p "  Enter choice [1-5]: " PROVIDER_CHOICE
         case "$PROVIDER_CHOICE" in
             1) AI_PROVIDER="foundry" ;;
             2) AI_PROVIDER="bedrock" ;;
             3) AI_PROVIDER="anthropic" ;;
+            4) AI_PROVIDER="claude" ;;
             *) AI_PROVIDER="" ;;
         esac
     fi
@@ -681,6 +687,11 @@ with open('$CONFIG_FILE', 'w') as f: json.dump(cfg, f, indent=2)
 " 2>/dev/null
                     fi
                 fi
+                ;;
+
+            claude)
+                echo -e "  ${BLUE}Note:${NC} You'll sign in with your Claude account after the container starts."
+                echo -e "  ${DIM}Claude Code will open a browser login -- no API key needed.${NC}"
                 ;;
         esac
 

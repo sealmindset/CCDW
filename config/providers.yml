@@ -10,7 +10,7 @@
 # values if set at runtime.
 # =============================================================================
 
-# Which provider to use by default: azure-foundry | bedrock | api-key
+# Which provider to use by default: azure-foundry | bedrock | api-key | claude
 default_provider: azure-foundry
 
 # ---------------------------------------------------------------------------
@@ -37,6 +37,9 @@ providers:
 
   api-key:
     name: Anthropic API (Personal)
+
+  claude:
+    name: Claude Account (OAuth)
 
 # ---------------------------------------------------------------------------
 # Claude Code settings applied to all providers

@@ -322,6 +322,11 @@ sh_classify() {
             echo "vpn_down"
             return
         fi
+    elif [ "${CLAUDE_CODE_PROVIDER}" = "claude" ]; then
+        if ! sh_check_endpoint "https://api.anthropic.com"; then
+            echo "endpoint_unreachable"
+            return
+        fi
     fi
 
     # --- Layer 3: Auth ---

@@ -78,7 +78,7 @@ const PROVIDER_DEFS = {
       { key: 'accountId', label: 'AWS Account ID', type: 'text', placeholder: '123456789012', required: true },
       { key: 'roleName', label: 'SSO Role Name', type: 'text', placeholder: 'bedrock-model-access', required: true },
       { key: 'region', label: 'Bedrock Region', type: 'text', placeholder: 'us-east-1', required: true, default: 'us-east-1' },
-      { key: 'profileName', label: 'AWS Profile Name', type: 'text', placeholder: 'sso-bedrock-model-access', required: true, default: 'sso-bedrock' },
+      { key: 'profileName', label: 'AWS Profile Name', type: 'text', placeholder: 'sso-bedrock-model-access', required: true, default: 'sso-bedrock-model-access' },
     ],
     models: [
       { id: 'us.anthropic.claude-opus-4-6-v1', label: 'Claude Opus 4.6', tier: 'heavy' },
@@ -180,6 +180,8 @@ function getProviderStatus() {
     activeClaudeProvider = 'azure-foundry';
   } else if (settingsEnv.CLAUDE_CODE_USE_BEDROCK === '1' || process.env.CLAUDE_CODE_USE_BEDROCK === '1') {
     activeClaudeProvider = 'bedrock';
+  } else if (process.env.CLAUDE_CODE_PROVIDER === 'claude') {
+    activeClaudeProvider = 'claude';
   }
 
   const claudeProviders = {};
@@ -337,7 +339,7 @@ echo "$TOKEN"
 
     case 'bedrock': {
       settings.env.CLAUDE_CODE_USE_BEDROCK = '1';
-      settings.env.AWS_PROFILE = config.profileName || 'sso-bedrock';
+      settings.env.AWS_PROFILE = config.profileName || 'sso-bedrock-model-access';
       settings.env.AWS_REGION = config.region || 'us-east-1';
 
       if (config.defaultModel) {
@@ -403,7 +405,7 @@ function writeAwsConfig(config) {
   const dir = path.dirname(AWS_CONFIG_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-  const profileName = config.profileName || 'sso-bedrock';
+  const profileName = config.profileName || 'sso-bedrock-model-access';
   const sessionName = 'aws-sso';
 
   // Read existing config to preserve other profiles
@@ -559,7 +561,7 @@ function testAzureFoundry(config) {
 }
 
 function testBedrock(config) {
-  const profile = config.profileName || 'sso-bedrock';
+  const profile = config.profileName || 'sso-bedrock-model-access';
   const region = config.region || 'us-east-1';
 
   try {
@@ -654,7 +656,7 @@ function startAuthFlow(providerId, action, params) {
     return startAzureSSOLogin();
   }
   if (providerId === 'bedrock' && action === 'sso-login') {
-    return startAwsSSOLogin(params.profileName || 'sso-bedrock');
+    return startAwsSSOLogin(params.profileName || 'sso-bedrock-model-access');
   }
   return { success: false, error: 'Unknown auth flow' };
 }
