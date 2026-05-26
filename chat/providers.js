@@ -56,7 +56,7 @@ function getAwsCredentials() {
   if (cachedAwsCreds && Date.now() < awsCredsExpiresAt) return cachedAwsCreds;
   const profile = env('AWS_PROFILE') || 'sso-bedrock-model-access';
   try {
-    const out = execSync(`aws configure export-credentials --profile ${profile} --format json`, { timeout: 15000 }).toString();
+    const out = execSync(`aws configure export-credentials --profile ${profile}`, { timeout: 15000 }).toString();
     const creds = JSON.parse(out);
     cachedAwsCreds = {
       accessKeyId: creds.AccessKeyId,
