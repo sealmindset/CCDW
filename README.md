@@ -21,7 +21,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 winget install 
 winget install --id GitHub.cli --source winget
 gh auth login
-gh api repos/SleepNumberInc/CCDW/contents/bootstrap.ps1 -H "Accept: application/vnd.github.raw" | iex
+iex (gh api repos/SleepNumberInc/CCDW/contents/bootstrap.ps1 -H "Accept: application/vnd.github.raw")
 ```
 
 The installer handles everything automatically: Rancher Desktop, Docker, AI provider configuration, and a desktop shortcut. Re-run to update.
