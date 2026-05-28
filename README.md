@@ -18,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/seal_boots
 **Windows (PowerShell):**
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-irm https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/seal_bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/bootstrap.ps1 | iex
 ```
 
 The installer handles everything automatically: Rancher Desktop, Docker, AI provider configuration, and a desktop shortcut. Re-run to update.
