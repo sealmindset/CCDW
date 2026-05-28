@@ -16,10 +16,13 @@ curl -fsSL https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/bootstrap.
 ```
 
 **Windows (PowerShell):**
+You'll need to request to get your local admin credentials to proceed.
+
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 winget install 
 winget install --id GitHub.cli --source winget
+wsl --install
 gh auth login
 iex (gh api repos/SleepNumberInc/CCDW/contents/bootstrap.ps1 -H "Accept: application/vnd.github.raw")
 ```
