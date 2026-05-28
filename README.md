@@ -18,7 +18,10 @@ curl -fsSL https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/bootstrap.
 **Windows (PowerShell):**
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-irm https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/bootstrap.ps1 | iex
+winget install 
+winget install --id GitHub.cli --source winget
+gh auth login
+gh api repos/SleepNumberInc/CCDW/contents/bootstrap.ps1 -H "Accept: application/vnd.github.raw" | iex
 ```
 
 The installer handles everything automatically: Rancher Desktop, Docker, AI provider configuration, and a desktop shortcut. Re-run to update.
