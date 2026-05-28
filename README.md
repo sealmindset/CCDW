@@ -12,7 +12,7 @@ No clone needed. Just run one command:
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/seal_bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/bootstrap.sh | bash
 ```
 
 **Windows (PowerShell):**
@@ -25,8 +25,8 @@ The installer handles everything automatically: Rancher Desktop, Docker, AI prov
 
 ### One-Click Install (If You Have the Repo)
 
-- **macOS:** Double-click `seal_setup-claude-mac.command`
-- **Windows:** Double-click `seal_setup-claude.bat`
+- **macOS:** Double-click `setup-claude-mac.command`
+- **Windows:** Double-click `setup-claude.bat`
 
 ### Pull from Registry
 
