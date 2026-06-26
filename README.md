@@ -29,6 +29,35 @@ iex (gh api repos/SleepNumberInc/CCDW/contents/bootstrap.ps1 -H "Accept: applica
 
 The installer handles everything automatically: Rancher Desktop, Docker, AI provider configuration, and a desktop shortcut. Re-run to update.
 
+### Native Install — macOS, No Docker (Azure AI Foundry)
+
+Choose this if you just want the Claude Code CLI running directly on your Mac — no Docker, no container — wired up to corporate Azure AI Foundry auth.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/claude_corp_bootstrap.sh | bash
+```
+
+**What it does:**
+
+- Installs Homebrew (if missing) plus `git`, `jq`, and the Azure CLI.
+- Installs Claude Code natively on your Mac and adds it to your `PATH`.
+- Writes an Azure token helper that hands Claude Code a short-lived Azure AD bearer token (no token is ever printed or stored in plaintext).
+- Safely deep-merges Azure AI Foundry settings into `~/.claude/settings.json` (timestamped backup, atomic write, your existing plugins/keys preserved).
+- Probes corporate TLS/proxy and network reachability, and prints the exact IT allowlist if cert-inspection blocks the install.
+- Fully idempotent — safe to re-run any time.
+
+**Requirements:** macOS 13+, corporate VPN connected, and an Azure AD account with Foundry access. No Docker required.
+
+**After install:**
+
+1. Open a new terminal.
+2. Run `az login --use-device-code`.
+3. Run `claude` — there's no browser OAuth; it authenticates with your Azure token.
+
+> If you later hit a `401`, just re-run `az login --use-device-code` to refresh your token.
+
+Advanced users can override the defaults via env vars (`FOUNDRY_BASE_URL`, `FOUNDRY_DEFAULT_MODEL`, `FOUNDRY_SONNET`, `FOUNDRY_HAIKU`, `FOUNDRY_OPUS`, `FOUNDRY_TOKEN_RESOURCE`) before running the command.
+
 ### One-Click Install (If You Have the Repo)
 
 - **macOS:** Double-click `setup-claude-mac.command`
@@ -260,6 +289,7 @@ docker compose logs -f
 ```
 claude-code-docker/
   bootstrap.sh              # One-line macOS/Linux installer (curl | bash)
+  claude_corp_bootstrap.sh  # Native macOS installer -- Claude Code + Azure AI Foundry (no Docker)
   bootstrap.ps1             # One-line Windows installer (irm | iex)
   setup-claude-mac.command  # macOS one-click setup (Rancher Desktop + Docker + install)
   setup-claude.bat          # Windows one-click setup (Rancher Desktop + Docker + install)
