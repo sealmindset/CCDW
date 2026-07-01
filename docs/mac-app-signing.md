@@ -74,6 +74,20 @@ Other switches:
   downloaded copy may warn on first launch until notarized).
 - `MACOS_SIGN_ADHOC=1` — force ad-hoc even if a Developer ID cert exists.
 
+## No-signing fallback: `Launch Claude Code.command`
+
+`build-mac-app.sh` also drops a **`Launch Claude Code.command`** next to the
+`.app`. It is a plain executable script (no bundle), so it needs **no code
+signature, ever**, and it survives being copied. Double-clicking opens Terminal
+and runs the same `launch-mac.sh` (same preflight, same dialogs, same browser
+open). A *downloaded* copy needs a one-time **right-click → Open** (standard
+Gatekeeper for unsigned scripts); an installer-created copy has no quarantine
+and just runs.
+
+Use this when you can't sign yet, hand out a prebuilt launcher without the
+installer, or hit a locked-down Mac where the unsigned `.app` won't launch. The
+polished `.app` remains the primary launcher; the `.command` is the safety net.
+
 ## Recommended: sign + notarize in CI
 
 Put the Developer ID cert and notarization credentials in CI secrets (GitHub

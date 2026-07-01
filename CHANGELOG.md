@@ -15,6 +15,9 @@
     silently refused by macOS LaunchServices): Developer ID sign + notarize + staple when
     `MACOS_SIGN_IDENTITY` / `MACOS_NOTARY_*` credentials are present (distributable to any Mac),
     otherwise an ad-hoc signature for the per-user install-time build. See `docs/mac-app-signing.md`.
+  - Also drops a portable `Launch Claude Code.command` next to the .app — a plain script that
+    needs no code signing ever and survives being copied (downloaded copies just need a one-time
+    right-click → Open). No-signing safety net for prebuilt hand-offs and locked-down Macs.
 
 ## [0.6.3] - 2026-05-26
 
