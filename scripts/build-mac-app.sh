@@ -205,6 +205,22 @@ fi
 # ---------------------------------------------------------------------------
 xattr -dr com.apple.quarantine "$APP_DIR" 2>/dev/null || true
 
+# ---------------------------------------------------------------------------
+# Ad-hoc code-sign the bundle. Without a signature, macOS LaunchServices
+# silently refuses to launch a script-based .app on double-click ("nothing
+# happens"). An ad-hoc signature (-s -) gives it a usable signature so it
+# launches locally. Requires the Xcode command line tools' codesign.
+# ---------------------------------------------------------------------------
+if command -v codesign >/dev/null 2>&1; then
+    if codesign --force --deep -s - "$APP_DIR" >/dev/null 2>&1; then
+        log "Ad-hoc signed the bundle (double-click launch enabled)."
+    else
+        warn "Ad-hoc code-signing failed; the app may not launch on double-click. Run: codesign --force --deep -s - \"$APP_DIR\""
+    fi
+else
+    warn "'codesign' not found (install Xcode command line tools); the app may not launch on double-click until signed."
+fi
+
 # Nudge Finder/LaunchServices to pick up the new icon promptly.
 touch "$APP_DIR" 2>/dev/null || true
 
