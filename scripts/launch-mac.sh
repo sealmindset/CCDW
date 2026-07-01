@@ -23,6 +23,25 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
+# The .app launches us via LaunchServices with a MINIMAL PATH
+# (/usr/bin:/bin:/usr/sbin:/sbin), so docker / az / etc. are not found the way
+# they are in a login shell. Prepend the usual locations for Rancher Desktop,
+# Docker Desktop, and Homebrew before anything runs.
+# ---------------------------------------------------------------------------
+export PATH="$HOME/.rd/bin:/usr/local/bin:/opt/homebrew/bin:/Applications/Docker.app/Contents/Resources/bin:$PATH"
+
+# ---------------------------------------------------------------------------
+# Persist all output to a log so a failure is NEVER invisible (the classic
+# "app opens then closes with no message"). Plain file redirection — NOT
+# process substitution (`> >(tee ...)`), which fails under the .app's minimal
+# LaunchServices environment and would itself abort the launcher. The user
+# interacts via osascript dialogs regardless; this log is the breadcrumb.
+# ---------------------------------------------------------------------------
+CCDW_LAUNCH_LOG="${CCDW_LAUNCH_LOG:-$HOME/ccdw-launcher.log}"
+{ echo ""; echo "=== Claude Code launch $(date) ==="; } >>"$CCDW_LAUNCH_LOG" 2>/dev/null || true
+exec >>"$CCDW_LAUNCH_LOG" 2>&1
+
+# ---------------------------------------------------------------------------
 # Locate ourselves and source the preflight library.
 # ---------------------------------------------------------------------------
 _SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
@@ -97,6 +116,21 @@ run_step() {
             quit_launcher   # Quit: clean exit 0.
         fi
     done
+}
+
+# ===========================================================================
+# STEP 0 — Installed check
+#   The container start needs the repo .env (created by the installer). If it's
+#   missing, this Mac was never set up — say so clearly instead of attempting a
+#   doomed 'docker run' that would only end in a confusing "not ready" loop.
+# ===========================================================================
+step_check_installed() {
+    if [ ! -f "$CCDW_REPO_DIR/.env" ]; then
+        ui_info "Setup needed" \
+            "Claude Code isn't set up on this Mac yet. Please run the installer (setup-claude-mac.command) first, then use this launcher."
+        open "$CCDW_REPO_DIR" 2>/dev/null || true
+        exit 0
+    fi
 }
 
 # ===========================================================================
@@ -291,6 +325,7 @@ main() {
     # concurrently with — and never delays — the interactive steps below.
     spawn_background_update_check
 
+    step_check_installed # 0
     step_vpn            # 1
     step_docker         # 2
     step_container      # 3

@@ -272,8 +272,10 @@ _mpl_load_ports() {
         for key in WELCOME_PORT TTYD_PORT TTYD_NEW_PORT CODE_SERVER_PORT CHAT_PORT WORKSHOP_PORT; do
             # Only fill in vars the caller has not already set.
             if [ -z "${!key:-}" ]; then
-                val=$(grep -E "^${key}=" "$env_file" 2>/dev/null | head -1 | sed "s/^${key}=//" | tr -d '\r')
-                [ -n "$val" ] && export "$key=$val"
+                val=$(grep -E "^${key}=" "$env_file" 2>/dev/null | head -1 | sed "s/^${key}=//" | tr -d '\r' || true)
+                # if/then (not `[ ] && export`): under bash 3.2's strict set -e a
+                # bare `false && cmd` aborts the whole (sourced) script.
+                if [ -n "$val" ]; then export "$key=$val"; fi
             fi
         done
     fi
@@ -334,7 +336,7 @@ _mpl_docker_run() {
     local EXTRA_VOL_ARGS=()
     if [ -f "$ENV_FILE" ]; then
         local extra_raw epath ename
-        extra_raw=$(grep '^EXTRA_MOUNTS=' "$ENV_FILE" 2>/dev/null | head -1 | sed 's/^EXTRA_MOUNTS=//')
+        extra_raw=$(grep '^EXTRA_MOUNTS=' "$ENV_FILE" 2>/dev/null | head -1 | sed 's/^EXTRA_MOUNTS=//' || true)
         if [ -n "$extra_raw" ]; then
             local extra_paths
             IFS='|' read -ra extra_paths <<< "$extra_raw"
@@ -446,7 +448,7 @@ provider_from_env() {
 _mpl_env_has_value() {
     local key="$1" env_file="$CCDW_REPO_DIR/.env" val
     [ -f "$env_file" ] || return 1
-    val=$(grep -E "^${key}=" "$env_file" 2>/dev/null | head -1 | sed "s/^${key}=//")
+    val=$(grep -E "^${key}=" "$env_file" 2>/dev/null | head -1 | sed "s/^${key}=//" || true)
     [ -n "$val" ]
 }
 
@@ -488,7 +490,7 @@ check_provider_auth() {
             # Honor the user's configured AWS_PROFILE (.env / README advertise it
             # as editable); fall back to the default SSO profile name.
             local aws_profile
-            aws_profile=$(grep -E "^AWS_PROFILE=" "$CCDW_REPO_DIR/.env" 2>/dev/null | head -1 | sed 's/^AWS_PROFILE=//' | tr -d '\r')
+            aws_profile=$(grep -E "^AWS_PROFILE=" "$CCDW_REPO_DIR/.env" 2>/dev/null | head -1 | sed 's/^AWS_PROFILE=//' | tr -d '\r' || true)
             aws_profile="${aws_profile:-sso-bedrock-model-access}"
             if docker exec "$CONTAINER_NAME" aws sts get-caller-identity --profile "$aws_profile" &>/dev/null; then
                 return 0
