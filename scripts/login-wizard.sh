@@ -327,6 +327,26 @@ show_qr() {
 # AZURE AI FOUNDRY LOGIN FLOW
 # =============================================================================
 
+# _internet_ok — true if ANY of several endpoints is reachable. A single
+# generic host (www.microsoft.com / aws.amazon.com / www.google.com) is often
+# blocked by corporate proxies/Zscaler even when the endpoints that actually
+# matter (sign-in + AI service) are allow-listed and reachable — which produced
+# a false "no network" failure. Passing on any one endpoint avoids that.
+_internet_ok() {
+    local u
+    for u in \
+        https://login.microsoftonline.com \
+        https://www.microsoft.com \
+        https://aws.amazon.com \
+        https://github.com \
+        https://www.google.com; do
+        if curl -s --connect-timeout 5 --max-time 8 -o /dev/null "$u" 2>/dev/null; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 azure_preflight() {
     clear
     draw_header "Checking Your Setup" 1 3
@@ -351,7 +371,7 @@ azure_preflight() {
     fi
 
     printf "  ${DIM}○${NC} Internet connection"
-    if curl -s --connect-timeout 5 -o /dev/null https://www.microsoft.com 2>/dev/null; then
+    if _internet_ok; then
         printf "\r  ${OK} Internet connection\n"
     else
         printf "\r  ${FAIL} Internet connection — no network\n"
@@ -568,7 +588,7 @@ bedrock_preflight() {
     fi
 
     printf "  ${DIM}○${NC} Internet connection"
-    if curl -s --connect-timeout 5 -o /dev/null https://aws.amazon.com 2>/dev/null; then
+    if _internet_ok; then
         printf "\r  ${OK} Internet connection\n"
     else
         printf "\r  ${FAIL} Internet connection — no network\n"
@@ -762,7 +782,7 @@ claude_preflight() {
     fi
 
     printf "  ${DIM}○${NC} Internet connection"
-    if curl -s --connect-timeout 5 -o /dev/null https://www.google.com 2>/dev/null; then
+    if _internet_ok; then
         printf "\r  ${OK} Internet connection\n"
     else
         printf "\r  ${FAIL} Internet connection — no network\n"
