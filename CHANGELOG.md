@@ -11,6 +11,10 @@
   - Removes any pre-existing `~/Desktop/Claude Code.webloc` so users don't end up with both
   - Falls back to the legacy `.webloc` shortcut (with a warning) if `build-mac-app.sh` is
     missing or fails, so installation never breaks
+  - Code-signs the bundle so it launches on double-click (an unsigned script-based .app is
+    silently refused by macOS LaunchServices): Developer ID sign + notarize + staple when
+    `MACOS_SIGN_IDENTITY` / `MACOS_NOTARY_*` credentials are present (distributable to any Mac),
+    otherwise an ad-hoc signature for the per-user install-time build. See `docs/mac-app-signing.md`.
 
 ## [0.6.3] - 2026-05-26
 

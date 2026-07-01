@@ -46,6 +46,126 @@ warn() { printf 'WARNING: %s\n' "$*" >&2; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
+# Code-signing configuration (all via environment — NEVER commit credentials).
+#
+# For distribution to arbitrary Macs (zip / share drive / MDM / download), the
+# bundle MUST be Developer ID signed AND notarized, or macOS Gatekeeper blocks
+# it once it carries the quarantine attribute. For the per-user install-time
+# build (built locally on the user's own Mac, no quarantine) an ad-hoc
+# signature is enough. This script does the best it can with what's available:
+#
+#   1. Developer ID identity available  -> Developer ID sign (hardened runtime).
+#   2. + notarization credentials       -> notarize + staple (distributable).
+#   3. Neither                           -> ad-hoc sign (local launch only).
+#
+# Signing identity (pick ONE, or let it auto-detect):
+#   MACOS_SIGN_IDENTITY   Exact identity, e.g.
+#                         "Developer ID Application: Sleep Number Corp (TEAMID)".
+#                         If unset, the first "Developer ID Application" identity
+#                         in the keychain is used; if none, falls back to ad-hoc.
+#   MACOS_SIGN_ADHOC=1    Force ad-hoc even if a Developer ID identity exists.
+#
+# Notarization credentials (pick ONE method; omit all to skip notarization):
+#   a) Stored profile:  MACOS_NOTARY_PROFILE   (notarytool --keychain-profile)
+#   b) App Store API:   MACOS_NOTARY_KEY_ID + MACOS_NOTARY_KEY_PATH(.p8) +
+#                       MACOS_NOTARY_ISSUER
+#   c) Apple ID:        MACOS_NOTARY_APPLE_ID + MACOS_NOTARY_TEAM_ID +
+#                       MACOS_NOTARY_PASSWORD (an app-specific password)
+#   SKIP_NOTARIZE=1     Developer ID sign but skip notarization.
+# ---------------------------------------------------------------------------
+
+# _detect_signing_identity — echo the codesign identity to use.
+# Prints a real Developer ID identity when available, else "-" (ad-hoc).
+_detect_signing_identity() {
+    if [ "${MACOS_SIGN_ADHOC:-}" = "1" ]; then printf '%s' "-"; return; fi
+    if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then printf '%s' "$MACOS_SIGN_IDENTITY"; return; fi
+    local found
+    found="$(security find-identity -v -p codesigning 2>/dev/null \
+        | grep -o 'Developer ID Application: [^"]*' | head -1)"
+    if [ -n "$found" ]; then printf '%s' "$found"; else printf '%s' "-"; fi
+}
+
+# _notary_args — echo the notarytool credential args for the configured method,
+# or empty string if no complete credential set is present.
+_notary_args() {
+    if [ -n "${MACOS_NOTARY_PROFILE:-}" ]; then
+        printf '%s' "--keychain-profile ${MACOS_NOTARY_PROFILE}"
+    elif [ -n "${MACOS_NOTARY_KEY_ID:-}" ] && [ -n "${MACOS_NOTARY_KEY_PATH:-}" ] && [ -n "${MACOS_NOTARY_ISSUER:-}" ]; then
+        printf '%s' "--key ${MACOS_NOTARY_KEY_PATH} --key-id ${MACOS_NOTARY_KEY_ID} --issuer ${MACOS_NOTARY_ISSUER}"
+    elif [ -n "${MACOS_NOTARY_APPLE_ID:-}" ] && [ -n "${MACOS_NOTARY_TEAM_ID:-}" ] && [ -n "${MACOS_NOTARY_PASSWORD:-}" ]; then
+        printf '%s' "--apple-id ${MACOS_NOTARY_APPLE_ID} --team-id ${MACOS_NOTARY_TEAM_ID} --password ${MACOS_NOTARY_PASSWORD}"
+    fi
+}
+
+# sign_bundle APP_DIR — sign (and, if possible, notarize + staple) the bundle.
+# Never hard-fails the build: on any signing/notarization problem it warns and
+# leaves the best signature it achieved (falling back to ad-hoc).
+sign_bundle() {
+    local app="$1" identity
+    if ! command -v codesign >/dev/null 2>&1; then
+        warn "'codesign' not found (install Xcode command line tools); the app may not launch on double-click until signed."
+        return 0
+    fi
+
+    identity="$(_detect_signing_identity)"
+
+    if [ "$identity" = "-" ]; then
+        # Ad-hoc: launches locally (installer-built, no quarantine). A copied /
+        # downloaded copy on another Mac will be Gatekeeper-blocked.
+        if codesign --force --deep -s - "$app" >/dev/null 2>&1; then
+            log "Ad-hoc signed (launches on THIS Mac / installer builds)."
+            warn "No Developer ID identity found: a COPIED or DOWNLOADED .app will be blocked by Gatekeeper on other Macs. Set MACOS_SIGN_IDENTITY (+ notarization creds) to produce a distributable bundle."
+        else
+            warn "Ad-hoc code-signing failed; the app may not launch on double-click."
+        fi
+        return 0
+    fi
+
+    # Developer ID signing with hardened runtime + secure timestamp (required
+    # for notarization).
+    log "Developer ID signing as: $identity"
+    if ! codesign --force --deep --options runtime --timestamp -s "$identity" "$app" >/dev/null 2>&1; then
+        warn "Developer ID signing failed; falling back to ad-hoc."
+        codesign --force --deep -s - "$app" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    if [ "${SKIP_NOTARIZE:-}" = "1" ]; then
+        log "Developer ID signed (notarization skipped by SKIP_NOTARIZE=1)."
+        warn "Un-notarized: a downloaded copy may still warn on first launch until notarized + stapled."
+        return 0
+    fi
+
+    local nargs; nargs="$(_notary_args)"
+    if [ -z "$nargs" ]; then
+        log "Developer ID signed (no notarization credentials provided — skipping notarize)."
+        warn "Provide MACOS_NOTARY_* credentials to notarize; without it a downloaded copy may warn on first launch."
+        return 0
+    fi
+
+    if ! command -v xcrun >/dev/null 2>&1 || ! xcrun --find notarytool >/dev/null 2>&1; then
+        warn "notarytool not available (need Xcode); signed but NOT notarized."
+        return 0
+    fi
+
+    # Notarize: submit a zip of the .app, wait, then staple the ticket onto it.
+    local zip; zip="$(mktemp -d)/ClaudeCode.zip"
+    log "Notarizing (this can take a few minutes)..."
+    if /usr/bin/ditto -c -k --keepParent "$app" "$zip" >/dev/null 2>&1 \
+        && xcrun notarytool submit "$zip" $nargs --wait >/dev/null 2>&1; then
+        if xcrun stapler staple "$app" >/dev/null 2>&1; then
+            log "Notarized and stapled — distributable to any Mac."
+        else
+            warn "Notarization submitted but stapling failed; run: xcrun stapler staple \"$app\""
+        fi
+    else
+        warn "Notarization failed (check credentials / submission log via 'xcrun notarytool log'). Bundle is Developer ID signed but not notarized."
+    fi
+    rm -rf "$(dirname "$zip")" 2>/dev/null || true
+    return 0
+}
+
+# ---------------------------------------------------------------------------
 # Sanity checks.
 # ---------------------------------------------------------------------------
 [ "$(uname -s)" = "Darwin" ] || die "build-mac-app.sh must run on macOS."
@@ -206,20 +326,11 @@ fi
 xattr -dr com.apple.quarantine "$APP_DIR" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# Ad-hoc code-sign the bundle. Without a signature, macOS LaunchServices
-# silently refuses to launch a script-based .app on double-click ("nothing
-# happens"). An ad-hoc signature (-s -) gives it a usable signature so it
-# launches locally. Requires the Xcode command line tools' codesign.
+# Code-sign (and notarize if credentials are available). Without a signature,
+# macOS LaunchServices silently refuses to launch a script-based .app on
+# double-click. See sign_bundle() above for the Developer ID / ad-hoc logic.
 # ---------------------------------------------------------------------------
-if command -v codesign >/dev/null 2>&1; then
-    if codesign --force --deep -s - "$APP_DIR" >/dev/null 2>&1; then
-        log "Ad-hoc signed the bundle (double-click launch enabled)."
-    else
-        warn "Ad-hoc code-signing failed; the app may not launch on double-click. Run: codesign --force --deep -s - \"$APP_DIR\""
-    fi
-else
-    warn "'codesign' not found (install Xcode command line tools); the app may not launch on double-click until signed."
-fi
+sign_bundle "$APP_DIR"
 
 # Nudge Finder/LaunchServices to pick up the new icon promptly.
 touch "$APP_DIR" 2>/dev/null || true
