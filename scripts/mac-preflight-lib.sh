@@ -338,7 +338,7 @@ _mpl_docker_run() {
         if [ -n "$extra_raw" ]; then
             local extra_paths
             IFS='|' read -ra extra_paths <<< "$extra_raw"
-            for epath in "${extra_paths[@]}"; do
+            for epath in ${extra_paths[@]+"${extra_paths[@]}"}; do
                 if [ -d "$epath" ]; then
                     ename=$(basename "$epath")
                     EXTRA_VOL_ARGS+=(-v "$epath:/home/coder/Drives/$ename")
@@ -372,8 +372,8 @@ _mpl_docker_run() {
         -v claude-code-continue:/home/coder/.continue \
         -v claude-code-npm:/home/coder/.npm \
         -v claude-code-bash-history:/home/coder/.shell-persist \
-        "${HOST_ACCESS_ARGS[@]}" \
-        "${EXTRA_VOL_ARGS[@]}" \
+        ${HOST_ACCESS_ARGS[@]+"${HOST_ACCESS_ARGS[@]}"} \
+        ${EXTRA_VOL_ARGS[@]+"${EXTRA_VOL_ARGS[@]}"} \
         ghcr.io/sealmindset/claude-code-docker:latest >/tmp/claude-code-start.log 2>&1
 }
 
