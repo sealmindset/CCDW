@@ -24,6 +24,24 @@ if ! curl -s --connect-timeout 5 "https://${ACR_HOST}/v2/" -o /dev/null -w '' 2>
 fi
 echo -e "${GREEN}[OK]${NC} ACR reachable."
 
+# --- Auth BEFORE building: buildx --push pushes to BOTH registries during the
+# build, so both must be authenticated first. (Previously the build path pushed
+# to ACR with no `az acr login`, so the ACR push failed on auth.) ---
+echo -e "${YELLOW}[...]${NC} Authenticating to ACR..."
+if ! az acr login --name "$ACR_NAME" --subscription "$ACR_SUBSCRIPTION" 2>/dev/null; then
+    echo -e "${YELLOW}[...]${NC} ACR login failed. Signing in to Azure..."
+    az login --use-device-code
+    az acr login --name "$ACR_NAME" --subscription "$ACR_SUBSCRIPTION"
+fi
+az account set --subscription "$AI_SUBSCRIPTION" 2>/dev/null || true
+
+echo -e "${YELLOW}[...]${NC} Verifying GHCR authentication..."
+if ! grep -q "ghcr.io" ~/.docker/config.json 2>/dev/null; then
+    echo -e "${RED}[!]${NC} Not logged in to GHCR. Run: echo \$GHCR_TOKEN | docker login ghcr.io -u <user> --password-stdin"
+    exit 1
+fi
+echo -e "${GREEN}[OK]${NC} Registries authenticated."
+
 # --- Build multi-platform ---
 if [[ "${1:-}" != "--skip-build" ]]; then
     echo -e "${YELLOW}[...]${NC} Building multi-platform image (amd64 + arm64)..."
