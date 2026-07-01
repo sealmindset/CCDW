@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- macOS desktop launcher: install.command now builds a real "Claude Code.app" on the Desktop
+  (via `scripts/build-mac-app.sh`) instead of a plain `.webloc` shortcut
+  - The app is a thin bundle whose stub exec's `scripts/launch-mac.sh`, so it always runs the
+    latest launcher after a `git pull` — no rebuild needed for launcher changes
+  - Uses the Claude icon (`assets/claude-icon.icns`, or generated from `claude-icon.png`)
+  - Removes any pre-existing `~/Desktop/Claude Code.webloc` so users don't end up with both
+  - Falls back to the legacy `.webloc` shortcut (with a warning) if `build-mac-app.sh` is
+    missing or fails, so installation never breaks
+
 ## [0.6.3] - 2026-05-26
 
 ### Added

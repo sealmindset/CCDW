@@ -1116,13 +1116,21 @@ echo ""
 open "http://localhost:3000" 2>/dev/null || xdg-open "http://localhost:3000" 2>/dev/null &
 
 # ---------------------------------------------------------------------------
-# Desktop shortcut (macOS .webloc) with Claude icon
+# Desktop launcher (macOS "Claude Code.app") with Claude icon
 # ---------------------------------------------------------------------------
+# Build a real .app launcher via scripts/build-mac-app.sh. If that script is
+# missing or fails, fall back to the legacy .webloc shortcut so install never
+# breaks. Either way, remove any pre-existing .webloc so users don't end up
+# with both a stale shortcut and the new app.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUILD_APP_SCRIPT="$SCRIPT_DIR/scripts/build-mac-app.sh"
 DESKTOP_SHORTCUT="$HOME/Desktop/Claude Code.webloc"
 OLD_SHORTCUT="$HOME/Desktop/Claude.webloc"
 [ -f "$OLD_SHORTCUT" ] && rm -f "$OLD_SHORTCUT"
 
-if [ ! -f "$DESKTOP_SHORTCUT" ]; then
+create_webloc_fallback() {
+    # Legacy behavior: a .webloc shortcut with the Claude icon.
+    [ -f "$DESKTOP_SHORTCUT" ] && rm -f "$DESKTOP_SHORTCUT"
     cat > "$DESKTOP_SHORTCUT" << 'WEBLOC'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1134,22 +1142,36 @@ if [ ! -f "$DESKTOP_SHORTCUT" ]; then
 </plist>
 WEBLOC
     echo -e "${GREEN}[OK]${NC} Desktop shortcut created"
-fi
 
-# Set Claude icon on the shortcut
-ICON_FILE="$(cd "$(dirname "$0")" && pwd)/assets/claude-icon.png"
-if [ -f "$ICON_FILE" ] && [ -f "$DESKTOP_SHORTCUT" ]; then
-    osascript -e "
+    # Set Claude icon on the shortcut
+    local icon_file="$SCRIPT_DIR/assets/claude-icon.png"
+    if [ -f "$icon_file" ] && [ -f "$DESKTOP_SHORTCUT" ]; then
+        osascript -e "
 use framework \"AppKit\"
-set img to current application's NSImage's alloc()'s initWithContentsOfFile:\"$ICON_FILE\"
+set img to current application's NSImage's alloc()'s initWithContentsOfFile:\"$icon_file\"
 current application's NSWorkspace's sharedWorkspace()'s setIcon:img forFile:\"$DESKTOP_SHORTCUT\" options:0
 " 2>/dev/null && echo -e "${GREEN}[OK]${NC} Claude icon set" || true
+    fi
+}
+
+if [ -f "$BUILD_APP_SCRIPT" ]; then
+    echo -e "${YELLOW}[...]${NC} Creating desktop launcher..."
+    if bash "$BUILD_APP_SCRIPT" "$HOME/Desktop" >/dev/null 2>&1; then
+        # New app built successfully — clear out any stale .webloc shortcut.
+        [ -f "$DESKTOP_SHORTCUT" ] && rm -f "$DESKTOP_SHORTCUT"
+        echo -e "${GREEN}[OK]${NC} Desktop launcher created (Claude Code.app)"
+    else
+        echo -e "${YELLOW}[WARN]${NC} Could not build the app launcher; using a simple shortcut instead."
+        create_webloc_fallback
+    fi
+else
+    create_webloc_fallback
 fi
 
 echo ""
 echo -e "  ${GREEN}http://localhost:3000${NC}"
 echo ""
-echo -e "  A desktop shortcut has been created so you can come back anytime."
+echo -e "  A desktop launcher has been created so you can come back anytime."
 echo -e "  To stop Claude Code: double-click ${BOLD}stop-claude.command${NC} or close Docker."
 echo -e "  To diagnose issues:  ${DIM}./install.command --doctor${NC}"
 echo ""

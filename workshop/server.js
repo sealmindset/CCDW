@@ -527,6 +527,13 @@ function startProject(session, msg) {
   }
 
   session.projectDir = projectDir;
+
+  // Write last-project marker so the Mac launcher can auto-resume.
+  // Path is bind-mounted to the host ~/Documents. Never let this break startProject.
+  try {
+    fs.writeFileSync('/home/coder/Documents/.ccdw-last-project', projectName);
+  } catch {}
+
   session.claudeSessionId = null;
   session.autoContCount = 0;
   session.waitingForUser = false;

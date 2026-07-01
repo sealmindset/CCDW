@@ -69,6 +69,16 @@
 - [ ] End-to-end test: build app with /make-it, then /argo-it generates K8s manifests + PR
 - [x] Add kubeconfig mounting from host for /argo-it cluster access
 
+## Follow-ups surfaced during Mac launcher review (pre-existing, not launcher bugs)
+- [ ] install.command: host port `-p` mappings never source `.env`, so WELCOME_PORT/etc. overrides publish the default host port while the in-container server binds the .env port (dashboard unreachable). Also mirror in mac-preflight-lib.sh _mpl_docker_run. (install.command:960/1005)
+- [ ] install.command: provider config values are interpolated into embedded Python as single-quoted literals — a value with a quote is a silent SyntaxError (swallowed by `2>/dev/null`), losing the value. Pass via env/argv instead. (install.command:619/635/657/682)
+- [ ] workshop/server.js: SKIP_PORTS excludes 3000 and 8080, so "See your app" preview never shows for apps on those common dev ports. (server.js:119)
+- [ ] workshop/server.js: queued `pendingInput` is orphaned when the CLI exits non-zero (dropped, then can fire out-of-context later). (server.js:832)
+- [ ] workshop/server.js: `session.process.killed` race can spawn a second concurrent CLI on the same resume session. (server.js:929)
+- [ ] workshop/public/js/app.js: health banner checks `status === 'failing'` but monitor only emits healthy/degraded/unhealthy — dead code, never warns. (app.js:923)
+- [ ] workshop/public/js/app.js: hardcoded :3000/:7681 literals break health polling, home links, and "Open Terminal" when ports are overridden in .env. (app.js:893)
+- [ ] workshop/public/js/app.js: pollHealth() shares one 5s AbortController across two sequential fetches, masking a real health signal. (app.js:895)
+
 ## Medium Priority
 - [x] Add VS Code extensions for common languages (Python, TypeScript, Go)
 - [x] Add Copilot-style Claude extension to code-server (Continue.dev with auto-provider detection)

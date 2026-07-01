@@ -1015,8 +1015,21 @@
     await checkAuth();
     loadProjects();
 
-    // Show the right view: recovery target or home
-    if (recoveryProject) {
+    // URL-param auto-resume (launcher deep-link): ?project=<name>&resume=1
+    // Takes priority over localStorage recovery; uses the same path as the
+    // resume UI action (resumeProject -> cliBridge.startProject auto-detects /resume-it).
+    let urlResumeProject = null;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const p = params.get('project');
+      const r = params.get('resume');
+      if (p && r && r !== '0' && r !== 'false') urlResumeProject = p;
+    } catch {}
+
+    // Show the right view: URL deep-link, recovery target, or home
+    if (urlResumeProject) {
+      resumeProject(urlResumeProject);
+    } else if (recoveryProject) {
       const savedView = localStorage.getItem(STORE.view) || 'build';
       showView(views[savedView] ? savedView : 'build');
       state._pendingRecovery = recoveryProject;
@@ -1024,8 +1037,8 @@
       showView('home');
     }
 
-    // First visit walkthrough (skip if recovering)
-    if (!recoveryProject) showWalkthrough();
+    // First visit walkthrough (skip if recovering or auto-resuming via URL)
+    if (!recoveryProject && !urlResumeProject) showWalkthrough();
 
     // Health banner links → dashboard
     var dashUrl = 'http://' + window.location.hostname + ':3000?dashboard';
