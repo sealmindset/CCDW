@@ -29,17 +29,46 @@ set -uo pipefail
 
 CONTAINER_NAME="${CONTAINER_NAME:-claude-code}"
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
+CCDW_REPO_DIR="${CCDW_REPO_DIR:-$(cd "${SELF_DIR}/.." 2>/dev/null && pwd)}"
 TIMEOUT="${CCDW_AZ_LOGIN_TIMEOUT:-180}"
+# The token audience Azure AI Foundry needs.
+FOUNDRY_RESOURCE="${AZURE_FOUNDRY_RESOURCE:-https://cognitiveservices.azure.com}"
 
 log() { printf '  %s\n' "$*"; }
+_env() { grep -E "^$1=" "$CCDW_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true; }
 
 command -v docker >/dev/null 2>&1 || { log "Docker isn't available."; exit 1; }
 
-# Already signed in? Nothing to do.
-if docker exec "$CONTAINER_NAME" az account show >/dev/null 2>&1; then
+# -------------------------------------------------------------------------
+# INVISIBLE paths first — the user should see nothing when any of these work.
+# -------------------------------------------------------------------------
+
+# (1) Silent: can az already mint a Foundry token? This is true when there is a
+# valid session OR a cached refresh token that refreshes with NO prompt (i.e.
+# the user signed in interactively once before). No browser, no MFA.
+if docker exec "$CONTAINER_NAME" az account get-access-token \
+    --resource "$FOUNDRY_RESOURCE" >/dev/null 2>&1; then
     exit 0
 fi
 
+# (2) Headless: a Service Principal (no user, no MFA) if configured in .env.
+# AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID. This is the proper
+# zero-touch-forever path for shared/unattended use.
+_sp_id="$(_env AZURE_CLIENT_ID)"
+_sp_secret="$(_env AZURE_CLIENT_SECRET)"
+_sp_tenant="$(_env AZURE_TENANT_ID)"
+if [ -n "$_sp_id" ] && [ -n "$_sp_secret" ] && [ -n "$_sp_tenant" ]; then
+    if docker exec "$CONTAINER_NAME" az login --service-principal \
+        -u "$_sp_id" -p "$_sp_secret" --tenant "$_sp_tenant" >/dev/null 2>&1; then
+        exit 0
+    fi
+fi
+
+# -------------------------------------------------------------------------
+# (3) Interactive — no cached session and no Service Principal. A ONE-TIME
+# device-code login is required; MFA is the user's step and cannot be skipped.
+# After this, path (1) keeps every future launch silent for ~90 days.
+# -------------------------------------------------------------------------
 log "Signing you in to Azure..."
 
 outfile="$(mktemp -t ccdw-az-login 2>/dev/null || echo /tmp/ccdw-az-login.$$)"

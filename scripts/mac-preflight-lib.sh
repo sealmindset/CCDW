@@ -730,7 +730,12 @@ check_provider_auth() {
             if _mpl_env_has_value "ANTHROPIC_FOUNDRY_API_KEY"; then
                 return 0
             fi
-            if docker exec "$CONTAINER_NAME" az account show &>/dev/null; then
+            # Consider authed only if az can actually MINT a Foundry token (a
+            # bare 'az account show' can pass while the token is stale — which is
+            # exactly what breaks the workspace). get-access-token also silently
+            # refreshes from a cached refresh token, so no prompt when possible.
+            if docker exec "$CONTAINER_NAME" az account get-access-token \
+                --resource "${AZURE_FOUNDRY_RESOURCE:-https://cognitiveservices.azure.com}" &>/dev/null; then
                 return 0
             fi
             return 1
