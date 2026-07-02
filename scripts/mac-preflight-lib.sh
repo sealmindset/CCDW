@@ -84,8 +84,18 @@ _mpl_esc() {
     printf '%s' "$s"
 }
 
-# ui_notify TITLE MESSAGE — non-blocking banner. Always returns 0.
+# _mpl_tty — true when stdout is a real terminal (the .command runs in a visible
+# Terminal window). In that case all UI is plain text + `read`, which is 100%
+# reliable and visible — no osascript / GUI-dialog dependency. Only when there
+# is NO terminal (e.g. a background .app) do we fall back to osascript.
+_mpl_tty() { [ -t 1 ]; }
+
+# ui_notify TITLE MESSAGE — non-blocking progress line. Always returns 0.
 ui_notify() {
+    if _mpl_tty; then
+        printf '  %s\n' "${2:-}"
+        return 0
+    fi
     local title msg
     title="$(_mpl_esc "${1:-Claude Code}")"
     msg="$(_mpl_esc "${2:-}")"
@@ -93,8 +103,12 @@ ui_notify() {
     return 0
 }
 
-# ui_info TITLE MESSAGE — blocking dialog, single OK button. Returns 0.
+# ui_info TITLE MESSAGE — informational message. Returns 0.
 ui_info() {
+    if _mpl_tty; then
+        printf '\n  %s\n\n' "${2:-}"
+        return 0
+    fi
     local title msg
     title="$(_mpl_esc "${1:-Claude Code}")"
     msg="$(_mpl_esc "${2:-}")"
@@ -102,18 +116,27 @@ ui_info() {
     return 0
 }
 
-# ui_block TITLE MESSAGE — blocking dialog {"Quit","Retry"}, default "Retry".
-# Returns 0 when the user clicks Retry, 1 when they click Quit or dismiss.
-# osascript exits nonzero when the user cancels/closes; we capture the status
-# so a 'set -e' caller is never killed.
+# ui_block TITLE MESSAGE — blocking "fix it, then continue" prompt.
+# Returns 0 to RETRY the step, 1 to QUIT. In a terminal it prints the message
+# and waits for Return (retry) or 'q' (quit); `read` is guarded so an EOF can't
+# abort a 'set -e' caller. With no terminal it uses an osascript Quit/Retry
+# dialog (status captured so cancel never kills the caller).
 ui_block() {
+    if _mpl_tty; then
+        printf '\n  %s\n' "${2:-}"
+        local ans=""
+        read -r -p "  Press Return to try again, or type q + Return to quit: " ans 2>/dev/null || ans="q"
+        case "$ans" in
+            q|Q|quit|Quit|QUIT) return 1 ;;
+            *) return 0 ;;
+        esac
+    fi
     local title msg btn rc
     title="$(_mpl_esc "${1:-Claude Code}")"
     msg="$(_mpl_esc "${2:-}")"
     btn="$(osascript -e "button returned of (display dialog \"${msg}\" with title \"${title}\" buttons {\"Quit\",\"Retry\"} default button \"Retry\")" 2>/dev/null)"
     rc=$?
     if [ "$rc" -ne 0 ]; then
-        # User pressed the dialog's close/cancel -> treat as Quit.
         return 1
     fi
     if [ "$btn" = "Retry" ]; then

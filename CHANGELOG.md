@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Changed
+- macOS launcher is now a plain **`Start Claude Code.command`** (Terminal), not a `.app` bundle.
+  A `.command` needs no code signing (no Gatekeeper silent-refusal), runs in a visible Terminal
+  so nothing fails silently, gets the login-shell PATH, and carries no quarantine when created
+  by the installer. The `.app` approach was abandoned — macOS fights unsigned script `.app`s.
+  - `mac-preflight-lib.sh` UI helpers (`ui_notify`/`ui_info`/`ui_block`) are now terminal-aware:
+    plain text + `read` prompts in a Terminal, osascript dialogs only with no TTY.
+  - `launch-mac.sh` keeps output on screen in a Terminal (logs to `~/ccdw-launcher.log` only
+    when there is no TTY); the `.command` keeps the window open on error so the user sees why.
+  - `build-mac-app.sh` now builds the `.command` and removes any stale `Claude Code.app` /
+    `.webloc` / old launcher from the Desktop.
+
 ### Added
 - macOS desktop launcher: install.command now builds a real "Claude Code.app" on the Desktop
   (via `scripts/build-mac-app.sh`) instead of a plain `.webloc` shortcut

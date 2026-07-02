@@ -2,13 +2,13 @@
 # =============================================================================
 # launch-mac.sh — host-side launcher orchestrator for Claude Code on macOS.
 #
-# Run by the .app bundle with NO visible Terminal window. Every piece of user
-# interaction happens through osascript dialogs/notifications provided by the
-# sourced preflight library, so this script never needs stdin/stdout attached
-# to a terminal.
+# Run by the "Start Claude Code.command" launcher in a VISIBLE Terminal window.
+# The sourced preflight library's UI helpers are terminal-aware: in a terminal
+# they print plain text + read prompts (reliable, visible — nothing fails
+# silently); with no terminal (background fallback) they use osascript dialogs.
 #
 # Sequence (each preflight step retries via ui_block on failure — the user can
-# either Retry the step or Quit the launcher cleanly):
+# continue the step or quit the launcher cleanly):
 #   1. check_vpn
 #   2. ensure_docker_engine
 #   3. ensure_container
@@ -31,15 +31,21 @@ set -euo pipefail
 export PATH="$HOME/.rd/bin:/usr/local/bin:/opt/homebrew/bin:/Applications/Docker.app/Contents/Resources/bin:$PATH"
 
 # ---------------------------------------------------------------------------
-# Persist all output to a log so a failure is NEVER invisible (the classic
-# "app opens then closes with no message"). Plain file redirection — NOT
-# process substitution (`> >(tee ...)`), which fails under the .app's minimal
-# LaunchServices environment and would itself abort the launcher. The user
-# interacts via osascript dialogs regardless; this log is the breadcrumb.
+# Output visibility:
+#   * Visible Terminal (the .command launcher) — leave stdout/stderr ON SCREEN
+#     so the user watches progress and SEES any problem. This is the whole
+#     point of the .command approach: nothing can fail silently.
+#   * No terminal (background .app fallback) — redirect everything to a log so
+#     a failure is never invisible. Plain redirection, NOT process substitution
+#     (`> >(tee ...)`), which fails under the .app's minimal environment.
 # ---------------------------------------------------------------------------
 CCDW_LAUNCH_LOG="${CCDW_LAUNCH_LOG:-$HOME/ccdw-launcher.log}"
 { echo ""; echo "=== Claude Code launch $(date) ==="; } >>"$CCDW_LAUNCH_LOG" 2>/dev/null || true
-exec >>"$CCDW_LAUNCH_LOG" 2>&1
+if [ -t 1 ]; then
+    printf '\n  Starting Claude Code — please keep this window open.\n\n'
+else
+    exec >>"$CCDW_LAUNCH_LOG" 2>&1
+fi
 
 # ---------------------------------------------------------------------------
 # Locate ourselves and source the preflight library.
@@ -139,7 +145,7 @@ step_check_installed() {
 step_vpn() {
     run_step check_vpn \
         "Action needed" \
-        "Please connect to VPN (GlobalProtect), then Retry."
+        "Please connect to VPN (GlobalProtect), then continue."
 }
 
 # ===========================================================================
@@ -149,7 +155,7 @@ step_docker() {
     ui_notify "Claude Code" "Starting Docker..."
     run_step ensure_docker_engine \
         "Docker isn't ready yet" \
-        "Docker (Rancher Desktop / Docker Desktop) is still starting or needs attention. Once it's running, click Retry."
+        "Docker (Rancher Desktop / Docker Desktop) is still starting or needs attention. Once it's running, continue."
 }
 
 # ===========================================================================
@@ -159,7 +165,7 @@ step_container() {
     ui_notify "Claude Code" "Starting your workspace..."
     run_step ensure_container \
         "Workspace isn't ready yet" \
-        "Your Claude Code workspace is still starting up. Give it a moment, then click Retry."
+        "Your Claude Code workspace is still starting up. give it a moment, then continue."
 }
 
 # ===========================================================================
@@ -197,7 +203,7 @@ step_provider_auth() {
         waited=$((waited + 3))
         if [ "$waited" -ge 90 ]; then
             if ui_block "Waiting for sign-in" \
-                "Still waiting for you to finish signing in to ${display}. Complete the sign-in in the browser window, then click Retry — or Quit to exit."; then
+                "Still waiting for you to finish signing in to ${display}. Complete the sign-in in the browser window, then continue — or quit."; then
                 open "$WEB_TERMINAL_URL" 2>/dev/null || true
                 waited=0
                 continue
