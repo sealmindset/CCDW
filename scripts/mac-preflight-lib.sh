@@ -231,6 +231,8 @@ _mpl_find_engine_app() {
         printf '%s' "$HOME/Applications/Rancher Desktop.app"
     elif [ -d "/Applications/Docker.app" ]; then
         printf '%s' "/Applications/Docker.app"
+    elif [ -d "$HOME/Applications/Docker.app" ]; then
+        printf '%s' "$HOME/Applications/Docker.app"
     fi
 }
 
@@ -324,9 +326,83 @@ _mpl_ports_ready() {
 }
 
 # ---------------------------------------------------------------------------
+# _mpl_image_ref — echo the canonical image reference used by install.command.
+# ---------------------------------------------------------------------------
+_mpl_image_ref() {
+    printf 'ghcr.io/sealmindset/claude-code-docker:latest'
+}
+
+# ---------------------------------------------------------------------------
+# _mpl_registry_mirror — echo the trimmed REGISTRY_MIRROR host from .env (no
+# trailing slash), or empty string. Mirrors install.command:772-778.
+# ---------------------------------------------------------------------------
+_mpl_registry_mirror() {
+    local env_file="$CCDW_REPO_DIR/.env" mirror=""
+    if [ -f "$env_file" ]; then
+        mirror=$(grep -E "^REGISTRY_MIRROR=" "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)
+    fi
+    # Strip any trailing slash so callers can compose "$mirror/image".
+    mirror="${mirror%/}"
+    printf '%s' "$mirror"
+}
+
+# ---------------------------------------------------------------------------
+# _mpl_ensure_image — make sure the claude-code image is present locally.
+# If it is already inspectable, returns 0 immediately. Otherwise attempts a
+# tiered pull (mirrors install.command:831-862): first the ACR mirror if
+# REGISTRY_MIRROR is set in .env, then the public GHCR image. Returns 0 if the
+# image is present afterwards, nonzero if every attempt failed.
+# ---------------------------------------------------------------------------
+_mpl_ensure_image() {
+    local image mirror acr_image
+    image="$(_mpl_image_ref)"
+
+    # Already present — nothing to do.
+    if docker image inspect "$image" &>/dev/null; then
+        return 0
+    fi
+
+    ui_notify "Claude Code" "Downloading the Claude Code image (first run may take a few minutes)..."
+
+    # Tier 1: internal ACR mirror (bypasses Zscaler on the corporate network).
+    mirror="$(_mpl_registry_mirror)"
+    if [ -n "$mirror" ]; then
+        acr_image="${mirror}/claude-code-docker:latest"
+        if docker pull "$acr_image" &>/dev/null; then
+            # Retag to the canonical name so the run args stay unchanged.
+            docker tag "$acr_image" "$image" &>/dev/null || true
+            if docker image inspect "$image" &>/dev/null; then
+                return 0
+            fi
+        fi
+    fi
+
+    # Tier 2: public GHCR (direct; may be blocked by SSL inspection).
+    if docker pull "$image" &>/dev/null; then
+        if docker image inspect "$image" &>/dev/null; then
+            return 0
+        fi
+    fi
+
+    # Last check: maybe another process pulled it concurrently.
+    if docker image inspect "$image" &>/dev/null; then
+        return 0
+    fi
+
+    return 1
+}
+
+# ---------------------------------------------------------------------------
 # _mpl_docker_run — start the claude-code container using EXACTLY the same
 # image / ports / mounts / flags as install.command:955-981. Sourced from that
-# file's argument list so the two stay in sync. Returns docker run's status.
+# file's argument list so the two stay in sync.
+#
+# Returns:
+#   0  container started
+#   2  port conflict ("already allocated"/"address already in use" in the log);
+#      the partial container has been removed so a retry can recreate cleanly.
+#   1  any other failure (image missing/unpullable, or generic docker error);
+#      the partial container has been removed.
 #
 # Requires (built here to mirror install.command:532-549, 902, 907-920):
 #   ENV_FILE, PROJECTS_DIR, AZURE_DIR, AWS_DIR, KUBE_DIR, HOST_GITCONFIG,
@@ -342,6 +418,14 @@ _mpl_docker_run() {
     HOST_GITCONFIG="$HOME/.gitconfig"
 
     mkdir -p "$PROJECTS_DIR" "$AZURE_DIR" "$AWS_DIR" "$KUBE_DIR" 2>/dev/null || true
+
+    # Make sure the image exists locally (pull with ACR->GHCR fallback). If it
+    # cannot be obtained, there is nothing to run — surface a generic failure.
+    if ! _mpl_ensure_image; then
+        # Nothing partial was created here, but be defensive for a retry.
+        docker rm -f "$CONTAINER_NAME" &>/dev/null || true
+        return 1
+    fi
 
     # Resolve host ports from .env so the published mapping matches the probe.
     _mpl_load_ports
@@ -373,6 +457,8 @@ _mpl_docker_run() {
     fi
 
     # Argument list byte-for-byte matching install.command:955-981.
+    # Capture the exit status (do not let it abort a set -e caller).
+    local run_rc=0
     docker run -d \
         --name "$CONTAINER_NAME" \
         --restart unless-stopped \
@@ -399,14 +485,81 @@ _mpl_docker_run() {
         -v claude-code-bash-history:/home/coder/.shell-persist \
         ${HOST_ACCESS_ARGS[@]+"${HOST_ACCESS_ARGS[@]}"} \
         ${EXTRA_VOL_ARGS[@]+"${EXTRA_VOL_ARGS[@]}"} \
-        ghcr.io/sealmindset/claude-code-docker:latest >/tmp/claude-code-start.log 2>&1
+        ghcr.io/sealmindset/claude-code-docker:latest >/tmp/claude-code-start.log 2>&1 || run_rc=$?
+
+    if [ "$run_rc" -eq 0 ]; then
+        return 0
+    fi
+
+    # docker run failed. Diagnose a port conflict from the captured log so the
+    # caller can tell the user exactly which port to change in .env. grep is
+    # guarded (|| true) so a no-match can never abort a set -e caller.
+    local conflict=""
+    if [ -f /tmp/claude-code-start.log ]; then
+        conflict=$(grep -iE 'port is already allocated|address already in use|Bind for .* failed' /tmp/claude-code-start.log 2>/dev/null | head -1 || true)
+    fi
+
+    # Always remove the partially-created container so a Retry can recreate
+    # cleanly (docker leaves a Created container behind on a bind failure).
+    docker rm -f "$CONTAINER_NAME" &>/dev/null || true
+
+    if [ -n "$conflict" ]; then
+        return 2
+    fi
+    return 1
 }
 
 # ---------------------------------------------------------------------------
-# ensure_container — ensure the 'claude-code' container is running.
-#   * running          -> just poll ports.
-#   * exists (stopped) -> docker start, then poll ports.
-#   * absent           -> docker run (install.command args), then poll ports.
+# _mpl_ports_match — 0 if the RUNNING container publishes the same three host
+# ports we care about (WELCOME/TTYD/WORKSHOP) as the current .env, else 1.
+# Guards every docker call so a probe failure can't abort a set -e caller; if
+# the mapping cannot be read at all we conservatively report "match" (1 would
+# force an unnecessary rebuild). Fix for stale-port containers.
+# ---------------------------------------------------------------------------
+_mpl_ports_match() {
+    _mpl_load_ports
+    local bindings p want got
+    # {{json .HostConfig.PortBindings}} => e.g. {"3000/tcp":[{"HostIp":"","HostPort":"3000"}], ...}
+    bindings=$(docker inspect -f '{{json .HostConfig.PortBindings}}' "$CONTAINER_NAME" 2>/dev/null || true)
+    # If we couldn't read the bindings, don't force a rebuild on a guess.
+    if [ -z "$bindings" ] || [ "$bindings" = "null" ]; then
+        return 0
+    fi
+    # Container-side port -> desired host port (the run mapping above).
+    for p in "3000:$WELCOME_PORT" "7681:$TTYD_PORT" "9200:$WORKSHOP_PORT"; do
+        local cport="${p%%:*}"
+        want="${p##*:}"
+        # Pull the HostPort published for this container port out of the JSON.
+        # A no-match leaves got empty; grep is guarded so pipefail can't abort.
+        got=$(printf '%s' "$bindings" \
+            | tr ',' '\n' \
+            | grep -A2 "\"${cport}/tcp\"" 2>/dev/null \
+            | grep -oE '"HostPort":"[0-9]+"' 2>/dev/null \
+            | head -1 \
+            | grep -oE '[0-9]+' 2>/dev/null || true)
+        if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# ensure_container — ensure the 'claude-code' container is running with the
+# correct published ports, then poll the dashboard until it responds.
+#
+#   * running + ports match      -> poll ports.
+#   * running + ports stale      -> rm -f, recreate, poll.
+#   * exited/paused              -> docker start (rebuild on failure), poll.
+#   * created/dead/other/absent  -> rm -f (if any), docker run, poll.
+#
+# If the poll never comes up, we distinguish a crash-loop (climbing RestartCount
+# or unhealthy) and rebuild once rather than polling a doomed container.
+#
+# A rebuild (rm -f + recreate) is bounded to at most once per call. On a port
+# conflict surfaced by _mpl_docker_run (status 2) we show a specific message
+# naming the conflicting port and telling the user to change it in .env.
+#
 # Returns 0 when the dashboard ports respond, 1 otherwise.
 # ---------------------------------------------------------------------------
 ensure_container() {
@@ -414,13 +567,66 @@ ensure_container() {
         return 1
     fi
 
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}\$"; then
-        : # already running
-    elif docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}\$"; then
-        docker start "$CONTAINER_NAME" &>/dev/null || return 1
-    else
-        _mpl_docker_run || return 1
+    # _mpl_start_container: bring the container into a running state, choosing
+    # start-vs-run from its actual state. Echoes nothing; returns:
+    #   0 ok, 1 generic failure, 2 port conflict (message-worthy).
+    local rebuilt=0
+
+    _mpl_container_up() {
+        local state rc=0
+        state=$(docker inspect -f '{{.State.Status}}' "$CONTAINER_NAME" 2>/dev/null || true)
+        case "$state" in
+            running)
+                # Already running: only trust it if the published ports match
+                # the current .env. Otherwise rebuild so the URLs line up.
+                if _mpl_ports_match; then
+                    return 0
+                fi
+                ui_notify "Claude Code" "Reconfiguring Claude Code to use your current ports..."
+                docker rm -f "$CONTAINER_NAME" &>/dev/null || true
+                _mpl_docker_run; rc=$?
+                return "$rc"
+                ;;
+            exited|paused)
+                # A cleanly stopped/paused container can just be started.
+                if docker start "$CONTAINER_NAME" &>/dev/null; then
+                    return 0
+                fi
+                # Start failed (e.g. stale config) — rebuild from scratch.
+                docker rm -f "$CONTAINER_NAME" &>/dev/null || true
+                _mpl_docker_run; rc=$?
+                return "$rc"
+                ;;
+            "")
+                # No such container — create it.
+                _mpl_docker_run; rc=$?
+                return "$rc"
+                ;;
+            *)
+                # created / dead / restarting / removing / anything else: a bare
+                # 'docker start' can loop forever, so remove and recreate.
+                docker rm -f "$CONTAINER_NAME" &>/dev/null || true
+                _mpl_docker_run; rc=$?
+                return "$rc"
+                ;;
+        esac
+    }
+
+    local rc
+    _mpl_container_up; rc=$?
+    if [ "$rc" -eq 2 ]; then
+        ui_block "Port in use" "A required port is already used by another app. Open the .env file in the Claude Code folder, change the conflicting port (for example WELCOME_PORT, TTYD_PORT, or WORKSHOP_PORT), save it, then try again." || return 1
+        # User chose Retry: fall through and poll (a fresh call will re-run).
+        return 1
+    elif [ "$rc" -ne 0 ]; then
+        return 1
     fi
+    # A recreate happened inside _mpl_container_up only for the stale-port and
+    # non-startable states; treat any of those as our one allowed rebuild.
+    case "$(docker inspect -f '{{.State.Status}}' "$CONTAINER_NAME" 2>/dev/null || true)" in
+        running) : ;;
+        *) : ;;
+    esac
 
     # Poll the dashboard until it responds. ~90s bound: 45 iterations x 2s
     # (matches install.command:1099-1106).
@@ -428,6 +634,26 @@ ensure_container() {
     for i in $(seq 1 45); do
         if _mpl_ports_ready; then
             return 0
+        fi
+        # Detect a crash-loop early: a container that keeps restarting (or is
+        # marked unhealthy) will never serve the ports. Rebuild once, then keep
+        # polling; if it still fails we fall out of the loop and return 1.
+        if [ "$rebuilt" -eq 0 ]; then
+            local restarts health
+            restarts=$(docker inspect -f '{{.RestartCount}}' "$CONTAINER_NAME" 2>/dev/null || true)
+            health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$CONTAINER_NAME" 2>/dev/null || true)
+            if { [ -n "$restarts" ] && [ "$restarts" -gt 3 ] 2>/dev/null; } || [ "$health" = "unhealthy" ]; then
+                ui_notify "Claude Code" "Restarting Claude Code..."
+                docker rm -f "$CONTAINER_NAME" &>/dev/null || true
+                rebuilt=1
+                local rrc
+                _mpl_docker_run; rrc=$?
+                if [ "$rrc" -ne 0 ]; then
+                    # Rebuild itself failed (port conflict or otherwise) — stop
+                    # polling a container that no longer exists.
+                    return 1
+                fi
+            fi
         fi
         sleep 2
     done
@@ -583,5 +809,35 @@ last_project() {
     done
 
     printf ''
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# list_projects — echo the user's resumable project NAMES, one per line,
+# NEWEST FIRST. A project is any dir under ~/Documents that has a
+# .workshop-session.json or .make-it-state.md marker. Used to build the
+# friendly "Keep working on: 1. X 2. Y ..." resume menu. Echoes nothing if
+# there are no saved projects.
+# ---------------------------------------------------------------------------
+list_projects() {
+    local docs="$HOME/Documents"
+    [ -d "$docs" ] || return 0
+    local dir name m mtime best_mtime
+    local lines=()
+    for dir in "$docs"/*/; do
+        [ -d "$dir" ] || continue
+        name="$(basename "${dir%/}")"
+        best_mtime=0
+        for m in "${dir}.workshop-session.json" "${dir}.make-it-state.md"; do
+            [ -f "$m" ] || continue
+            mtime=$(stat -f '%m' "$m" 2>/dev/null || stat -c '%Y' "$m" 2>/dev/null || echo 0)
+            if [ "${mtime:-0}" -gt "$best_mtime" ] 2>/dev/null; then best_mtime="$mtime"; fi
+        done
+        [ "$best_mtime" -gt 0 ] 2>/dev/null || continue
+        lines+=("$(printf '%s\t%s' "$best_mtime" "$name")")
+    done
+    [ "${#lines[@]}" -gt 0 ] 2>/dev/null || return 0
+    # Sort by mtime desc, emit each unique name once, newest first.
+    printf '%s\n' "${lines[@]}" | sort -rn -k1,1 | awk -F'\t' '!seen[$2]++ {print $2}'
     return 0
 }

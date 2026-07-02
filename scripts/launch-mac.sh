@@ -218,16 +218,55 @@ step_provider_auth() {
 # ===========================================================================
 # STEP 5 — Open the workspace (Workshop deep-link or dashboard)
 # ===========================================================================
-step_open_workspace() {
-    local proj
-    proj="$(last_project || true)"
+_open_project() {
+    open "${WORKSHOP_BASE_URL}/?project=$(_lm_urlencode "$1")&resume=1" 2>/dev/null || true
+}
 
-    if [ -n "$proj" ]; then
-        # URL-encode the project name for safe query embedding.
-        local enc
-        enc="$(_lm_urlencode "$proj")"
-        open "${WORKSHOP_BASE_URL}/?project=${enc}&resume=1" 2>/dev/null || true
+step_open_workspace() {
+    # Headless (no terminal): silently resume the single most-recent project.
+    if ! _mpl_tty; then
+        local proj0
+        proj0="$(last_project || true)"
+        if [ -n "$proj0" ]; then _open_project "$proj0"; else open "$DASHBOARD_URL" 2>/dev/null || true; fi
+        return 0
+    fi
+
+    # Terminal: friendly "Keep working on" resume menu.
+    local projects=()
+    local p
+    while IFS= read -r p; do
+        [ -n "$p" ] && projects+=("$p")
+    done < <(list_projects)
+
+    if [ "${#projects[@]}" -eq 0 ] 2>/dev/null; then
+        printf '\n  Opening Claude Code — start something new.\n'
+        open "$DASHBOARD_URL" 2>/dev/null || true
+        return 0
+    fi
+
+    printf '\n  Welcome back! Keep working on:\n\n'
+    local i=1
+    for p in "${projects[@]}"; do
+        printf '    %d. %s\n' "$i" "$p"
+        i=$((i + 1))
+    done
+    printf '    n. Start something new\n\n'
+
+    local choice=""
+    read -r -p "  Pick a number (or press Return for #1): " choice 2>/dev/null || choice=""
+    case "$choice" in
+        n|N) open "$DASHBOARD_URL" 2>/dev/null || true; return 0 ;;
+        "")  choice=1 ;;
+    esac
+
+    if printf '%s' "$choice" | grep -qE '^[0-9]+$' \
+        && [ "$choice" -ge 1 ] 2>/dev/null \
+        && [ "$choice" -le "${#projects[@]}" ] 2>/dev/null; then
+        local sel="${projects[$((choice - 1))]}"
+        printf '\n  Opening %s...\n' "$sel"
+        _open_project "$sel"
     else
+        printf '\n  Not sure which one — opening the dashboard.\n'
         open "$DASHBOARD_URL" 2>/dev/null || true
     fi
     return 0
