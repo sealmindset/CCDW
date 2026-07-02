@@ -365,10 +365,27 @@ spawn_background_update_check() {
 # ===========================================================================
 # main
 # ===========================================================================
+# _already_up — true when CCDW is already running and reachable (docker present,
+# the container is up, and the dashboard/ttyd/workshop ports respond).
+_already_up() {
+    command -v docker >/dev/null 2>&1 || return 1
+    docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}\$" || return 1
+    _mpl_ports_ready
+}
+
 main() {
     # Kick off the opportunistic background update check FIRST so it runs
     # concurrently with — and never delays — the interactive steps below.
     spawn_background_update_check
+
+    # Fast path: CCDW never shut down and is healthy. Skip the VPN/Docker/auth
+    # preflight entirely and go STRAIGHT to the "Keep working on" resume menu so
+    # the user just picks a project. (AI sign-in, if needed, is handled inside
+    # the workspace — it must never block the picker.)
+    if _already_up; then
+        step_open_workspace
+        exit 0
+    fi
 
     step_check_installed # 0
     step_vpn            # 1
