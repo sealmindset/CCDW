@@ -348,10 +348,18 @@ _internet_ok() {
 }
 
 azure_preflight() {
+    # Bounded retry: never recurse forever. After a few tries the user can
+    # skip straight to sign-in (some probes false-negative behind Zscaler/VPN,
+    # yet the token-authenticated API calls still work).
+    local attempt="${1:-1}"
+    local max_attempts=3
+
     clear
     draw_header "Checking Your Setup" 1 3
     draw_progress 1 3
 
+    # Only genuinely-required CLI tools gate the flow. Reachability probes are
+    # ADVISORY: they print a soft warning and never block reaching sign-in.
     local all_pass=1
 
     printf "  ${DIM}○${NC} Cloud sign-in tools"
@@ -370,20 +378,19 @@ azure_preflight() {
         all_pass=0
     fi
 
+    # --- Advisory reachability probes (warn, never gate) ---
     printf "  ${DIM}○${NC} Internet connection"
     if _internet_ok; then
         printf "\r  ${OK} Internet connection\n"
     else
-        printf "\r  ${FAIL} Internet connection — no network\n"
-        all_pass=0
+        printf "\r  ${YELLOW}!${NC} Internet connection — could not verify\n"
     fi
 
     printf "  ${DIM}○${NC} Sign-in service"
     if curl -s --connect-timeout 5 -o /dev/null https://login.microsoftonline.com 2>/dev/null; then
         printf "\r  ${OK} Sign-in service\n"
     else
-        printf "\r  ${FAIL} Sign-in service — unreachable\n"
-        all_pass=0
+        printf "\r  ${YELLOW}!${NC} Sign-in service — could not verify\n"
     fi
 
     if [ -n "$ENDPOINT" ]; then
@@ -391,25 +398,36 @@ azure_preflight() {
         if curl -s --connect-timeout 8 -o /dev/null "$ENDPOINT" 2>/dev/null; then
             printf "\r  ${OK} AI service (connected)\n"
         else
-            printf "\r  ${FAIL} AI service — VPN not connected\n"
-            echo ""
-            echo -e "  ${YELLOW}The AI service is not reachable.${NC}"
-            echo -e "  Make sure you're connected to your company VPN."
-            echo ""
-            read -p "  Press Enter to retry, or Ctrl+C to exit... " _
-            azure_preflight
-            return $?
+            printf "\r  ${YELLOW}!${NC} AI service — could not verify (VPN?)\n"
         fi
     fi
 
     echo ""
 
     if [ "$all_pass" = "0" ]; then
-        echo -e "  ${YELLOW}Some checks failed. Fix the items above and try again.${NC}"
+        echo -e "  ${YELLOW}Some required tools are missing (marked ✗ above).${NC}"
         echo ""
-        read -p "  Press Enter to retry, or Ctrl+C to exit... " _
-        azure_preflight
-        return $?
+        if [ "$attempt" -ge "$max_attempts" ]; then
+            echo -e "  ${DIM}Reachability warnings (!) are usually safe to ignore —${NC}"
+            echo -e "  ${DIM}sign-in and Claude Code may still work behind your VPN.${NC}"
+            echo ""
+            read -p "  Press s + Enter to continue to sign-in, or Ctrl+C to exit... " _ans
+        else
+            echo -e "  ${DIM}Reachability warnings (!) are usually safe to ignore.${NC}"
+            echo ""
+            read -p "  Press Enter to retry, s + Enter to skip, or Ctrl+C to exit... " _ans
+        fi
+        case "$_ans" in
+            s|S) return 0 ;;
+            *)
+                if [ "$attempt" -ge "$max_attempts" ]; then
+                    # Bounded: stop recursing; let the user proceed to sign-in.
+                    return 0
+                fi
+                azure_preflight $((attempt + 1))
+                return $?
+                ;;
+        esac
     fi
 
     echo -e "  ${GREEN}All checks passed.${NC}"
@@ -558,10 +576,17 @@ azure_allset() {
 # =============================================================================
 
 bedrock_preflight() {
+    # Bounded retry: never recurse forever. Reachability probes false-negative
+    # behind Zscaler/VPN, so they are advisory and the user can skip to sign-in.
+    local attempt="${1:-1}"
+    local max_attempts=3
+
     clear
     draw_header "Checking Your Setup" 1 3
     draw_progress 1 3
 
+    # Only genuinely-required items gate the flow (CLI tools + configured
+    # profile). Reachability probes are ADVISORY: warn, never block.
     local all_pass=1
 
     printf "  ${DIM}○${NC} Cloud sign-in tools"
@@ -587,12 +612,12 @@ bedrock_preflight() {
         all_pass=0
     fi
 
+    # --- Advisory reachability probe (warn, never gate) ---
     printf "  ${DIM}○${NC} Internet connection"
     if _internet_ok; then
         printf "\r  ${OK} Internet connection\n"
     else
-        printf "\r  ${FAIL} Internet connection — no network\n"
-        all_pass=0
+        printf "\r  ${YELLOW}!${NC} Internet connection — could not verify\n"
     fi
 
     printf "  ${DIM}○${NC} Sign-in profile"
@@ -606,7 +631,7 @@ bedrock_preflight() {
         all_pass=0
     fi
 
-    # Check AWS SSO portal is reachable
+    # Check AWS SSO portal is reachable — ADVISORY only (warn, never gate).
     local sso_url
     sso_url=$(read_json "/opt/claude-code-docker/config/bedrock.json" "sso_start_url")
     if [ -n "$sso_url" ]; then
@@ -616,8 +641,7 @@ bedrock_preflight() {
         if curl -s --connect-timeout 5 -o /dev/null "$sso_domain" 2>/dev/null; then
             printf "\r  ${OK} Sign-in service\n"
         else
-            printf "\r  ${FAIL} Sign-in service — unreachable\n"
-            all_pass=0
+            printf "\r  ${YELLOW}!${NC} Sign-in service — could not verify (VPN?)\n"
         fi
     fi
 
@@ -626,11 +650,28 @@ bedrock_preflight() {
     echo ""
 
     if [ "$all_pass" = "0" ]; then
-        echo -e "  ${YELLOW}Some checks failed. Fix the items above and try again.${NC}"
+        echo -e "  ${YELLOW}Some required items need attention (marked ✗ above).${NC}"
         echo ""
-        read -p "  Press Enter to retry, or Ctrl+C to exit... " _
-        bedrock_preflight
-        return $?
+        if [ "$attempt" -ge "$max_attempts" ]; then
+            echo -e "  ${DIM}Reachability warnings (!) are usually safe to ignore —${NC}"
+            echo -e "  ${DIM}sign-in and Claude Code may still work behind your VPN.${NC}"
+            echo ""
+            read -p "  Press s + Enter to continue to sign-in, or Ctrl+C to exit... " _ans
+        else
+            echo -e "  ${DIM}Reachability warnings (!) are usually safe to ignore.${NC}"
+            echo ""
+            read -p "  Press Enter to retry, s + Enter to skip, or Ctrl+C to exit... " _ans
+        fi
+        case "$_ans" in
+            s|S) return 0 ;;
+            *)
+                if [ "$attempt" -ge "$max_attempts" ]; then
+                    return 0
+                fi
+                bedrock_preflight $((attempt + 1))
+                return $?
+                ;;
+        esac
     fi
 
     echo -e "  ${GREEN}All checks passed.${NC}"
@@ -767,10 +808,17 @@ bedrock_allset() {
 # =============================================================================
 
 claude_preflight() {
+    # Bounded retry: never recurse forever. Reachability probes are advisory
+    # (Zscaler/VPN can block them while sign-in still works via allow-list).
+    local attempt="${1:-1}"
+    local max_attempts=3
+
     clear
     draw_header "Checking Your Setup" 1 3
     draw_progress 1 3
 
+    # Only the required CLI tool gates the flow. Reachability probes are
+    # ADVISORY: warn, never block.
     local all_pass=1
 
     printf "  ${DIM}○${NC} Code sharing tools"
@@ -781,30 +829,46 @@ claude_preflight() {
         all_pass=0
     fi
 
+    # --- Advisory reachability probes (warn, never gate) ---
     printf "  ${DIM}○${NC} Internet connection"
     if _internet_ok; then
         printf "\r  ${OK} Internet connection\n"
     else
-        printf "\r  ${FAIL} Internet connection — no network\n"
-        all_pass=0
+        printf "\r  ${YELLOW}!${NC} Internet connection — could not verify\n"
     fi
 
     printf "  ${DIM}○${NC} Claude API"
     if curl -s --connect-timeout 5 -o /dev/null https://api.anthropic.com 2>/dev/null; then
         printf "\r  ${OK} Claude API\n"
     else
-        printf "\r  ${FAIL} Claude API — unreachable\n"
-        all_pass=0
+        printf "\r  ${YELLOW}!${NC} Claude API — could not verify (VPN?)\n"
     fi
 
     echo ""
 
     if [ "$all_pass" = "0" ]; then
-        echo -e "  ${YELLOW}Some checks failed. Fix the items above and try again.${NC}"
+        echo -e "  ${YELLOW}Some required tools are missing (marked ✗ above).${NC}"
         echo ""
-        read -p "  Press Enter to retry, or Ctrl+C to exit... " _
-        claude_preflight
-        return $?
+        if [ "$attempt" -ge "$max_attempts" ]; then
+            echo -e "  ${DIM}Reachability warnings (!) are usually safe to ignore —${NC}"
+            echo -e "  ${DIM}sign-in and Claude Code may still work behind your VPN.${NC}"
+            echo ""
+            read -p "  Press s + Enter to continue to sign-in, or Ctrl+C to exit... " _ans
+        else
+            echo -e "  ${DIM}Reachability warnings (!) are usually safe to ignore.${NC}"
+            echo ""
+            read -p "  Press Enter to retry, s + Enter to skip, or Ctrl+C to exit... " _ans
+        fi
+        case "$_ans" in
+            s|S) return 0 ;;
+            *)
+                if [ "$attempt" -ge "$max_attempts" ]; then
+                    return 0
+                fi
+                claude_preflight $((attempt + 1))
+                return $?
+                ;;
+        esac
     fi
 
     echo -e "  ${GREEN}All checks passed.${NC}"
