@@ -125,6 +125,16 @@ if [ "\$rc" -ne 0 ]; then
     echo "  Something went wrong (code \$rc). Details are in: \$HOME/ccdw-launcher.log"
     read -r -p "  Press Return to close... " _ || true
 fi
+
+# Clean up: close this Terminal window so it doesn't linger on
+# "[Process completed]". Runs detached after a short delay so the window's shell
+# has already exited (no "process still running" prompt). Only this window (its
+# unique tty) is closed; skipped if not running in a Terminal.
+_tty="\$(tty 2>/dev/null)"
+if [ -n "\$_tty" ]; then
+    ( sleep 1; osascript -e 'tell application "Terminal" to close (every window whose tty is "'"\$_tty"'")' ) >/dev/null 2>&1 &
+    disown 2>/dev/null || true
+fi
 CMD
 
 chmod +x "$COMMAND_FILE"
