@@ -33,6 +33,36 @@ log()  { printf '%s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
+# ---------------------------------------------------------------------------
+# set_command_icon TARGET — give a plain file the Claude sunburst icon.
+# A .command has no bundle, so its custom icon lives in the resource fork:
+# sips embeds an icns from the PNG, DeRez extracts it, Rez appends it to the
+# target's resource fork, and SetFile flags "has custom icon". Re-applied on
+# every build (editing the file drops the fork). Non-fatal if tools are missing.
+# ---------------------------------------------------------------------------
+set_command_icon() {
+    local target="$1"
+    local src="${REPO_DIR}/assets/claude-icon.png"
+    [ -f "$src" ] || { warn "Icon source not found ($src); skipping icon."; return 0; }
+    if ! command -v sips >/dev/null 2>&1 || ! command -v DeRez >/dev/null 2>&1 \
+        || ! command -v Rez >/dev/null 2>&1 || ! command -v SetFile >/dev/null 2>&1; then
+        warn "Icon tools (sips/Rez/DeRez/SetFile — Xcode CLT) missing; skipping icon."
+        return 0
+    fi
+    local tmp
+    tmp="$(mktemp -d)"
+    if cp "$src" "$tmp/icon.png" 2>/dev/null \
+        && sips -i "$tmp/icon.png" >/dev/null 2>&1 \
+        && DeRez -only icns "$tmp/icon.png" > "$tmp/icon.rsrc" 2>/dev/null \
+        && Rez -append "$tmp/icon.rsrc" -o "$target" 2>/dev/null; then
+        SetFile -a C "$target" 2>/dev/null || true
+        log "Applied the Claude sunburst icon."
+    else
+        warn "Could not apply the custom icon (non-fatal)."
+    fi
+    rm -rf "$tmp" 2>/dev/null || true
+}
+
 [ "$(uname -s)" = "Darwin" ] || die "build-mac-app.sh must run on macOS."
 mkdir -p "$DEST_DIR" || die "Cannot create destination dir: $DEST_DIR"
 
@@ -99,6 +129,10 @@ CMD
 
 chmod +x "$COMMAND_FILE"
 xattr -dr com.apple.quarantine "$COMMAND_FILE" 2>/dev/null || true
+set_command_icon "$COMMAND_FILE"
+
+# Nudge Finder to pick up the new icon.
+touch "$DEST_DIR" 2>/dev/null || true
 
 log ""
 log "Created launcher: $COMMAND_FILE"

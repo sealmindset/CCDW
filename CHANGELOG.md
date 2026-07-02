@@ -13,6 +13,8 @@
     when there is no TTY); the `.command` keeps the window open on error so the user sees why.
   - `build-mac-app.sh` now builds the `.command` and removes any stale `Claude Code.app` /
     `.webloc` / old launcher from the Desktop.
+  - The `.command` gets the Claude sunburst icon (`assets/claude-icon.png`) applied to its
+    resource fork via sips/Rez/SetFile, re-applied on every build.
 
 ### Added
 - macOS desktop launcher: install.command now builds a real "Claude Code.app" on the Desktop
