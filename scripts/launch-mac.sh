@@ -178,40 +178,30 @@ step_provider_auth() {
     local provider display
     provider="$(provider_from_env || true)"
 
-    # No provider configured yet -> nothing to authenticate here; the login
-    # wizard in the container will guide first-time setup after launch.
+    # No provider configured -> nothing to check; first-run setup happens in the
+    # container's login wizard.
     if [ -z "$provider" ]; then
         return 0
     fi
 
+    # Already signed in -> nothing to do.
     if check_provider_auth "$provider"; then
         return 0
     fi
 
+    # NON-BLOCKING nudge: sign-in is missing/expired. Open the web sign-in
+    # terminal and tell the user what to do, but NEVER block reaching their
+    # project — the workspace also surfaces the sign-in prompt, and the user can
+    # keep working on things that don't need AI. (For Azure, the fix is a
+    # one-time `az login --use-device-code` in that terminal.)
     display="$(provider_display_name "$provider")"
-
-    # Tell the user what to do, then open the web login wizard.
-    ui_info "Sign in" \
-        "Please sign in to ${display} in the window that opens."
+    local how=""
+    if [ "$provider" = "foundry" ]; then
+        how=" Run:  az login --use-device-code"
+    fi
+    ui_info "AI sign-in needed" \
+        "Your ${display} sign-in has expired or isn't set up yet. A sign-in window is opening.${how}  You can still pick a project — AI features work once you're signed in."
     open "$WEB_TERMINAL_URL" 2>/dev/null || true
-
-    # Poll until authenticated. Every ~90s of waiting, re-prompt with a
-    # Retry/Quit dialog so a stuck user always has an escape hatch.
-    local waited=0
-    while ! check_provider_auth "$provider"; do
-        sleep 3
-        waited=$((waited + 3))
-        if [ "$waited" -ge 90 ]; then
-            if ui_block "Waiting for sign-in" \
-                "Still waiting for you to finish signing in to ${display}. Complete the sign-in in the browser window, then continue — or quit."; then
-                open "$WEB_TERMINAL_URL" 2>/dev/null || true
-                waited=0
-                continue
-            else
-                quit_launcher
-            fi
-        fi
-    done
     return 0
 }
 
@@ -383,6 +373,7 @@ main() {
     # the user just picks a project. (AI sign-in, if needed, is handled inside
     # the workspace — it must never block the picker.)
     if _already_up; then
+        step_provider_auth   # non-blocking: nudge to sign in if AI token expired
         step_open_workspace
         exit 0
     fi
