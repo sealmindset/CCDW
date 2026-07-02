@@ -189,11 +189,19 @@ step_provider_auth() {
         return 0
     fi
 
-    # NON-BLOCKING nudge: sign-in is missing/expired. Open the web sign-in
-    # terminal and tell the user what to do, but NEVER block reaching their
-    # project — the workspace also surfaces the sign-in prompt, and the user can
-    # keep working on things that don't need AI. (For Azure, the fix is a
-    # one-time `az login --use-device-code` in that terminal.)
+    # Azure Foundry in a visible terminal: drive the device-code sign-in
+    # automatically — opens the pre-filled login page in the browser and polls
+    # until the container is authenticated. (MFA is still the user's step.)
+    if [ "$provider" = "foundry" ] && _mpl_tty && [ -f "${_SELF_DIR}/az-auto-login.sh" ]; then
+        bash "${_SELF_DIR}/az-auto-login.sh" || true
+        if check_provider_auth "$provider"; then
+            return 0
+        fi
+    fi
+
+    # NON-BLOCKING fallback nudge (non-foundry, headless, or auto-login didn't
+    # finish). Never block reaching the project — the workspace also surfaces
+    # the sign-in prompt.
     display="$(provider_display_name "$provider")"
     local how=""
     if [ "$provider" = "foundry" ]; then
