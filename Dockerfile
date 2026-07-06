@@ -154,6 +154,19 @@ RUN sed -i 's/\r$//' /opt/claude-code-docker/scripts/*.sh \
 RUN mv /opt/claude-code-docker/scripts/xdg-open /usr/local/bin/xdg-open
 
 # ---------------------------------------------------------------------------
+# Playwright + Chromium for the dashboard's GitHub auto-authorize
+# (headless device-flow grant using a seeded session; local-only single-user).
+# Installed as root so --with-deps can apt-install the browser's OS libraries.
+# Browsers go to a shared path so the coder-user runtime can use them.
+# ---------------------------------------------------------------------------
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/claude-code-docker/pw-browsers
+RUN cd /opt/claude-code-docker \
+    && npm init -y >/dev/null 2>&1 \
+    && npm install playwright@1.61.1 \
+    && node node_modules/playwright/cli.js install --with-deps chromium \
+    && chmod -R a+rX /opt/claude-code-docker/pw-browsers 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
 # Switch to coder user for extensions, Go tools, and skill install
 # ---------------------------------------------------------------------------
 USER coder

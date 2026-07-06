@@ -764,12 +764,12 @@
         <!-- System Status -->
         <div class="section-label">System Status</div>
         <div class="status-grid">
-            <div class="status-item">
+            <div class="status-item" id="ghCard">
                 <div class="status-dot checking" id="dot-github"></div>
                 <div>
                     <div class="status-label">GitHub</div>
                     <div class="status-detail" id="status-github">Checking...</div>
-                    <a class="status-action" id="ghSignInLink" style="display:none;" href="#">Sign in</a>
+                    <a class="status-action" id="ghSignInLink" style="display:none;" href="#">Sign in automatically</a>
                 </div>
             </div>
             <div class="status-item">
@@ -910,16 +910,28 @@
 
                     // GitHub status
                     var ghSignIn = document.getElementById('ghSignInLink');
+                    var ghCard = document.getElementById('ghCard');
                     if (data.github === 'ok') {
                         ghDot.className = 'status-dot green';
                         ghStatus.textContent = data.github_user || 'Authenticated';
                         ghSignIn.style.display = 'none';
+                        // Signed in -> card not clickable
+                        if (ghCard) { ghCard.style.cursor = ''; ghCard.title = ''; ghCard.onclick = null; }
                         var authBanner = document.getElementById('authNotify');
                         if (authBanner) { authBanner.style.display = 'none'; authBannerVisible = false; }
                     } else {
                         ghDot.className = 'status-dot red';
                         ghStatus.textContent = 'Not connected';
                         ghSignIn.style.display = '';
+                        // Not signed in -> whole card is clickable to auto sign-in
+                        if (ghCard) {
+                            ghCard.style.cursor = 'pointer';
+                            ghCard.title = 'Click to sign in to GitHub automatically';
+                            ghCard.onclick = function(e) {
+                                if (e && e.target && e.target.id === 'ghSignInLink') return; // link handles itself
+                                startGitHubAuto();
+                            };
+                        }
                     }
 
                     // System (Docker)
@@ -1130,22 +1142,37 @@
         setInterval(checkSslProxy, 30000);
         setInterval(checkApps, 5000);
 
-        // GitHub sign-in via device code
-        document.getElementById('ghSignInLink').addEventListener('click', async function(e) {
-            e.preventDefault();
-            var link = this;
-            link.textContent = 'Starting...';
-            link.style.pointerEvents = 'none';
+        // GitHub sign-in — automatic (device flow + headless browser grant via
+        // the seeded session). User just clicks; the rest is handled.
+        var ghAutoBusy = false;
+        async function startGitHubAuto() {
+            if (ghAutoBusy) return;
+            ghAutoBusy = true;
+            var link = document.getElementById('ghSignInLink');
+            if (link) { link.textContent = 'Signing in…'; link.style.pointerEvents = 'none'; }
             try {
-                var resp = await fetch('/auth/github-login', { method: 'POST' });
+                var resp = await fetch('/auth/github-auto', { method: 'POST' });
                 var data = await resp.json();
-                if (!data.needed) { link.style.display = 'none'; checkAll(); return; }
-            } catch(err) {
-                link.textContent = 'Sign in';
-                link.style.pointerEvents = '';
+                if (!data.needed) { if (link) link.style.display = 'none'; ghAutoBusy = false; checkAll(); return; }
+                if (data.error === 'no_session') {
+                    alert(data.message || 'One-time setup: run gh-session-setup.command on your Mac to sign in to GitHub once, then click again.');
+                    if (link) { link.textContent = 'Sign in automatically'; link.style.pointerEvents = ''; }
+                    ghAutoBusy = false;
+                    return;
+                }
+                // Device flow started + headless grant running; status polling flips the card green.
+                if (link) link.textContent = 'Signing in automatically…';
+            } catch (err) {
+                if (link) { link.textContent = 'Sign in automatically'; link.style.pointerEvents = ''; }
             }
-            link.textContent = 'Signing in...';
-        });
+            // release the busy latch once auth completes or after a bounded window
+            var tries = 0;
+            var relI = setInterval(function() {
+                tries++;
+                if (tries > 60) { clearInterval(relI); ghAutoBusy = false; }
+            }, 2000);
+        }
+        document.getElementById('ghSignInLink').addEventListener('click', function(e) { e.preventDefault(); startGitHubAuto(); });
 
         // Device code auth polling — shows banner when login-wizard sends a code,
         // auto-hides when auth completes (fixes the "banner stays after auth" bug)

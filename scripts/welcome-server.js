@@ -544,6 +544,57 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    if (req.url === '/auth/github-auto' && req.method === 'POST') {
+        // Auto GitHub sign-in: start the device flow, then drive the browser grant
+        // headlessly with a pre-seeded GitHub session (gh-session-setup.command).
+        const h = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+        try { execSync('gh auth status', { stdio: 'ignore', timeout: 10000 }); res.writeHead(200, h); res.end(JSON.stringify({ needed: false })); return; } catch(e) {}
+
+        const GH_STATE = '/home/coder/Documents/.ccdw/gh-session.json';
+        if (!fs.existsSync(GH_STATE)) {
+            res.writeHead(200, h);
+            res.end(JSON.stringify({ needed: true, error: 'no_session', message: 'One-time setup: run gh-session-setup.command on your Mac to sign in to GitHub once.' }));
+            return;
+        }
+
+        if (loginProcess) { try { loginProcess.kill(); } catch(e) {} loginProcess = null; }
+        loginProcess = spawn('gh', ['auth', 'login', '-p', 'https', '-h', 'github.com', '-w', '--skip-ssh-key'], { stdio: ['pipe', 'pipe', 'pipe'] });
+        var gaOut = '', gaFound = false, gaCode = '', gaUrl = '';
+        var gaOnData = function(d) {
+            gaOut += d.toString();
+            if (gaFound) return;
+            var um = gaOut.match(/(https:\/\/[^\s]+)/);
+            var cm = gaOut.match(/([A-Z0-9]{4}-[A-Z0-9]{4})/);
+            if (um && cm) {
+                gaFound = true; gaUrl = um[1]; gaCode = cm[1];
+                pendingAuth = { url: gaUrl, code: gaCode, provider: 'github', timestamp: Date.now() }; savePendingAuth();
+                // Headless auto-authorize using the seeded session (detached).
+                try {
+                    var pw = spawn('node', ['/opt/claude-code-docker/scripts/gh-playwright-auth.mjs', gaCode, gaUrl, GH_STATE],
+                        { cwd: '/opt/claude-code-docker', stdio: 'ignore', detached: true });
+                    pw.unref();
+                } catch(e) {}
+            }
+        };
+        loginProcess.stdout.on('data', gaOnData);
+        loginProcess.stderr.on('data', gaOnData);
+        loginProcess.on('close', function(ec) {
+            loginProcess = null;
+            if (ec === 0) { try { execSync('gh auth setup-git', { stdio: 'ignore', timeout: 10000 }); } catch(e) {} pendingAuth = null; savePendingAuth(); }
+        });
+
+        var gaWaited = 0;
+        var gaWi = setInterval(function() {
+            gaWaited += 250;
+            if (gaFound || gaWaited >= 12000) {
+                clearInterval(gaWi);
+                res.writeHead(200, h);
+                res.end(JSON.stringify(gaFound ? { needed: true, automating: true, code: gaCode, url: gaUrl } : { needed: true, status: 'starting' }));
+            }
+        }, 250);
+        return;
+    }
+
     if (req.url === '/auth/check') {
         var ch = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
         var authed = false, prov = 'none';
