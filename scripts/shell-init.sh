@@ -19,6 +19,27 @@ NC='\033[0m'
 CHECK_PASS="${GREEN}✓${NC}"
 CHECK_FAIL="${RED}✗${NC}"
 
+# ---------------------------------------------------------------------------
+# Web Terminal default: run `claude` with --dangerously-skip-permissions so the
+# agent doesn't prompt for each tool use. Scoped to this interactive terminal
+# only (this file is ttyd's bash --init-file); Chat/Workshop call claude
+# directly and are unaffected. Management subcommands (auth, mcp, plugin, etc.)
+# pass through untouched, and the flag is never double-added. Set
+# CLAUDE_NO_SKIP=1 to opt out. (The flag refuses to run as root — the terminal
+# runs as the non-root 'coder' user, so this is fine.)
+# ---------------------------------------------------------------------------
+claude() {
+    if [ "${CLAUDE_NO_SKIP:-}" = "1" ]; then command claude "$@"; return; fi
+    case "${1:-}" in
+        auth|mcp|config|plugin|update|setup-token|doctor|migrate-installer|install|-v|--version|-h|--help)
+            command claude "$@"; return ;;
+    esac
+    case " $* " in
+        *" --dangerously-skip-permissions "*) command claude "$@"; return ;;
+    esac
+    command claude --dangerously-skip-permissions "$@"
+}
+
 SCRIPTS_DIR="/opt/claude-code-docker/scripts"
 CONFIG_FILE="/opt/claude-code-docker/config/providers.yml"
 
