@@ -1,0 +1,79 @@
+/* Shared top navigation bar + breadcrumb */
+.shared-topnav {
+    position: sticky;
+    top: 0;
+    z-index: 9000;
+    background: #0c0e14;
+    border-bottom: 1px solid rgba(100, 116, 139, 0.15);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+.shared-topnav-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem;
+    display: flex;
+    align-items: center;
+    height: 44px;
+    gap: 0.25rem;
+}
+
+/* Breadcrumb separator */
+.shared-topnav-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-right: auto;
+}
+
+.shared-topnav-breadcrumb .nav-sep {
+    color: #64748b;
+    font-size: 0.75rem;
+    margin: 0 0.15rem;
+    user-select: none;
+}
+
+/* Nav links */
+.shared-topnav a {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #94a3b8;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+
+.shared-topnav a:hover {
+    background: rgba(100, 116, 139, 0.12);
+    color: #e2e8f0;
+}
+
+.shared-topnav a.active {
+    background: rgba(99, 102, 241, 0.12);
+    color: #818cf8;
+}
+
+.shared-topnav a svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
+
+/* Responsive: hide labels on small screens */
+@media (max-width: 600px) {
+    .shared-topnav a .nav-label {
+        display: none;
+    }
+    .shared-topnav a {
+        padding: 0.35rem 0.5rem;
+    }
+    .shared-topnav-breadcrumb .nav-sep {
+        display: none;
+    }
+}
