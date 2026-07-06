@@ -37,7 +37,16 @@ try { ({ chromium } = await import('playwright')); }
 catch { ({ chromium } = await import('playwright-core')); }
 
 const codeDigits = code.replace(/-/g, '');
-const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+// Alpine can't run Playwright's bundled Chromium (musl vs glibc) — use the
+// system Chromium (apk). On other OSes, fall back to Playwright's bundled one.
+const chromeExe = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  || (fs.existsSync('/usr/bin/chromium-browser') ? '/usr/bin/chromium-browser'
+      : fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
+const browser = await chromium.launch({
+  headless: true,
+  executablePath: chromeExe,
+  args: ['--no-sandbox', '--disable-dev-shm-usage'],
+});
 try {
   const ctx = await browser.newContext({ storageState: statePath });
   const page = await ctx.newPage();

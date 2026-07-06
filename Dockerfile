@@ -159,12 +159,14 @@ RUN mv /opt/claude-code-docker/scripts/xdg-open /usr/local/bin/xdg-open
 # Installed as root so --with-deps can apt-install the browser's OS libraries.
 # Browsers go to a shared path so the coder-user runtime can use them.
 # ---------------------------------------------------------------------------
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/claude-code-docker/pw-browsers
-RUN cd /opt/claude-code-docker \
+# System Chromium (Alpine/musl) — Playwright's bundled Chromium doesn't run on
+# Alpine, so install the apk browser and launch it via executablePath. Skip the
+# bundled-browser download (it would fail on Alpine).
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont \
+    && cd /opt/claude-code-docker \
     && npm init -y >/dev/null 2>&1 \
-    && npm install playwright@1.61.1 \
-    && node node_modules/playwright/cli.js install --with-deps chromium \
-    && chmod -R a+rX /opt/claude-code-docker/pw-browsers 2>/dev/null || true
+    && npm install playwright@1.61.1
 
 # ---------------------------------------------------------------------------
 # Switch to coder user for extensions, Go tools, and skill install
