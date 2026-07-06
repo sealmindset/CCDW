@@ -160,11 +160,15 @@ USER coder
 WORKDIR /home/coder/Documents
 
 # VS Code extensions (code-server uses Open VSX registry)
+# Continue.continue is intentionally NOT installed: it downloads a native core
+# binary from S3 per-platform, and the linux-arm64 binary is chronically missing
+# ("No body returned"), breaking on Apple Silicon. CCDW's AI is Claude Code
+# (CLI + Chat + Workshop via Foundry/Bedrock/Anthropic/Claude Account), which
+# does not depend on Continue.
 RUN code-server --install-extension ms-python.python \
     && code-server --install-extension golang.go \
     && code-server --install-extension dbaeumer.vscode-eslint \
-    && code-server --install-extension esbenp.prettier-vscode \
-    && code-server --install-extension Continue.continue
+    && code-server --install-extension esbenp.prettier-vscode
 
 # Go language server (gopls) for the Go extension
 RUN go install golang.org/x/tools/gopls@v0.21.0

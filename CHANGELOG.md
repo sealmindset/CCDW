@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Removed
+- Continue.dev VS Code extension. It downloads a native core binary from S3 per
+  platform and the linux-arm64 build is chronically missing ("No body returned"),
+  which broke VS Code for the Web on Apple Silicon. CCDW's AI is Claude Code
+  (CLI + Chat + Workshop via Foundry/Bedrock/Anthropic/Claude Account) and does
+  not depend on Continue. Removed the extension install, its entrypoint config
+  block, its code-server telemetry setting, and config/continue-config.json.
+
+## [Unreleased]
+
 ### Changed
 - macOS launcher is now a plain **`Start Claude Code.command`** (Terminal), not a `.app` bundle.
   A `.command` needs no code signing (no Gatekeeper silent-refusal), runs in a visible Terminal

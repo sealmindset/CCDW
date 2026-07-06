@@ -195,36 +195,10 @@ if [ ! -f "$VSCODE_DIR/tasks.json" ]; then
 fi
 chown -R coder:coder "$CS_USER_DIR" "$VSCODE_DIR" 2>/dev/null || true
 
-# ---------------------------------------------------------------------------
-# Continue.dev AI assistant config (auto-detect provider from Claude settings)
-# ---------------------------------------------------------------------------
-CONTINUE_DIR="/home/coder/.continue"
-mkdir -p "$CONTINUE_DIR"
-if [ ! -f "$CONTINUE_DIR/config.json" ]; then
-    python3 -c "
-import json, os, sys
-config = {'models': [], 'allowAnonymousTelemetry': False}
-env = {}
-sp = '/home/coder/.claude/settings.json'
-if os.path.isfile(sp):
-    with open(sp) as f:
-        env = json.load(f).get('env', {})
-api_key = os.environ.get('ANTHROPIC_API_KEY','') or env.get('ANTHROPIC_API_KEY','')
-foundry  = os.environ.get('ANTHROPIC_FOUNDRY_BASE_URL','') or env.get('ANTHROPIC_FOUNDRY_BASE_URL','')
-if api_key:
-    m = {'title':'Claude','provider':'anthropic','model':'claude-sonnet-4-20250514','apiKey':api_key}
-    config['models'] = [m]
-    config['tabAutocompleteModel'] = {'title':'Claude Haiku','provider':'anthropic','model':'claude-haiku-4-5-20251001','apiKey':api_key}
-elif foundry:
-    token = env.get('ANTHROPIC_FOUNDRY_AUTH_TOKEN','')
-    config['models'] = [{'title':'Claude (Foundry)','provider':'anthropic','model':'claude-sonnet-4-20250514','apiBase':foundry,'apiKey':token or 'run-az-login'}]
-elif os.path.isfile('/home/coder/.aws/config'):
-    config['models'] = [{'title':'Claude (Bedrock)','provider':'bedrock','model':'anthropic.claude-sonnet-4-20250514-v1:0','region':'us-east-1'}]
-with open('$CONTINUE_DIR/config.json','w') as f:
-    json.dump(config, f, indent=2)
-" 2>/dev/null || cp "$CS_CONFIG/continue-config.json" "$CONTINUE_DIR/config.json" 2>/dev/null || true
-    chown -R coder:coder "$CONTINUE_DIR" 2>/dev/null || true
-fi
+# Continue.dev was removed: its native core binary is downloaded per-platform
+# from S3 and the linux-arm64 build is chronically missing ("No body returned"),
+# breaking on Apple Silicon. No Continue config is written. Claude Code
+# (CLI + Chat + Workshop) is the AI; it does not depend on Continue.
 
 CS_AUTH="${CODE_SERVER_AUTH:-none}"
 if [ "$CS_AUTH" = "password" ]; then

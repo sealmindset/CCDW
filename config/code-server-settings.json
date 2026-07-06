@@ -27,6 +27,5 @@
     "editor.defaultFormatter": "golang.go"
   },
   "go.gopath": "/home/coder/go",
-  "python.defaultInterpreterPath": "/usr/bin/python3",
-  "continue.telemetryEnabled": false
+  "python.defaultInterpreterPath": "/usr/bin/python3"
 }
