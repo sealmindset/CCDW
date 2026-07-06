@@ -476,10 +476,31 @@ else
             echo -e "  ${CHECK_FAIL} Azure login"
         fi
     elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ]; then
+        AWS_SSO_PROFILE="${AWS_PROFILE:-sso-bedrock-model-access}"
         if [ "$AUTH_OK" = "1" ]; then
-            echo -e "  ${CHECK_PASS} AWS SSO       ${GREEN}Active${NC}"
+            # Minutes until the soonest cached SSO token expires (-1 if unknown).
+            SSO_MIN=$(python3 -c "
+import json,glob,os,datetime
+best=None
+for f in glob.glob(os.path.expanduser('~/.aws/sso/cache/*.json')):
+    try:
+        e=json.load(open(f)).get('expiresAt')
+        if not e: continue
+        dt=datetime.datetime.fromisoformat(e.replace('Z','+00:00'))
+        rem=(dt-datetime.datetime.now(datetime.timezone.utc)).total_seconds()/60
+        if best is None or rem<best: best=rem
+    except Exception: pass
+print(int(best) if best is not None else -1)
+" 2>/dev/null)
+            if [ -n "$SSO_MIN" ] && [ "$SSO_MIN" -ge 0 ] 2>/dev/null && [ "$SSO_MIN" -lt 30 ] 2>/dev/null; then
+                echo -e "  ${YELLOW}!${NC} AWS SSO       ${YELLOW}expires in ${SSO_MIN} min${NC}"
+                echo -e "     ${YELLOW}Re-run soon:${NC} aws sso login --profile ${AWS_SSO_PROFILE}"
+            else
+                echo -e "  ${CHECK_PASS} AWS SSO       ${GREEN}Active${NC}"
+            fi
         else
-            echo -e "  ${CHECK_FAIL} AWS SSO       ${RED}Not signed in${NC}"
+            echo -e "  ${CHECK_FAIL} AWS SSO       ${RED}Expired / not signed in${NC}"
+            echo -e "     ${YELLOW}Re-run:${NC} aws sso login --profile ${AWS_SSO_PROFILE}"
         fi
     elif [ "${CLAUDE_CODE_PROVIDER}" = "claude" ]; then
         if [ "$AUTH_OK" = "1" ]; then
