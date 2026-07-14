@@ -694,7 +694,10 @@ bedrock_signin() {
     echo ""
 
     TMPFILE=$(mktemp /tmp/aws-sso-XXXXXX)
-    aws sso login --profile "$AWS_SSO_PROFILE" >"$TMPFILE" 2>&1 &
+    # --use-device-code forces the device-code flow. The default PKCE
+    # authorization-code flow binds a callback server on 127.0.0.1 INSIDE the
+    # container, which the host browser cannot reach → sign-in never completes.
+    aws sso login --profile "$AWS_SSO_PROFILE" --use-device-code >"$TMPFILE" 2>&1 &
     AZ_PID=$!
 
     # Wait for the SSO URL + code to appear
