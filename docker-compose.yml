@@ -45,6 +45,20 @@ services:
       - ${HOME:-.}/.kube:/home/coder/.kube
       # Mount host git config read-only (inherit identity without re-configuring)
       - ${HOME:-.}/.gitconfig:/home/coder/.host-gitconfig:ro
+      # External drives: mount macOS /Volumes (PRO-BLADE, etc.) so external
+      # disks are visible inside the container. Symlinks resolve as long as
+      # their targets live under a mounted path.
+      # NOTE macOS Docker Desktop: rslave/rshared propagation is rejected
+      # ("not a shared or slave mount"), so drives plugged in AFTER the
+      # container starts need `docker compose restart` to appear. Also add
+      # /Volumes under Docker Desktop > Settings > Resources > File Sharing.
+      # On a native Linux host, add `propagation: rslave` under bind: below
+      # for live propagation without restart.
+      - type: bind
+        source: ${EXTERNAL_DRIVES_PATH:-/Volumes}
+        target: /Volumes
+        bind:
+          create_host_path: true
     env_file:
       - path: .env
         required: false
