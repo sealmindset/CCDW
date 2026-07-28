@@ -1,0 +1,3 @@
+#!/bin/bash
+# notify <message> [title] -> macOS Notification Center banner via CCDW bridge.
+exec ccdw-bridge notify "$@"

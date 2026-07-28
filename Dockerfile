@@ -154,6 +154,18 @@ RUN sed -i 's/\r$//' /opt/claude-code-docker/scripts/*.sh \
 RUN mv /opt/claude-code-docker/scripts/xdg-open /usr/local/bin/xdg-open
 
 # ---------------------------------------------------------------------------
+# Host bridge shims: make the containerized terminal feel native by wiring
+# pbcopy/pbpaste/open/reveal/notify to the macOS host via ccdw-hostd.
+# (Host side: run scripts/host-bridge/CCDW-Host-Bridge.command once on the Mac.)
+# ---------------------------------------------------------------------------
+RUN HB=/opt/claude-code-docker/scripts/host-bridge/container \
+    && sed -i 's/\r$//' "$HB"/* \
+    && chmod +x "$HB"/* \
+    && for f in ccdw-bridge pbcopy pbpaste open reveal notify; do \
+         ln -sf "$HB/$f" "/usr/local/bin/$f"; \
+       done
+
+# ---------------------------------------------------------------------------
 # Playwright + Chromium for the dashboard's GitHub auto-authorize
 # (headless device-flow grant using a seeded session; local-only single-user).
 # Installed as root so --with-deps can apt-install the browser's OS libraries.

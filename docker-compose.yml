@@ -64,7 +64,12 @@ services:
         required: false
     environment:
       - TERM=xterm-256color
+      - COLORTERM=truecolor
       - GH_TOKEN=${GH_TOKEN:-}
+      # Host home path for container<->host path parity (see entrypoint.sh).
+      # On macOS this is /Users/<you>; symlinked to /home/coder in the container
+      # so host-style absolute paths resolve to the same files.
+      - HOST_HOME=${HOME:-}
     restart: unless-stopped
     # Add coder user to docker group for socket access
     group_add:

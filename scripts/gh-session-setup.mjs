@@ -30,14 +30,21 @@ await page.goto('https://github.com/login', { waitUntil: 'domcontentloaded' });
 console.log('\n  A browser opened. Sign in to GitHub (username, password, 2FA).');
 console.log('  Waiting for you to finish (up to 5 minutes)...\n');
 
+// Detect login by watching cookies — do NOT navigate the page, or we'd yank
+// the tab away from the user mid-login (password/2FA) and they could never
+// finish. GitHub's authenticated cookies are `user_session` and `dotcom_user`
+// (the latter holds the username, set only when signed in). Match ANY strong
+// signal across all cookies (don't URL-filter — cookies live on .github.com).
+const AUTH_COOKIES = ['user_session', 'dotcom_user', '__Host-user_session_same_site'];
 let ok = false;
 for (let i = 0; i < 150; i++) {          // ~5 min
   await page.waitForTimeout(2000);
   try {
-    // Confirm a real session by loading a logged-in-only page.
-    await page.goto('https://github.com/settings/profile', { waitUntil: 'domcontentloaded', timeout: 15000 });
-    if (!/\/login/.test(page.url())) { ok = true; break; }
-    await page.goto('https://github.com/login', { waitUntil: 'domcontentloaded' }).catch(() => {});
+    const cookies = await ctx.cookies();
+    const signedIn = cookies.some(c =>
+      /github\.com$/.test(c.domain) &&
+      (AUTH_COOKIES.includes(c.name) || (c.name === 'logged_in' && c.value === 'yes')));
+    if (signedIn) { ok = true; break; }
   } catch { /* still logging in */ }
 }
 

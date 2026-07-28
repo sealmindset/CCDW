@@ -1,0 +1,3 @@
+#!/bin/bash
+# macOS-style pbcopy shim -> CCDW host pasteboard (falls back to OSC 52).
+exec ccdw-bridge pbcopy "$@"

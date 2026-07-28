@@ -1,0 +1,3 @@
+#!/bin/bash
+# macOS-style pbpaste shim -> CCDW host pasteboard.
+exec ccdw-bridge pbpaste "$@"

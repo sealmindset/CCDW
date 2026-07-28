@@ -66,6 +66,23 @@ mkdir -p /home/coder/Drives
 chown coder:coder /home/coder/Drives 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
+# Host path parity — make host-style absolute paths resolve inside the
+# container. HOST_HOME (e.g. /Users/<you> on macOS) is passed from compose.
+# Symlinking it to /home/coder means a path copied from the Mac
+# (/Users/<you>/Documents/x) resolves to the same file inside the container,
+# and /Volumes is already mounted 1:1. Result: paths in error messages,
+# `pwd`, and copy-paste match between host and container.
+# ---------------------------------------------------------------------------
+if [ -n "${HOST_HOME:-}" ] && [ "$HOST_HOME" != "/home/coder" ] \
+   && [ "$HOST_HOME" != "/" ] && [ ! -e "$HOST_HOME" ]; then
+    parent_dir="$(dirname "$HOST_HOME")"
+    if mkdir -p "$parent_dir" 2>/dev/null && ln -sfn /home/coder "$HOST_HOME" 2>/dev/null; then
+        echo -e "${GREEN}[OK]${NC} Path parity: $HOST_HOME -> /home/coder"
+        slog "ok|Path Parity|$HOST_HOME"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Docker socket permissions (entrypoint runs as root, so we can fix this)
 # ---------------------------------------------------------------------------
 if [ -S /var/run/docker.sock ]; then
@@ -159,6 +176,32 @@ if [ -f "$CLAUDE_SETTINGS" ]; then
         [ -n "$FOUNDRY_URL" ] && export ANTHROPIC_FOUNDRY_BASE_URL="$FOUNDRY_URL"
     fi
 fi
+
+# ---------------------------------------------------------------------------
+# GitHub zero-touch sign-in via stored Personal Access Token
+# Orgs that enforce SAML SSO + MFA block headless device-flow auth, so a
+# PAT (SSO-authorized once, saved by gh-token-setup.command) is the reliable
+# no-browser path. Log in now so GitHub is ready before the user clicks.
+# Token source: GH_TOKEN env, or the local-only file in the mounted volume.
+# ---------------------------------------------------------------------------
+GH_TOKEN_FILE="/home/coder/Documents/.ccdw/gh-token"
+GH_PAT="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+if [ -z "$GH_PAT" ] && [ -f "$GH_TOKEN_FILE" ]; then
+    GH_PAT="$(tr -d '[:space:]' < "$GH_TOKEN_FILE" 2>/dev/null)"
+fi
+if [ -n "$GH_PAT" ]; then
+    if ! su-exec coder gh auth status >/dev/null 2>&1; then
+        if printf '%s\n' "$GH_PAT" | su-exec coder gh auth login --with-token >/dev/null 2>&1; then
+            su-exec coder gh auth setup-git >/dev/null 2>&1 || true
+            echo -e "${GREEN}[OK]${NC} GitHub signed in via stored token"
+            slog "ok|GitHub|Signed in via token"
+        else
+            echo -e "${YELLOW}[WARN]${NC} GitHub token present but sign-in failed (check SSO authorization)"
+            slog "error|GitHub|Token sign-in failed (check SSO authorization)"
+        fi
+    fi
+fi
+unset GH_PAT
 
 # ---------------------------------------------------------------------------
 # Start code-server (VS Code in browser) in background
@@ -277,16 +320,32 @@ echo ""
 # (needed for Claude Code's logo and box-drawing UI)
 TTYD_FONT='fontFamily="Menlo, Cascadia Mono, Consolas, DejaVu Sans Mono, Liberation Mono, monospace"'
 
+# Native-feel xterm client options (applied to both ttyd instances):
+#   macOptionIsMeta   Option key sends Meta/Alt (Option+b/f word-nav, meta binds)
+#   scrollback        deep scrollback like a real terminal
+#   rendererType      canvas renderer (fast, stable in WKWebView)
+#   disableLeaveAlert drop the "are you sure you want to leave" prompt
+#   theme             macOS-dark palette matching the CCDW UI
+TTYD_THEME='theme={"background":"#0b0e14","foreground":"#c9d1d9","cursor":"#c9d1d9","cursorAccent":"#0b0e14","selectionBackground":"#264f78"}'
+TTYD_OPTS=(
+    --client-option "$TTYD_FONT"
+    --client-option 'fontSize=14'
+    --client-option 'cursorBlink=true'
+    --client-option 'enableClipboard=true'
+    --client-option 'macOptionIsMeta=true'
+    --client-option 'scrollback=10000'
+    --client-option 'rendererType=canvas'
+    --client-option 'disableLeaveAlert=true'
+    --client-option "$TTYD_THEME"
+)
+
 # Second ttyd (port 7682): each browser tab gets a NEW tmux window.
 # Use this for additional terminals without disturbing the main session.
 echo -e "${GREEN}[OK]${NC} New Terminal service on port ${TTYD_NEW_PORT:-7682}..."
 su-exec coder ttyd \
     --port "${TTYD_NEW_PORT:-7682}" \
     --writable \
-    --client-option "$TTYD_FONT" \
-    --client-option 'fontSize=14' \
-    --client-option 'cursorBlink=true' \
-    --client-option 'enableClipboard=true' \
+    "${TTYD_OPTS[@]}" \
     "$SCRIPTS_DIR/new-terminal.sh" &
 
 # Tmux config (navigation breadcrumb, mouse, scrollback)
@@ -299,8 +358,5 @@ slog "ok|Ready|All services started"
 exec su-exec coder ttyd \
     --port 7681 \
     --writable \
-    --client-option "$TTYD_FONT" \
-    --client-option 'fontSize=14' \
-    --client-option 'cursorBlink=true' \
-    --client-option 'enableClipboard=true' \
+    "${TTYD_OPTS[@]}" \
     tmux -f "$TMUX_CONF" new-session -A -s main "bash --init-file $SCRIPTS_DIR/shell-init.sh"

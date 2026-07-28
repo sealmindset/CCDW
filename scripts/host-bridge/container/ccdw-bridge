@@ -1,0 +1,109 @@
+#!/bin/bash
+# =============================================================================
+# ccdw-bridge — container-side client for the CCDW host bridge daemon.
+# -----------------------------------------------------------------------------
+# Talks to ccdw-hostd on the macOS host (via host.docker.internal) so container
+# CLI tools can reach the real host pasteboard, open host apps, and post macOS
+# notifications. Called through the shim wrappers: pbcopy pbpaste open reveal
+# notify. Dispatches on $1.
+#
+# Config (written by the host launcher on the shared Documents mount):
+#   $CCDW_HOST_BRIDGE_CONFIG or /home/coder/Documents/.ccdw/host-bridge.json
+#   { "port": 7690, "token": "..." }
+#
+# If the daemon is unreachable, each action degrades gracefully instead of
+# failing hard (copy falls back to the OSC 52 terminal clipboard, open just
+# prints the target).
+# =============================================================================
+set -uo pipefail
+
+CONFIG="${CCDW_HOST_BRIDGE_CONFIG:-/home/coder/Documents/.ccdw/host-bridge.json}"
+HOST="${CCDW_HOST_BRIDGE_HOST:-host.docker.internal}"
+
+action="${1:-}"; shift || true
+
+bridge_config() {
+  # Emits "PORT TOKEN" or nothing if config missing/invalid.
+  [ -r "$CONFIG" ] || return 1
+  local port token
+  port=$(jq -er '.port' "$CONFIG" 2>/dev/null) || return 1
+  token=$(jq -er '.token' "$CONFIG" 2>/dev/null) || return 1
+  [ -n "$port" ] && [ -n "$token" ] || return 1
+  printf '%s %s' "$port" "$token"
+}
+
+# rpc <json-body> -> daemon response on stdout; returns curl exit status.
+rpc() {
+  local cfg port token
+  cfg=$(bridge_config) || return 3
+  port=${cfg% *}; token=${cfg#* }
+  curl -fsS --max-time 10 \
+    -H "X-CCDW-Token: ${token}" \
+    -H 'Content-Type: application/json' \
+    --data-binary "$1" \
+    "http://${HOST}:${port}/rpc" 2>/dev/null
+}
+
+# OSC 52 fallback: copy to the terminal emulator's clipboard when the host
+# daemon is unavailable. Keeps copy working in the plain web terminal.
+osc52_copy() {
+  local b64="$1"
+  printf '\033]52;c;%s\a' "$b64" > /dev/tty 2>/dev/null || \
+    printf '\033]52;c;%s\a' "$b64"
+}
+
+json_escape() { jq -Rs '.' <<<"$1"; }
+
+case "$action" in
+  pbcopy)
+    data=$(base64 | tr -d '\n')
+    body=$(printf '{"action":"pbcopy","data":"%s"}' "$data")
+    if ! rpc "$body" >/dev/null; then
+      osc52_copy "$data"
+    fi
+    ;;
+
+  pbpaste)
+    resp=$(rpc '{"action":"pbpaste"}') || { exit 0; }
+    printf '%s' "$resp" | jq -er '.data' 2>/dev/null | base64 -d 2>/dev/null || true
+    ;;
+
+  open)
+    target="${1:-}"
+    # Resolve a relative path to absolute so the host can translate it.
+    case "$target" in
+      http://*|https://*|mailto:*) : ;;
+      /*) : ;;
+      *) target="$(cd "$(dirname -- "$target")" 2>/dev/null && pwd)/$(basename -- "$target")" ;;
+    esac
+    body=$(jq -nc --arg t "$target" '{action:"open",target:$t}')
+    if ! rpc "$body" >/dev/null; then
+      echo "Host bridge unavailable. Open this on your Mac:" >&2
+      echo "  $target" >&2
+      exit 1
+    fi
+    ;;
+
+  reveal)
+    target="${1:-}"
+    case "$target" in
+      /*) : ;;
+      *) target="$(cd "$(dirname -- "$target")" 2>/dev/null && pwd)/$(basename -- "$target")" ;;
+    esac
+    body=$(jq -nc --arg t "$target" '{action:"reveal",target:$t}')
+    rpc "$body" >/dev/null || { echo "Host bridge unavailable: $target" >&2; exit 1; }
+    ;;
+
+  notify)
+    # notify <message> [title]
+    msg="${1:-}"; title="${2:-CCDW}"
+    body=$(jq -nc --arg m "$msg" --arg t "$title" '{action:"notify",message:$m,title:$t}')
+    rpc "$body" >/dev/null || true
+    ;;
+
+  *)
+    echo "ccdw-bridge: unknown action '${action}'" >&2
+    echo "usage: ccdw-bridge {pbcopy|pbpaste|open|reveal|notify} ..." >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,3 @@
+#!/bin/bash
+# reveal <path> -> reveal file in macOS Finder (open -R) via CCDW bridge.
+exec ccdw-bridge reveal "$@"

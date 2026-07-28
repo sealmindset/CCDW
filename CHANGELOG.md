@@ -2,6 +2,51 @@
 
 ## [Unreleased]
 
+### Added
+- **Native-feel web terminal**: both ttyd instances now run with
+  `macOptionIsMeta` (Option → Meta/Alt for word-nav and meta keybinds),
+  `scrollback=10000`, the canvas renderer, `disableLeaveAlert`, and a macOS-dark
+  theme matching the CCDW UI. `COLORTERM=truecolor` added for 24-bit color.
+- **Host Bridge status on the dashboard**: a fourth status pill (green =
+  clipboard/open/notify active, yellow = run `CCDW-Host-Bridge` on the Mac). The
+  welcome server probes the daemon via `host.docker.internal` using the port
+  from the shared config.
+- **Native macOS terminal app** (`scripts/mac-app/`): a compiled Swift +
+  WKWebView wrapper (`CCDWTerminal.swift`, built by `build-terminal-app.sh`)
+  that hosts the ttyd web terminal in a real macOS window — no browser chrome
+  (no tabs/URL bar), native menu bar with working Cmd shortcuts (Quit, Close,
+  New Terminal Window → port 7682, Copy/Paste/Select-All via the responder
+  chain with no browser paste gate, Reload, Zoom In/Out/Actual-Size, Full
+  Screen, Minimize), independent terminal windows, and a friendly "container
+  not reachable" retry page. Compiled Mach-O bundle, ad-hoc signed so it
+  launches locally under Gatekeeper (unlike the abandoned script-`.app`
+  launcher). Distribute with a Developer ID cert + notarization.
+- **Host path parity**: the container symlinks `HOST_HOME` (e.g. `/Users/<you>`
+  on macOS, passed from compose) to `/home/coder`, so a path copied from the Mac
+  (`/Users/<you>/Documents/x`) resolves to the same file inside the container and
+  `pwd` reports the host-style path. `/Volumes` is already mounted 1:1. Paths in
+  error messages, `pwd`, and copy-paste now match host and container. The host
+  bridge (`ccdw-hostd`) identity-maps this prefix so `open`/`reveal` accept
+  host-style paths too.
+- **Native host bridge** so the containerized terminal behaves like a local macOS
+  terminal: `pbcopy`/`pbpaste` hit the real macOS pasteboard (bidirectional),
+  `open` launches files/URLs in host apps, `reveal` shows a file in Finder, and
+  `notify` posts a Notification Center banner.
+  - Host daemon `scripts/host-bridge/ccdw-hostd.mjs` — binds `127.0.0.1` only
+    (reached from the container via `host.docker.internal`), token-authenticated,
+    fixed action whitelist, no shell (execFile + argv), open/reveal restricted to
+    absolute paths under mounted roots (translated container→host) or
+    http/https/mailto URLs. Body size-capped.
+  - Installer `scripts/host-bridge/CCDW-Host-Bridge.command` — run once on the Mac;
+    generates a token, writes `~/Documents/.ccdw/host-bridge.json` (0600, on the
+    shared mount), installs a per-user launchd agent (`com.ccdw.hostbridge`).
+  - Container shims (`scripts/host-bridge/container/`) installed to
+    `/usr/local/bin`; degrade gracefully when the daemon is down (copy falls back
+    to OSC 52, open prints the target).
+- Shared top navigation bar across Dashboard, Workshop, and Claude Chat.
+  Sticky bar with breadcrumb-style links to all 5 services (Dashboard, Workshop,
+  Claude Chat, VS Code, Terminal). Active page auto-detected by port. Responsive.
+
 ### Removed
 - Continue.dev VS Code extension. It downloads a native core binary from S3 per
   platform and the linux-arm64 build is chronically missing ("No body returned"),

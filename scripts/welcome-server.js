@@ -89,6 +89,21 @@ function getStatus() {
         status.github = 'unauthenticated';
     }
 
+    // Host bridge (native clipboard / open / notify). The daemon runs on the
+    // macOS host; we reach it via host.docker.internal. Port from the shared
+    // config, default 7690.
+    try {
+        let bridgePort = 7690;
+        try {
+            const cfg = JSON.parse(fs.readFileSync('/home/coder/Documents/.ccdw/host-bridge.json', 'utf8'));
+            if (cfg && cfg.port) bridgePort = cfg.port;
+        } catch (e) {}
+        execSync('curl -fsS --max-time 2 http://host.docker.internal:' + bridgePort + '/health', { stdio: 'ignore', timeout: 4000 });
+        status.host_bridge = 'ok';
+    } catch (e) {
+        status.host_bridge = 'unavailable';
+    }
+
     return status;
 }
 
@@ -549,6 +564,24 @@ const server = http.createServer((req, res) => {
         // headlessly with a pre-seeded GitHub session (gh-session-setup.command).
         const h = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
         try { execSync('gh auth status', { stdio: 'ignore', timeout: 10000 }); res.writeHead(200, h); res.end(JSON.stringify({ needed: false })); return; } catch(e) {}
+
+        // Zero-touch path: a Personal Access Token (SSO-authorized once for the
+        // org) sidesteps the device flow + the corporate SAML/MFA wall entirely.
+        // Token lives in a local-only file (gh-token-setup.command) or GH_TOKEN.
+        // This is the only reliable no-browser path under org SSO enforcement.
+        var GH_TOKEN_FILE = '/home/coder/Documents/.ccdw/gh-token';
+        var patToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
+        if (!patToken) { try { patToken = fs.readFileSync(GH_TOKEN_FILE, 'utf8').trim(); } catch(e) {} }
+        if (patToken) {
+            try {
+                execSync('gh auth login --with-token', { input: patToken + '\n', stdio: ['pipe', 'ignore', 'ignore'], timeout: 15000 });
+                execSync('gh auth setup-git', { stdio: 'ignore', timeout: 10000 });
+                execSync('gh auth status', { stdio: 'ignore', timeout: 10000 });   // verify it took
+                res.writeHead(200, h); res.end(JSON.stringify({ needed: false, method: 'token' })); return;
+            } catch(e) {
+                // Bad/expired/not-SSO-authorized token — fall through to device flow.
+            }
+        }
 
         const GH_STATE = '/home/coder/Documents/.ccdw/gh-session.json';
         if (!fs.existsSync(GH_STATE)) {

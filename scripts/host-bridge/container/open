@@ -1,0 +1,3 @@
+#!/bin/bash
+# macOS-style `open` shim -> launches file/URL in its host app via CCDW bridge.
+exec ccdw-bridge open "$@"

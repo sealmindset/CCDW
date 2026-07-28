@@ -789,6 +789,13 @@
                     <div class="status-token" id="status-token"></div>
                 </div>
             </div>
+            <div class="status-item">
+                <div class="status-dot checking" id="dot-bridge"></div>
+                <div>
+                    <div class="status-label">Host Bridge</div>
+                    <div class="status-detail" id="status-bridge">Checking...</div>
+                </div>
+            </div>
         </div>
 
         <!-- Usage Stats (hidden from UI; backend API still available at /api/usage) -->
@@ -940,6 +947,19 @@
                     dockerDot.className = 'status-dot ' + (data.docker === 'ok' ? 'green' : 'yellow');
                     dockerStatus.textContent = data.docker === 'ok' ? 'Connected' : 'Not available';
 
+                    // Host Bridge (native clipboard / open / notify)
+                    var brDot = document.getElementById('dot-bridge');
+                    var brStatus = document.getElementById('status-bridge');
+                    if (brDot && brStatus) {
+                        if (data.host_bridge === 'ok') {
+                            brDot.className = 'status-dot green';
+                            brStatus.textContent = 'Clipboard & open active';
+                        } else {
+                            brDot.className = 'status-dot yellow';
+                            brStatus.textContent = 'Run CCDW-Host-Bridge on your Mac';
+                        }
+                    }
+
                     // AI Provider
                     if (data.ai_provider === 'none') {
                         aiDot.className = 'status-dot yellow';
@@ -985,6 +1005,8 @@
                 document.getElementById('status-ai').textContent = 'Unknown';
                 document.getElementById('dot-github').className = 'status-dot yellow';
                 document.getElementById('status-github').textContent = 'Unknown';
+                var brDotE = document.getElementById('dot-bridge');
+                if (brDotE) { brDotE.className = 'status-dot yellow'; document.getElementById('status-bridge').textContent = 'Unknown'; }
             }
         }
 

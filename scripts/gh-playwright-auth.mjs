@@ -52,29 +52,93 @@ try {
   const page = await ctx.newPage();
   await page.goto(uri, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-  // If the session is stale, GitHub shows a login page -> we can't proceed headlessly.
-  if (/\/login($|\?)/.test(page.url())) {
+  // If the session is stale, GitHub shows a bare login page -> can't proceed
+  // headlessly. (Note: /login/device is NOT the login page — allow it through.)
+  if (/\/login($|\?|#)/.test(page.url())) {
     console.error('ERROR: GitHub session expired — re-run the seeder to sign in again.');
     process.exit(3);
   }
 
-  // Enter the code. GitHub's device page uses either one field or split boxes;
-  // clicking the first input and typing the 8 chars fills either layout.
-  await page.locator('input[type="text"], input:not([type])').first().click({ timeout: 15000 });
-  await page.keyboard.type(codeDigits, { delay: 40 });
+  // The device grant is a MULTI-SCREEN flow that varies by account/session:
+  //   1. "Verify Session" / select_account  -> a lone "Continue" button (no code
+  //      field) when the session has saved accounts. Must click through it first.
+  //   2. "Device Activation"                 -> 8 split boxes (#user-code-0..7);
+  //      focusing the first and typing auto-advances. Then submit.
+  //   3. Authorize grant                     -> "Authorize"/"Approve" button.
+  //   4. Success                             -> "Congratulations" / "connected".
+  // Old code assumed screen 2 was first and timed out on the Verify screen.
+  // Drive it as a state machine: inspect the page each tick, act, repeat.
+  let codeEntered = false, authorized = false;
+  for (let i = 0; i < 20 && !authorized; i++) {          // ~20 ticks
+    await page.waitForTimeout(1200);
+    const url = page.url();
+    const body = (await page.textContent('body').catch(() => '') || '');
 
-  // Continue (advances to the grant screen). Ignore if the page auto-advances.
-  await page.getByRole('button', { name: /continue|verify/i }).first()
-    .click({ timeout: 10000 }).catch(() => {});
-  await page.waitForTimeout(1500);
+    // Session went stale mid-flow.
+    if (/\/login($|\?|#)/.test(url)) {
+      console.error('ERROR: GitHub session expired — re-run the seeder.');
+      process.exit(3);
+    }
 
-  // Authorize the grant.
-  await page.getByRole('button', { name: /authorize|grant|approve/i }).first()
-    .click({ timeout: 20000 });
+    // Corporate SAML SSO wall: after Authorize, org policy may bounce to the
+    // identity provider (Microsoft/Okta/etc.) demanding an interactive login +
+    // MFA. That cannot be completed headlessly — bail with a distinct code so
+    // the caller can tell the user to sign in interactively.
+    if (/login\.microsoftonline\.com|okta\.com|\/sso|saml/i.test(url)) {
+      console.error('ERROR: sso_required — org enforces SAML SSO + MFA on the grant; cannot complete headlessly.');
+      try { await browser.close(); } catch {}
+      process.exit(4);
+    }
+
+    // Success screen — device connected. (Only THIS confirms success — a click
+    // on Authorize is NOT proof the grant completed when SSO can intercept.)
+    if (/congratulations|your device is now connected|device is now connected|now connected/i.test(body)) {
+      authorized = true; break;
+    }
+
+    // Authorize / grant button present -> click it, then keep looping to verify
+    // the outcome (success text or an SSO redirect) on subsequent ticks.
+    const grant = page.getByRole('button', { name: /^(authorize|approve|grant)/i }).first();
+    if (await grant.isVisible().catch(() => false)) {
+      await grant.click({ timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(2000);
+      continue;
+    }
+
+    // Code-entry screen -> split boxes #user-code-0.. OR a single field.
+    const firstBox = page.locator('#user-code-0');
+    const anyText = page.locator('input[type="text"]:not([name="authenticity_token"]), input:not([type])');
+    const hasCodeField =
+      (await firstBox.isVisible().catch(() => false)) ||
+      (await anyText.first().isVisible().catch(() => false));
+    if (hasCodeField && !codeEntered) {
+      const target = (await firstBox.isVisible().catch(() => false)) ? firstBox : anyText.first();
+      await target.click({ timeout: 10000 }).catch(() => {});
+      await page.keyboard.type(codeDigits, { delay: 60 });   // auto-advances split boxes
+      codeEntered = true;
+      // Submit the code (Continue / the form's submit).
+      await page.getByRole('button', { name: /continue|verify|submit/i }).first()
+        .click({ timeout: 8000 }).catch(() => {});
+      continue;
+    }
+
+    // Interstitial (Verify Session / select_account): a Continue with no code field.
+    const cont = page.getByRole('button', { name: /continue/i }).first();
+    if (await cont.isVisible().catch(() => false)) {
+      await cont.click({ timeout: 8000 }).catch(() => {});
+      continue;
+    }
+  }
+
+  if (!authorized) {
+    console.error('ERROR: could not complete the grant (code entered: ' + codeEntered + ').');
+    try { await browser.close(); } catch {}
+    process.exit(1);
+  }
 
   // Give GitHub a moment to record the grant, then persist refreshed cookies.
-  await page.waitForTimeout(3000);
-  await ctx.storageState({ path: statePath });
+  await page.waitForTimeout(2500);
+  await ctx.storageState({ path: statePath }).catch(() => {});
 
   console.log('authorized');
   await browser.close();

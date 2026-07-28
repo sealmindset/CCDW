@@ -16,10 +16,17 @@ if ! command -v npx >/dev/null 2>&1; then
 fi
 
 echo "  Provisioning the sign-in helper (first run only, ~1 min)..."
+# Install Playwright into the repo so the .mjs can `import 'playwright'`.
+# (ESM resolves bare imports from the script's dir tree, NOT npx's temp
+# node_modules — so `npx -p playwright node ...` fails with MODULE_NOT_FOUND.)
+REPO_DIR="$(cd "$SELF_DIR/.." 2>/dev/null && pwd)"
+if [ ! -d "$REPO_DIR/node_modules/playwright" ]; then
+  ( cd "$REPO_DIR" && npm install playwright@1.61.1 >/dev/null 2>&1 )
+fi
 npx -y playwright install chromium >/dev/null 2>&1 || true
 
-# Run the seeder with Playwright made available via npx -p.
-npx -y -p playwright node "$SELF_DIR/gh-session-setup.mjs"
+# Run the seeder; playwright resolves from $REPO_DIR/node_modules.
+node "$SELF_DIR/gh-session-setup.mjs"
 rc=$?
 
 echo ""
