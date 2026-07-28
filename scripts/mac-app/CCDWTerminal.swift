@@ -60,7 +60,11 @@ final class TerminalWindowController: NSWindowController, WKNavigationDelegate {
     init(url: String, title: String, autosave: String?) {
         self.targetURL = url
         let cfg = WKWebViewConfiguration()
-        cfg.websiteDataStore = .default()
+        // Non-persistent store: nothing (bundle, cache, localStorage) survives a
+        // relaunch, so a rebuilt ttyd/xterm bundle is always fetched fresh. The
+        // terminal has no client state worth persisting — tmux holds the session
+        // server-side — so this only kills stale-cache bugs, costs nothing.
+        cfg.websiteDataStore = .nonPersistent()
         // Let the container's terminal drive the clipboard without a user gesture.
         cfg.preferences.javaScriptCanOpenWindowsAutomatically = false
         self.webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1000, height: 680),
@@ -86,7 +90,19 @@ final class TerminalWindowController: NSWindowController, WKNavigationDelegate {
 
     func load() {
         guard let u = URL(string: targetURL) else { return }
-        webView.load(URLRequest(url: u))
+        // Ignore any cache on every load — always hit ttyd for the live bundle.
+        webView.load(URLRequest(url: u,
+                                cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+                                timeoutInterval: 30))
+    }
+
+    // Purge all WebKit data then reload from origin — nukes any stale cache.
+    func clearCacheAndReload() {
+        let store = webView.configuration.websiteDataStore
+        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        store.removeData(ofTypes: types, modifiedSince: Date(timeIntervalSince1970: 0)) { [weak self] in
+            self?.load()
+        }
     }
 
     func setZoom(_ z: CGFloat) {
@@ -111,6 +127,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var controllers: [TerminalWindowController] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // No process-wide URL cache — another guard against serving a stale bundle.
+        URLCache.shared = URLCache(memoryCapacity: 0, diskCapacity: 0, diskPath: nil)
         NSApp.setActivationPolicy(.regular)
         buildMenu()
         openMain()
@@ -147,7 +165,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         c.showWindow(nil)
     }
 
-    @objc func reloadPage(_ sender: Any?) { frontController()?.webView.reload() }
+    @objc func reloadPage(_ sender: Any?) { frontController()?.webView.reloadFromOrigin() }
+    @objc func hardReload(_ sender: Any?) { frontController()?.clearCacheAndReload() }
     @objc func zoomIn(_ sender: Any?)     { frontController()?.zoomIn() }
     @objc func zoomOut(_ sender: Any?)    { frontController()?.zoomOut() }
     @objc func zoomReset(_ sender: Any?)  { frontController()?.zoomReset() }
@@ -204,6 +223,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let viewMenu = NSMenu(title: "View")
         viewItem.submenu = viewMenu
         viewMenu.addItem(withTitle: "Reload", action: #selector(reloadPage(_:)), keyEquivalent: "r")
+        let hard = viewMenu.addItem(withTitle: "Reload (Clear Cache)",
+                     action: #selector(hardReload(_:)), keyEquivalent: "r")
+        hard.keyEquivalentModifierMask = [.command, .shift]
         viewMenu.addItem(.separator())
         viewMenu.addItem(withTitle: "Actual Size", action: #selector(zoomReset(_:)), keyEquivalent: "0")
         viewMenu.addItem(withTitle: "Zoom In",  action: #selector(zoomIn(_:)),  keyEquivalent: "+")
