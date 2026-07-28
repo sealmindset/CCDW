@@ -46,7 +46,13 @@ function serveStatic(req, res) {
   const mime = MIME[ext] || 'application/octet-stream';
   try {
     const data = fs.readFileSync(fp);
-    res.writeHead(200, { 'Content-Type': mime });
+    // no-store: a rebuilt bundle must show on plain reload (no stale cache).
+    res.writeHead(200, {
+      'Content-Type': mime,
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
     res.end(data);
   } catch {
     res.writeHead(404);

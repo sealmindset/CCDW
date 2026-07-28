@@ -667,14 +667,22 @@ const server = http.createServer((req, res) => {
     const ext = path.extname(filePath);
     const contentType = mimeTypes[ext] || 'text/plain';
 
+    // Never let the browser cache our own assets — a rebuilt dashboard/JS must
+    // show up on plain reload, no stale-bundle guessing.
+    const noCache = {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    };
+
     try {
         const content = fs.readFileSync(filePath);
-        res.writeHead(200, { 'Content-Type': contentType });
+        res.writeHead(200, { 'Content-Type': contentType, ...noCache });
         res.end(content);
     } catch (e) {
         try {
             const content = fs.readFileSync(path.join(welcomeDir, 'index.html'));
-            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.writeHead(200, { 'Content-Type': 'text/html', ...noCache });
             res.end(content);
         } catch (e2) {
             res.writeHead(404);

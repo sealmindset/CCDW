@@ -1710,12 +1710,19 @@ function serveStatic(pathname, res) {
   const ext = path.extname(filePath);
   const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
+  // no-store: a rebuilt bundle must show on plain reload (no stale cache).
+  const noCache = {
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  };
+
   fs.readFile(filePath, (err, data) => {
     if (err) {
       if (err.code === 'ENOENT' && !ext) {
         fs.readFile(path.join(PUBLIC_DIR, 'index.html'), (err2, html) => {
           if (err2) { res.writeHead(500); res.end('Internal Error'); return; }
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...noCache });
           res.end(html);
         });
         return;
@@ -1724,7 +1731,7 @@ function serveStatic(pathname, res) {
       res.end('Not Found');
       return;
     }
-    res.writeHead(200, { 'Content-Type': contentType });
+    res.writeHead(200, { 'Content-Type': contentType, ...noCache });
     res.end(data);
   });
 }
