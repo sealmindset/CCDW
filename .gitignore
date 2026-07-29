@@ -3,6 +3,7 @@ node_modules/
 
 # SwiftPM build artifacts (mac terminal app) — keep Package.resolved, drop .build
 scripts/mac-app/.build/
+scripts/mac-app/dist/
 
 # Test artifacts
 test-results/

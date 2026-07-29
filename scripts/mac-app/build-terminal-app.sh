@@ -10,14 +10,15 @@
 # assembles the compiled binary into an ad-hoc-signed .app bundle so it launches
 # locally under Gatekeeper.
 #
-# Usage:  ./build-terminal-app.sh [DEST_DIR]     (default: ~/Applications)
+# Usage:  ./build-terminal-app.sh [DEST_DIR]     (default: <project>/dist)
 # For distribution: sign with a Developer ID cert and notarize instead of the
 # ad-hoc "-" identity below.
 # =============================================================================
 set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
-DEST_DIR="${1:-$HOME/Applications}"
+DEST_DIR="${1:-$SELF_DIR/dist}"
+mkdir -p "$DEST_DIR"
 APP_NAME="CCDW Terminal"
 APP="$DEST_DIR/$APP_NAME.app"
 BUNDLE_ID="com.ccdw.terminal"
