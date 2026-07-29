@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Changed
+- **Native macOS terminal app is now a real terminal emulator, not a WKWebView.**
+  `scripts/mac-app/` was rebuilt on **SwiftTerm** (SwiftPM): the app drives a
+  `docker exec -it` PTY straight into the `claude-code` container, with no ttyd /
+  xterm.js / WKWebView / OSC-52 in the loop. Consequence — selection, copy,
+  paste, ⌘C/⌘V, right-click, and Select-All are **genuinely native** (identical
+  to Terminal.app), because the terminal is a native `NSView` reading/writing
+  `NSPasteboard.general` directly. Copy behaviors delivered: drag-select then ⌘C,
+  auto-copy on selection release, right-click Copy/Paste/Select-All menu, and
+  ⌘V / right-click paste. Mouse is reported to full-screen TUIs (claude, vim,
+  less); hold **Shift** to bypass mouse reporting and force a manual selection
+  (same as Terminal.app + ssh/tmux). `optionAsMetaKey` preserves Option→Meta
+  word-nav. New source: `Sources/CCDWTerminal/main.swift` + `Package.swift`
+  (SwiftTerm pinned to `1.5.0`); `build-terminal-app.sh` now builds via
+  `swift build -c release` and assembles/ad-hoc-signs the bundle. The old
+  `CCDWTerminal.swift` WKWebView wrapper was removed. The browser terminal on
+  :7681/:7682 (ttyd) is unchanged for non-app users.
+
 ### Added
 - **Native-feel web terminal**: both ttyd instances now run with
   `macOptionIsMeta` (Option → Meta/Alt for word-nav and meta keybinds),
