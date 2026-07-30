@@ -9,9 +9,9 @@
   "profile_name": "sso-bedrock",
   "models": {
     "default": "sonnet",
-    "sonnet": "us.anthropic.claude-sonnet-4-6",
+    "sonnet": "us.anthropic.claude-sonnet-5",
     "haiku": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "opus": "us.anthropic.claude-opus-4-6-v1"
+    "opus": "us.anthropic.claude-opus-5"
   },
   "default_model": "sonnet",
   "env_vars": {
