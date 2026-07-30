@@ -18,7 +18,7 @@
     if (port === '9200') activePage = 'workshop';
     else if (port === '3002') activePage = 'chat';
     else if (port === '8080') activePage = 'vscode';
-    else if (port === '7681') activePage = 'terminal';
+    else if (port === '7681' || port === '7682') activePage = 'terminal';
 
     // Build nav HTML
     var nav = document.createElement('nav');
@@ -44,4 +44,11 @@
     } else {
         document.body.appendChild(nav);
     }
+
+    // Full-viewport apps (ttyd xterm, VS Code) size themselves to the window and
+    // won't notice the 44px the bar just took. Nudge them to relayout. Harmless
+    // on the normal-flow pages (Dashboard/Workshop/Chat).
+    function nudge() { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }
+    nudge();
+    setTimeout(nudge, 300);
 })();

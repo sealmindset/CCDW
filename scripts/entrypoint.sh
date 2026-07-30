@@ -19,6 +19,23 @@ slog() {
 : > "$STARTUP_LOG"
 
 # ---------------------------------------------------------------------------
+# nav-proxy: the browser-facing ports (7681/7682/8080) are served by a tiny
+# node reverse proxy that injects the shared top-nav into ttyd + code-server.
+# The real apps bind INTERNAL ports; the proxy forwards to them.
+# ---------------------------------------------------------------------------
+TTYD_INT_PORT=17681        # ttyd main session (internal)
+TTYD_NEW_INT_PORT=17682    # ttyd new-window   (internal)
+CS_INT_PORT=18080          # code-server       (internal)
+
+# start_nav_proxy <public_port> <target_port> <app: terminal|vscode>
+start_nav_proxy() {
+    su-exec coder env \
+        NAV_PROXY_PORT="$1" NAV_TARGET_PORT="$2" NAV_APP="$3" \
+        NAV_ASSETS_DIR="/opt/claude-code-docker/welcome" \
+        node "$SCRIPTS_DIR/nav-proxy.js" >>"/tmp/nav-proxy-$1.log" 2>&1 &
+}
+
+# ---------------------------------------------------------------------------
 # Color helpers
 # ---------------------------------------------------------------------------
 GREEN='\033[0;32m'
@@ -254,12 +271,14 @@ export NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:-/etc/ssl/certs/ca-certificate
 export SSL_CERT_FILE="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}"
 export NODE_OPTIONS="--use-openssl-ca ${NODE_OPTIONS:-}"
 su-exec coder code-server \
-    --bind-addr 0.0.0.0:8080 \
+    --bind-addr "0.0.0.0:${CS_INT_PORT}" \
     --auth "$CS_AUTH" \
     --config /tmp/.config/code-server/config.yaml \
     --disable-telemetry \
     --disable-update-check \
     "$PROJECTS_DIR" &
+# nav-proxy fronts code-server on the public :8080 and injects the top-nav
+start_nav_proxy 8080 "$CS_INT_PORT" vscode
 slog "ok|VS Code|Running on port 8080"
 
 # ---------------------------------------------------------------------------
@@ -343,10 +362,12 @@ TTYD_OPTS=(
 # Use this for additional terminals without disturbing the main session.
 echo -e "${GREEN}[OK]${NC} New Terminal service on port ${TTYD_NEW_PORT:-7682}..."
 su-exec coder ttyd \
-    --port "${TTYD_NEW_PORT:-7682}" \
+    --port "$TTYD_NEW_INT_PORT" \
     --writable \
     "${TTYD_OPTS[@]}" \
     "$SCRIPTS_DIR/new-terminal.sh" &
+# nav-proxy fronts the new-terminal ttyd on its public port and injects the top-nav
+start_nav_proxy "${TTYD_NEW_PORT:-7682}" "$TTYD_NEW_INT_PORT" terminal
 
 # Tmux config (navigation breadcrumb, mouse, scrollback)
 TMUX_CONF="/opt/claude-code-docker/config/tmux.conf"
@@ -354,9 +375,14 @@ TMUX_CONF="/opt/claude-code-docker/config/tmux.conf"
 slog "ok|Web Terminal|Running"
 slog "ok|Ready|All services started"
 
-# Main ttyd (port 7681): always reconnects to the same tmux session.
+# Main ttyd (public 7681): binds an internal port; nav-proxy owns 7681 and
+# injects the top-nav. Start the proxy first (background), then exec ttyd as the
+# foreground/PID-1 process so the container lifecycle still tracks the terminal.
+start_nav_proxy 7681 "$TTYD_INT_PORT" terminal
+
+# Main ttyd always reconnects to the same tmux session.
 exec su-exec coder ttyd \
-    --port 7681 \
+    --port "$TTYD_INT_PORT" \
     --writable \
     "${TTYD_OPTS[@]}" \
     tmux -f "$TMUX_CONF" new-session -A -s main "bash --init-file $SCRIPTS_DIR/shell-init.sh"

@@ -8,9 +8,9 @@
   "subscription_id": "a8da1709-ccc3-4356-b3b7-6660af86e979",
   "subscription_name": "sn-openai-dev-01",
   "models": {
-    "sonnet": "cogdep-aifoundry-dev-eus2-claude-sonnet-4-5",
+    "sonnet": "cogdep-aifoundry-dev-eus2-claude-sonnet-5",
     "haiku": "cogdep-aifoundry-dev-eus2-claude-haiku-4-5",
-    "opus": "cogdep-aifoundry-dev-eus2-claude-opus-4-6"
+    "opus": "cogdep-aifoundry-dev-eus2-claude-opus-5"
   },
   "default_model": "opus",
   "env_vars": {

@@ -18,7 +18,7 @@
     if (port === '9200') activePage = 'workshop';
     else if (port === '3002') activePage = 'chat';
     else if (port === '8080') activePage = 'vscode';
-    else if (port === '7681') activePage = 'terminal';
+    else if (port === '7681' || port === '7682') activePage = 'terminal';
 
     // Build nav HTML
     var nav = document.createElement('nav');
