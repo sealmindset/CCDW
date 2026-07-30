@@ -176,9 +176,22 @@ if [ -f /etc/ssl/certs/ca-certificates.crt ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Configure AI provider from providers.yml
-# Reads config/providers.yml and generates settings.json + token helper.
-# Skips if settings.json already exists (preserves user edits).
+# Discover the models each provider actually offers.
+# Writes ~/.claude/models-cache.json, which configure-provider.sh prefers over
+# the fallback lists in providers.yml. Best-effort and deadline-bounded: no
+# network, no credentials, or an expired token just means the baked config is
+# used, so this never blocks startup. Credentials usually aren't present yet on
+# a first boot -- `refresh-models.sh` re-runs it after the user signs in.
+# ---------------------------------------------------------------------------
+slog "busy|Models|Discovering available models..."
+su-exec coder env CCDW_DISCOVER_TIMEOUT="${MODEL_DISCOVERY_TIMEOUT:-25}" \
+    python3 "$SCRIPTS_DIR/discover-models.py" >>/tmp/discover-models.log 2>&1 || true
+slog "ok|Models|Discovery complete"
+
+# ---------------------------------------------------------------------------
+# Configure AI provider from providers.yml + discovered model cache
+# Generates settings.json + token helper.
+# Skips if settings.json already exists and still matches the active provider.
 # ---------------------------------------------------------------------------
 slog "busy|AI Provider|Configuring..."
 "$SCRIPTS_DIR/configure-provider.sh"

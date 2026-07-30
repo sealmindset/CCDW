@@ -8,6 +8,10 @@ scripts/mac-app/dist/
 # Test artifacts
 test-results/
 
+# Python bytecode
+__pycache__/
+*.pyc
+
 # Environment
 .env
 

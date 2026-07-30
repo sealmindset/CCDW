@@ -19,8 +19,19 @@ function readSettingsEnv() {
   } catch { return {}; }
 }
 
+// settings.json is regenerated at container start from live model discovery, so
+// for the model slots it is more current than process.env -- the .env written by
+// the installer can still name a deployment that has since been retired.
+// Everything else (endpoints, auth) keeps env-first precedence.
+const SETTINGS_AUTHORITATIVE = new Set([
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+]);
+
 function env(key) {
   const se = readSettingsEnv();
+  if (SETTINGS_AUTHORITATIVE.has(key) && se[key]) return se[key];
   return process.env[key] || se[key] || '';
 }
 

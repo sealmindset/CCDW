@@ -17,6 +17,20 @@ const SETTINGS_PATH = path.join(HOME_DIR, '.claude', 'settings.json');
 const PROVIDERS_PATH = path.join(HOME_DIR, '.claude', 'providers.json');
 const AWS_CONFIG_PATH = path.join(HOME_DIR, '.aws', 'config');
 const TOKEN_SCRIPT_PATH = path.join(HOME_DIR, '.claude', 'get-claude-token.sh');
+const MODELS_CACHE_PATH = path.join(HOME_DIR, '.claude', 'models-cache.json');
+
+// Model slot discovered from the live provider at container start by
+// scripts/discover-models.py. Used when a wizard model field is left blank, so
+// configuring a provider can't overwrite a real deployment name with a stale
+// hardcoded one.
+function discoveredModel(providerKey, slot) {
+  try {
+    const cache = JSON.parse(fs.readFileSync(MODELS_CACHE_PATH, 'utf-8'));
+    const entry = cache.providers[providerKey];
+    if (!entry || entry.source === 'fallback') return '';
+    return entry.slots[slot] || '';
+  } catch { return ''; }
+}
 
 // -------------------------------------------------------------------------
 // Provider Definitions
@@ -329,10 +343,14 @@ echo "$TOKEN"
         settings.apiKeyHelper = TOKEN_SCRIPT_PATH;
       }
 
-      // Model deployments
-      settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL = config.modelSonnet || 'claude-sonnet-4-6';
-      settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = config.modelHaiku || 'claude-haiku-4-5';
-      settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL = config.modelOpus || 'claude-opus-4-6';
+      // Model deployments. Blank fields fall back to what discovery confirmed
+      // is actually deployed, not to a hardcoded guess.
+      settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL =
+        config.modelSonnet || discoveredModel('azure-foundry', 'sonnet') || 'claude-sonnet-4-6';
+      settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL =
+        config.modelHaiku || discoveredModel('azure-foundry', 'haiku') || 'claude-haiku-4-5';
+      settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL =
+        config.modelOpus || discoveredModel('azure-foundry', 'opus') || 'claude-opus-4-6';
       if (config.defaultModel) settings.model = config.defaultModel;
       break;
     }
@@ -346,10 +364,16 @@ echo "$TOKEN"
         settings.env.ANTHROPIC_MODEL = config.defaultModel;
       }
 
-      // Model overrides
-      if (config.modelSonnet) settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL = config.modelSonnet;
-      if (config.modelHaiku) settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = config.modelHaiku;
-      if (config.modelOpus) settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL = config.modelOpus;
+      // Model overrides; otherwise use whatever Bedrock reported it can run.
+      // Left unset when neither is available, so Claude Code keeps its default.
+      const bedrockSlots = {
+        ANTHROPIC_DEFAULT_SONNET_MODEL: config.modelSonnet || discoveredModel('bedrock', 'sonnet'),
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: config.modelHaiku || discoveredModel('bedrock', 'haiku'),
+        ANTHROPIC_DEFAULT_OPUS_MODEL: config.modelOpus || discoveredModel('bedrock', 'opus'),
+      };
+      for (const [k, v] of Object.entries(bedrockSlots)) {
+        if (v) settings.env[k] = v;
+      }
 
       // Write AWS CLI config
       writeAwsConfig(config);

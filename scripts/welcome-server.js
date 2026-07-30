@@ -335,7 +335,102 @@ function getRunningApps() {
     return apps;
 }
 
+// =============================================================================
+// Model picker
+//
+// discover-models.py writes ~/.claude/models-cache.json at container start with
+// everything each provider reported. The picker offers that full list -- Claude
+// Code only has three model env slots (sonnet/haiku/opus), but the `model` key
+// in settings.json takes any model id, which is how a 4th+ model is reachable.
+// =============================================================================
+const modelsCacheFile = process.env.CCDW_MODELS_CACHE || '/home/coder/.claude/models-cache.json';
+const claudeSettingsFile = '/home/coder/.claude/settings.json';
+const scriptsDir = process.env.SCRIPTS_DIR || '/opt/claude-code-docker/scripts';
+
+// Which provider is live, keyed the same way as providers.yml.
+function activeProviderKey() {
+    if (process.env.ANTHROPIC_API_KEY) return 'api-key';
+    if (process.env.ANTHROPIC_FOUNDRY_BASE_URL || process.env.ANTHROPIC_FOUNDRY_API_KEY) return 'azure-foundry';
+    if (process.env.CLAUDE_CODE_USE_BEDROCK === '1') return 'bedrock';
+    if (process.env.CLAUDE_CODE_PROVIDER === 'claude') return 'claude';
+    return null;
+}
+
+function readJson(file) {
+    try {
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (e) {
+        return null;
+    }
+}
+
+function getModels() {
+    const cache = readJson(modelsCacheFile);
+    const provider = activeProviderKey();
+    const settings = readJson(claudeSettingsFile) || {};
+    const entry = (cache && cache.providers && provider) ? cache.providers[provider] : null;
+    return {
+        provider: provider,
+        // 'fallback' means discovery couldn't reach the provider and the baked
+        // config is in use -- worth surfacing so a stale list isn't mistaken
+        // for a complete one.
+        source: entry ? entry.source : 'none',
+        reason: entry ? (entry.reason || null) : 'no discovery cache',
+        generated_at: cache ? cache.generated_at : null,
+        models: entry ? entry.models : [],
+        slots: entry ? entry.slots : {},
+        default_model: entry ? entry.default_model : null,
+        // What Claude Code will actually use: an explicit pick, else the slot alias.
+        selected: settings.model || (entry ? entry.default_model : null) || null
+    };
+}
+
+// Persist the picked model. Only `model` is touched -- auth, env and permission
+// keys in settings.json are left exactly as configure-provider.sh wrote them.
+function selectModel(model) {
+    const settings = readJson(claudeSettingsFile) || {};
+    if (model) settings.model = model;
+    else delete settings.model;
+    const tmp = claudeSettingsFile + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(settings, null, 2));
+    fs.renameSync(tmp, claudeSettingsFile);
+}
+
 const server = http.createServer((req, res) => {
+    if (req.url === '/api/models') {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify(getModels()));
+        return;
+    }
+
+    if (req.url === '/api/models/select' && req.method === 'POST') {
+        let body = '';
+        req.on('data', c => body += c);
+        req.on('end', () => {
+            let out;
+            try {
+                selectModel((JSON.parse(body) || {}).model);
+                out = { ok: true, selected: getModels().selected };
+            } catch (e) {
+                out = { ok: false, error: e.message };
+            }
+            res.writeHead(out.ok ? 200 : 500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify(out));
+        });
+        return;
+    }
+
+    // Re-discover on demand. This is the path that matters after a sign-in --
+    // at container start there were no credentials, so the list was a fallback.
+    if (req.url === '/api/models/refresh' && req.method === 'POST') {
+        try {
+            execSync('python3 ' + path.join(scriptsDir, 'discover-models.py'), { timeout: 40000, stdio: 'ignore' });
+        } catch (e) {}
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify(getModels()));
+        return;
+    }
+
     if (req.url === '/api/status') {
         res.writeHead(200, {
             'Content-Type': 'application/json',

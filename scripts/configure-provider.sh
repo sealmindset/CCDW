@@ -14,6 +14,9 @@ CONFIG_FILE="/opt/claude-code-docker/config/providers.yml"
 CLAUDE_DIR="/home/coder/.claude"
 SETTINGS_FILE="${CLAUDE_DIR}/settings.json"
 TOKEN_SCRIPT="${CLAUDE_DIR}/get-claude-token.sh"
+# Written by discover-models.py at container start. Holds what each provider
+# actually reported, and wins over the hand-edited lists in providers.yml.
+CACHE_FILE="${CCDW_MODELS_CACHE:-${CLAUDE_DIR}/models-cache.json}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -33,7 +36,7 @@ sf = '${SETTINGS_FILE}'
 if os.path.isfile(sf):
     with open(sf) as f:
         old = json.load(f)
-    keep = {k: old[k] for k in ('extraKnownMarketplaces','enabledPlugins') if k in old}
+    keep = {k: old[k] for k in ('extraKnownMarketplaces','enabledPlugins','model') if k in old}
     if keep:
         with open(sf, 'w') as f:
             json.dump(keep, f, indent=2)
@@ -58,7 +61,7 @@ import json, os
 sf = '${SETTINGS_FILE}'
 with open(sf) as f:
     old = json.load(f)
-keep = {k: old[k] for k in ('extraKnownMarketplaces','enabledPlugins') if k in old}
+keep = {k: old[k] for k in ('extraKnownMarketplaces','enabledPlugins','model') if k in old}
 if keep:
     with open(sf, 'w') as f:
         json.dump(keep, f, indent=2)
@@ -67,43 +70,6 @@ else:
 " 2>/dev/null || rm -f "$SETTINGS_FILE"
         rm -f "$TOKEN_SCRIPT"
     fi
-fi
-
-# ---------------------------------------------------------------------------
-# Skip if settings.json already exists AND matches current provider.
-# Stale config from a different provider (e.g., Bedrock settings when
-# Foundry is now active) causes Claude Code to check the wrong auth.
-# ---------------------------------------------------------------------------
-if [ -f "$SETTINGS_FILE" ]; then
-    STALE=0
-    HAS_PROVIDER=0
-    grep -q '"env"\|apiKeyHelper\|awsAuthRefresh' "$SETTINGS_FILE" 2>/dev/null && HAS_PROVIDER=1
-    if [ "$HAS_PROVIDER" = "0" ]; then
-        STALE=1
-    elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ] && grep -q '"CLAUDE_CODE_USE_BEDROCK"' "$SETTINGS_FILE" 2>/dev/null; then
-        STALE=1
-    elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ] && grep -q 'apiKeyHelper\|get-claude-token' "$SETTINGS_FILE" 2>/dev/null; then
-        STALE=1
-    fi
-    if [ "$STALE" = "0" ]; then
-        echo -e "${GREEN}[OK]${NC} Claude Code settings already configured"
-        exit 0
-    fi
-    echo -e "${YELLOW}[...]${NC} Provider changed -- regenerating settings.json"
-    # Preserve plugin keys when regenerating
-    python3 -c "
-import json, os
-sf = '${SETTINGS_FILE}'
-with open(sf) as f:
-    old = json.load(f)
-keep = {k: old[k] for k in ('extraKnownMarketplaces','enabledPlugins') if k in old}
-if keep:
-    with open(sf, 'w') as f:
-        json.dump(keep, f, indent=2)
-else:
-    os.remove(sf)
-" 2>/dev/null || rm -f "$SETTINGS_FILE"
-    rm -f "$TOKEN_SCRIPT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -123,6 +89,75 @@ for key in '$1'.split('.'):
         sys.exit(0)
 print(val if val is not None else '')
 " 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# Model resolution.
+#
+# Order: env var > discovered cache > providers.yml > built-in default -- with
+# one twist. A live probe knows which models the provider actually has, so an
+# env var naming a model that is NOT in that list is treated as stale and
+# discovery overrides it. That is what heals a .env written by an older
+# installer (it pinned deployment names that have since been retired) without
+# taking away a deliberate pin to an older-but-real model.
+#
+# When discovery could not reach the provider ('fallback'), it has no opinion
+# and the env var wins unconditionally, as before.
+# ---------------------------------------------------------------------------
+RESOLVE_PY='
+import json, os, sys
+provider, slot, envval, yamlval, builtin, cache_file, settings_file = sys.argv[1:8]
+SLOTS = {"sonnet": "ANTHROPIC_DEFAULT_SONNET_MODEL",
+         "haiku": "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+         "opus": "ANTHROPIC_DEFAULT_OPUS_MODEL"}
+
+
+def live_entry():
+    """The discovered entry for this provider, or None if it is not usable."""
+    try:
+        with open(cache_file) as f:
+            entry = json.load(f)["providers"][provider]
+    except Exception:
+        return None
+    return None if entry.get("source") == "fallback" else entry
+
+
+def resolve(slot, envval, entry):
+    models = [m["id"] for m in entry.get("models", [])] if entry else []
+    if envval and (not models or envval in models):
+        return envval
+    if entry and entry["slots"].get(slot):
+        return entry["slots"][slot]
+    return envval or yamlval or builtin
+
+
+if slot == "--drifted":
+    # Does settings.json still agree with what we would write today?
+    entry = live_entry()
+    try:
+        with open(settings_file) as f:
+            pinned = json.load(f).get("env", {})
+    except Exception:
+        pinned = {}
+    for s, var in SLOTS.items():
+        # Only slots settings.json actually pins can drift; a provider that
+        # sets no model env vars (first-party API) never does.
+        if entry and var in pinned and pinned[var] != resolve(s, os.environ.get(var), entry):
+            print("1")
+            break
+else:
+    print(resolve(slot, envval, live_entry()))
+'
+
+# resolve_model <provider> <slot> <env_value> <yaml_value> <builtin_default>
+resolve_model() {
+    python3 -c "$RESOLVE_PY" "$1" "$2" "$3" "$4" "$5" "$CACHE_FILE" "$SETTINGS_FILE" 2>/dev/null
+}
+
+# models_drifted <provider> -> "1" when settings.json no longer matches what
+# discovery would write (a newer model shipped, or a pinned deployment is gone).
+models_drifted() {
+    python3 -c "$RESOLVE_PY" "$1" --drifted "" "" "" "$CACHE_FILE" "$SETTINGS_FILE" 2>/dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -151,6 +186,48 @@ PROVIDER_NAME=$(read_yaml "providers.${PROVIDER}.name")
 mkdir -p "$CLAUDE_DIR"
 
 # ---------------------------------------------------------------------------
+# Skip if settings.json already exists AND matches current provider.
+# Stale config from a different provider (e.g., Bedrock settings when
+# Foundry is now active) causes Claude Code to check the wrong auth.
+# ---------------------------------------------------------------------------
+if [ -f "$SETTINGS_FILE" ] && [ "${CCDW_FORCE_RECONFIGURE:-0}" != "1" ]; then
+    STALE=0
+    HAS_PROVIDER=0
+    grep -q '"env"\|apiKeyHelper\|awsAuthRefresh' "$SETTINGS_FILE" 2>/dev/null && HAS_PROVIDER=1
+    if [ "$HAS_PROVIDER" = "0" ]; then
+        STALE=1
+    elif [ -n "$ANTHROPIC_FOUNDRY_BASE_URL" ] && grep -q '"CLAUDE_CODE_USE_BEDROCK"' "$SETTINGS_FILE" 2>/dev/null; then
+        STALE=1
+    elif [ "${CLAUDE_CODE_USE_BEDROCK}" = "1" ] && grep -q 'apiKeyHelper\|get-claude-token' "$SETTINGS_FILE" 2>/dev/null; then
+        STALE=1
+    elif [ "$(models_drifted "$PROVIDER")" = "1" ]; then
+        # Discovery found different model ids than settings.json is pinned to
+        # (a new model shipped, or a deployment we were pointing at is gone).
+        # Without this, the cache would be written every start and never used.
+        STALE=1
+    fi
+    if [ "$STALE" = "0" ]; then
+        echo -e "${GREEN}[OK]${NC} Claude Code settings already configured"
+        exit 0
+    fi
+    echo -e "${YELLOW}[...]${NC} Provider changed -- regenerating settings.json"
+    # Preserve plugin keys when regenerating
+    python3 -c "
+import json, os
+sf = '${SETTINGS_FILE}'
+with open(sf) as f:
+    old = json.load(f)
+keep = {k: old[k] for k in ('extraKnownMarketplaces','enabledPlugins','model') if k in old}
+if keep:
+    with open(sf, 'w') as f:
+        json.dump(keep, f, indent=2)
+else:
+    os.remove(sf)
+" 2>/dev/null || rm -f "$SETTINGS_FILE"
+    rm -f "$TOKEN_SCRIPT"
+fi
+
+# ---------------------------------------------------------------------------
 # Save plugin keys before overwriting settings.json
 # ---------------------------------------------------------------------------
 PLUGIN_KEYS_JSON=""
@@ -159,7 +236,7 @@ if [ -f "$SETTINGS_FILE" ]; then
 import json
 with open('${SETTINGS_FILE}') as f:
     old = json.load(f)
-keep = {k: old[k] for k in ('extraKnownMarketplaces','enabledPlugins') if k in old}
+keep = {k: old[k] for k in ('extraKnownMarketplaces','enabledPlugins','model') if k in old}
 if keep:
     print(json.dumps(keep))
 " 2>/dev/null || true)
@@ -178,9 +255,9 @@ case "$PROVIDER" in
         # Read from YAML, allow env var overrides
         ENDPOINT="${ANTHROPIC_FOUNDRY_BASE_URL:-$(read_yaml "providers.azure-foundry.endpoint")}"
         TOKEN_RESOURCE=$(read_yaml "providers.azure-foundry.token_resource")
-        MODEL_SONNET="${ANTHROPIC_DEFAULT_SONNET_MODEL:-$(read_yaml "providers.azure-foundry.models.sonnet")}"
-        MODEL_HAIKU="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-$(read_yaml "providers.azure-foundry.models.haiku")}"
-        MODEL_OPUS="${ANTHROPIC_DEFAULT_OPUS_MODEL:-$(read_yaml "providers.azure-foundry.models.opus")}"
+        MODEL_SONNET=$(resolve_model azure-foundry sonnet "$ANTHROPIC_DEFAULT_SONNET_MODEL" "$(read_yaml "providers.azure-foundry.models.sonnet")" "")
+        MODEL_HAIKU=$(resolve_model azure-foundry haiku "$ANTHROPIC_DEFAULT_HAIKU_MODEL" "$(read_yaml "providers.azure-foundry.models.haiku")" "")
+        MODEL_OPUS=$(resolve_model azure-foundry opus "$ANTHROPIC_DEFAULT_OPUS_MODEL" "$(read_yaml "providers.azure-foundry.models.opus")" "")
         DEFAULT_MODEL=$(read_yaml "providers.azure-foundry.default_model")
 
         # Export env vars for the current session
@@ -249,9 +326,9 @@ print(json.dumps(settings, indent=2))
     bedrock)
         REGION="${AWS_REGION:-$(read_yaml "providers.bedrock.region")}"
         PROFILE="${AWS_PROFILE:-sso-bedrock-model-access}"
-        MODEL_SONNET="${ANTHROPIC_DEFAULT_SONNET_MODEL:-us.anthropic.claude-sonnet-4-6}"
-        MODEL_HAIKU="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-us.anthropic.claude-haiku-4-5-20251001-v1:0}"
-        MODEL_OPUS="${ANTHROPIC_DEFAULT_OPUS_MODEL:-us.anthropic.claude-opus-4-6-v1}"
+        MODEL_SONNET=$(resolve_model bedrock sonnet "$ANTHROPIC_DEFAULT_SONNET_MODEL" "$(read_yaml "providers.bedrock.models.sonnet")" "us.anthropic.claude-sonnet-4-6")
+        MODEL_HAIKU=$(resolve_model bedrock haiku "$ANTHROPIC_DEFAULT_HAIKU_MODEL" "$(read_yaml "providers.bedrock.models.haiku")" "us.anthropic.claude-haiku-4-5-20251001-v1:0")
+        MODEL_OPUS=$(resolve_model bedrock opus "$ANTHROPIC_DEFAULT_OPUS_MODEL" "$(read_yaml "providers.bedrock.models.opus")" "us.anthropic.claude-opus-4-6-v1")
         MODEL_DEFAULT="${ANTHROPIC_MODEL:-sonnet}"
 
         export CLAUDE_CODE_USE_BEDROCK=1

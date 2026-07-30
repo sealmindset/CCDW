@@ -5,9 +5,18 @@
 # The entrypoint reads this file to generate Claude Code's settings.json
 # and token helper scripts automatically.
 #
-# To change providers, models, or endpoints — edit this file and rebuild.
+# To change providers or endpoints — edit this file and rebuild.
 # Environment variables (e.g. ANTHROPIC_FOUNDRY_BASE_URL) override these
 # values if set at runtime.
+#
+# MODELS ARE DISCOVERED, NOT HAND-MAINTAINED.
+# scripts/discover-models.py runs at container start, asks each provider what
+# it actually has, and writes ~/.claude/models-cache.json. The model ids below
+# are only the FALLBACK used when a provider can't be reached (offline start,
+# expired token, no credentials yet). Resolution order per model slot:
+#     env var  >  discovered cache  >  this file  >  built-in default
+# After signing in to a provider, run `refresh-models.sh` to re-discover.
+# To bring this file back in line with reality: refresh-models.sh --yaml
 # =============================================================================
 
 # Which provider to use by default: azure-foundry | bedrock | api-key | claude
@@ -25,21 +34,38 @@ providers:
     # Azure subscription to auto-select after az login
     subscription_id: a8da1709-ccc3-4356-b3b7-6660af86e979
     subscription_name: sn-openai-dev-01
+    # Fallback deployment names. Foundry has no list API — deployments are
+    # admin-created — so discovery probes "<prefix><anthropic-model-id>" using
+    # the prefix derived from these names. Keep at least one entry so the
+    # prefix stays recoverable.
     models:
-      sonnet: cogdep-aifoundry-dev-eus2-claude-sonnet-4-5
+      sonnet: cogdep-aifoundry-dev-eus2-claude-sonnet-4-6
       haiku: cogdep-aifoundry-dev-eus2-claude-haiku-4-5
-      opus: cogdep-aifoundry-dev-eus2-claude-opus-4-6
+      opus: cogdep-aifoundry-dev-eus2-claude-opus-5
     default_model: opus
 
   bedrock:
     name: AWS Bedrock
     region: us-east-1
+    profile: sso-bedrock-model-access
+    # Fallback only. Discovery uses `aws bedrock list-inference-profiles`,
+    # which reflects the model access actually granted to the account.
+    models:
+      sonnet: us.anthropic.claude-sonnet-4-6
+      haiku: us.anthropic.claude-haiku-4-5-20251001-v1:0
+      opus: us.anthropic.claude-opus-4-6-v1
+    default_model: sonnet
 
   api-key:
     name: Anthropic API (Personal)
+    # First-party API: no model slots are pinned. Claude Code already routes to
+    # the newest sonnet/haiku/opus on its own, so pinning would only freeze it.
+    # Discovery still lists every available model for the Dashboard picker.
+    default_model: opus
 
   claude:
     name: Claude Account (OAuth)
+    default_model: opus
 
 # ---------------------------------------------------------------------------
 # Claude Code settings applied to all providers
