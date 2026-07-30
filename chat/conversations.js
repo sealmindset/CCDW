@@ -9,6 +9,14 @@ function ensureDir() {
   if (!fs.existsSync(CONV_DIR)) fs.mkdirSync(CONV_DIR, { recursive: true });
 }
 
+// Tool results are stored in Anthropic's native shape -- a `user` message whose
+// blocks are all tool_result. Those are plumbing, not turns: they must not be
+// counted in the sidebar or shown as a message the person typed.
+function isToolResultOnly(msg) {
+  const blocks = Array.isArray(msg.content) ? msg.content : [];
+  return blocks.length > 0 && blocks.every(b => b.type === 'tool_result');
+}
+
 function filePath(id) {
   return path.join(CONV_DIR, `${id}.json`);
 }
@@ -27,7 +35,8 @@ function list() {
         updated_at: data.updated_at,
         starred: data.starred || false,
         model: data.model,
-        message_count: (data.messages || []).length,
+        cwd: data.cwd || null,
+        message_count: (data.messages || []).filter(m => !isToolResultOnly(m)).length,
       });
     } catch {}
   }
@@ -35,8 +44,11 @@ function list() {
   return convos;
 }
 
-function create(model, systemPrompt) {
+function create(model, systemPrompt, cwd) {
   ensureDir();
+  // This UUID is handed to `claude --session-id`, so the conversation and the
+  // Claude Code session are one and the same -- `claude --resume <id>` in the
+  // terminal continues this exact thread.
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const conv = {
@@ -46,7 +58,11 @@ function create(model, systemPrompt) {
     updated_at: now,
     starred: false,
     model: model || null,
+    cwd: cwd || null,
     system_prompt: systemPrompt || '',
+    // Set once the CLI has actually created the session on disk; until then a
+    // turn must use --session-id rather than --resume.
+    session_started: false,
     messages: [],
     total_tokens: { input: 0, output: 0 },
   };
@@ -72,6 +88,8 @@ function update(id, fields) {
   if (fields.starred !== undefined) conv.starred = fields.starred;
   if (fields.system_prompt !== undefined) conv.system_prompt = fields.system_prompt;
   if (fields.model !== undefined) conv.model = fields.model;
+  if (fields.cwd !== undefined) conv.cwd = fields.cwd;
+  if (fields.session_started !== undefined) conv.session_started = fields.session_started;
   save(conv);
   return conv;
 }
@@ -105,13 +123,22 @@ function exportMarkdown(id) {
   let md = `# ${conv.title}\n\n`;
   md += `*Created: ${conv.created_at}*\n`;
   if (conv.model) md += `*Model: ${conv.model}*\n`;
+  if (conv.cwd) md += `*Folder: ${conv.cwd}*\n`;
   md += '\n---\n\n';
   for (const msg of conv.messages) {
+    if (isToolResultOnly(msg)) continue;
     const role = msg.role === 'user' ? 'You' : 'Claude';
-    const text = msg.content.filter(c => c.type === 'text').map(c => c.text).join('\n');
-    md += `**${role}:**\n\n${text}\n\n---\n\n`;
+    const blocks = Array.isArray(msg.content) ? msg.content : [];
+    const parts = [];
+    for (const b of blocks) {
+      if (b.type === 'text') parts.push(b.text);
+      // Actions taken are part of the record, but the arguments are noise in a
+      // shared transcript -- name the tool and move on.
+      else if (b.type === 'tool_use') parts.push(`_(used ${b.name})_`);
+    }
+    md += `**${role}:**\n\n${parts.join('\n\n')}\n\n---\n\n`;
   }
   return md;
 }
 
-module.exports = { list, create, get, save, update, remove, addMessage, exportMarkdown };
+module.exports = { list, create, get, save, update, remove, addMessage, exportMarkdown, isToolResultOnly };

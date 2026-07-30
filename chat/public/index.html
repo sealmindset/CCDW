@@ -25,6 +25,7 @@
       <div class="chat-header">
         <button id="btn-sidebar-toggle" class="btn-icon" title="Toggle sidebar">&#9776;</button>
         <select id="model-selector" class="model-selector"></select>
+        <button id="workdir-chip" class="workdir-chip" type="button" title="Pick a folder for this conversation"></button>
         <div class="chat-header-actions">
           <button id="btn-settings" class="btn-icon" title="System prompt">&#9881;</button>
           <button id="btn-export" class="btn-icon" title="Export conversation">&#8681;</button>
@@ -43,13 +44,13 @@
             </svg>
           </div>
           <h2>Claude Chat</h2>
-          <p>Start a conversation with Claude</p>
+          <p>Chat with Claude Code about anything in your folders &mdash; it can read, search, and change real files.</p>
         </div>
       </div>
 
       <div id="typing-indicator" class="typing-indicator" style="display:none">
         <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-        <span>Claude is thinking...</span>
+        <span class="typing-text">Claude is working...</span>
       </div>
 
       <div class="input-area">
@@ -89,6 +90,20 @@
     </div>
   </dialog>
 
+  <!-- Folder picker -->
+  <dialog id="workdir-dialog" class="workdir-dialog">
+    <div class="workdir-content">
+      <h3>Conversation folder</h3>
+      <p class="workdir-hint">Claude can read and change files here. Pick any folder &mdash; it does not have to be a Workshop project.</p>
+      <div id="workdir-crumb" class="workdir-crumb"></div>
+      <div id="workdir-list" class="workdir-list"></div>
+      <div class="settings-actions">
+        <button id="btn-workdir-close" class="btn-secondary">Cancel</button>
+        <button id="btn-workdir-use" class="btn-primary">Use this folder</button>
+      </div>
+    </div>
+  </dialog>
+
   <script src="/js/markdown.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/chat.js"></script>
@@ -97,6 +112,7 @@
   <script src="/js/settings.js"></script>
   <script src="/js/attachments.js"></script>
   <script src="/js/artifacts.js"></script>
+  <script src="/js/workdir.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

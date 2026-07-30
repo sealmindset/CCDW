@@ -4,11 +4,11 @@ window.ChatAPI = {
     return res.json();
   },
 
-  async createConversation(model, systemPrompt) {
+  async createConversation(model, systemPrompt, cwd) {
     const res = await fetch('/api/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, system_prompt: systemPrompt }),
+      body: JSON.stringify({ model, system_prompt: systemPrompt, cwd }),
     });
     return res.json();
   },
@@ -42,6 +42,16 @@ window.ChatAPI = {
 
   async getProviders() {
     const res = await fetch('/api/providers');
+    return res.json();
+  },
+
+  async getWorkdirRoots() {
+    const res = await fetch('/api/workdir/roots');
+    return res.json();
+  },
+
+  async listWorkdir(path) {
+    const res = await fetch(`/api/workdir/list?path=${encodeURIComponent(path || '')}`);
     return res.json();
   },
 

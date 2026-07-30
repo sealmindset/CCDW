@@ -1,11 +1,25 @@
+// =============================================================================
+// Claude Chat
+//
+// A chat/DM interface over the real Claude Code CLI. People reach for a
+// messaging UI over a terminal, so the terminal is the implementation detail:
+// every conversation is a live Claude Code session with the full tool set,
+// bound to a folder on the mounted host tree.
+//
+// The conversation UUID is the Claude Code session id, so a thread started in
+// the browser continues in the web terminal with `claude --resume <id>` and
+// back again. See chat/agent.js.
+// =============================================================================
+
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 const providers = require('./providers');
 const conversations = require('./conversations');
+const agent = require('./agent');
+const workdir = require('./workdir');
 
 const PORT = parseInt(process.env.CHAT_PORT || '3002', 10);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -16,7 +30,8 @@ const MIME = {
   '.ico': 'image/x-icon', '.woff2': 'font/woff2',
 };
 
-const activeStreams = new Map();
+// convId -> running child process, so /stop can kill the turn.
+const activeTurns = new Map();
 
 function json(res, data, status = 200) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -65,31 +80,17 @@ function extractConvId(pathname) {
   return m ? m[1] : null;
 }
 
-function streamToProvider(conv, userContent, model, res) {
-  const messages = conv.messages.map(m => ({
-    role: m.role,
-    content: m.content,
-  }));
-  messages.push({ role: 'user', content: userContent });
+function textOf(content) {
+  if (typeof content === 'string') return content;
+  return (content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
+}
 
-  const body = {
-    model: model || conv.model || providers.getDefaultModel(),
-    max_tokens: 8192,
-    messages,
-    stream: true,
-  };
-  if (conv.system_prompt) {
-    body.system = conv.system_prompt;
-  }
-
-  let reqOpts;
-  try {
-    reqOpts = providers.buildRequest(body);
-  } catch (e) {
-    res.write(`event: chat:error\ndata: ${JSON.stringify({ message: e.message })}\n\n`);
-    res.end();
-    return;
-  }
+// ---------------------------------------------------------------------------
+// One user message -> one `claude -p` process -> one SSE stream.
+// ---------------------------------------------------------------------------
+function streamTurn(conv, userContent, model, res) {
+  const cwd = workdir.normalize(conv.cwd);
+  if (cwd !== conv.cwd) conversations.update(conv.id, { cwd });
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -98,141 +99,91 @@ function streamToProvider(conv, userContent, model, res) {
     'X-Accel-Buffering': 'no',
   });
 
-  const transport = reqOpts.protocol === 'https:' ? https : http;
-  const proxyReq = transport.request({
-    hostname: reqOpts.hostname,
-    port: reqOpts.port,
-    path: reqOpts.path,
-    method: 'POST',
-    headers: reqOpts.headers,
-  }, (proxyRes) => {
-    if (proxyRes.statusCode !== 200) {
-      let errBody = '';
-      proxyRes.on('data', c => errBody += c);
-      proxyRes.on('end', () => {
-        let msg = `API returned ${proxyRes.statusCode}`;
-        try { const e = JSON.parse(errBody); msg = e.error?.message || e.message || msg; } catch {}
-        res.write(`event: chat:error\ndata: ${JSON.stringify({ message: msg })}\n\n`);
-        res.end();
-      });
-      return;
-    }
-
-    let assistantText = '';
-    let usage = { input_tokens: 0, output_tokens: 0 };
-    let stopReason = '';
-    let msgModel = '';
-
-    function onStreamEnd() {
-      conversations.addMessage(conv.id, 'user', userContent);
-      conversations.addMessage(conv.id, 'assistant',
-        [{ type: 'text', text: assistantText }],
-        { model: msgModel, usage, stop_reason: stopReason }
-      );
-      res.write(`event: chat:usage\ndata: ${JSON.stringify(usage)}\n\n`);
-      if (conv.messages.length === 0) {
-        generateTitle(conv.id, userContent, assistantText, msgModel || model);
-      }
-      activeStreams.delete(conv.id);
-      res.end();
-    }
-
-    function onStreamError(e) {
-      res.write(`event: chat:error\ndata: ${JSON.stringify({ message: e.message })}\n\n`);
-      activeStreams.delete(conv.id);
-      res.end();
-    }
-
-    function handleEvent(data) {
-      if (data.type === 'message_start' && data.message) {
-        usage.input_tokens = data.message.usage?.input_tokens || 0;
-        msgModel = data.message.model || '';
-      }
-      if (data.type === 'content_block_delta' && data.delta?.text) {
-        assistantText += data.delta.text;
-      }
-      if (data.type === 'message_delta') {
-        stopReason = data.delta?.stop_reason || '';
-        usage.output_tokens = data.usage?.output_tokens || 0;
-      }
-    }
-
-    if (reqOpts.bedrockStream) {
-      // Bedrock returns AWS binary event stream, not SSE text
-      let bedrockBuf = Buffer.alloc(0);
-      proxyRes.on('data', (chunk) => {
-        bedrockBuf = Buffer.concat([bedrockBuf, chunk]);
-        while (true) {
-          const msg = providers.parseEventStreamMessage(bedrockBuf, 0);
-          if (!msg) break;
-          bedrockBuf = bedrockBuf.slice(msg.totalLen);
-
-          if (msg.headers[':message-type'] === 'exception') {
-            try {
-              const err = JSON.parse(msg.payload.toString());
-              res.write(`event: chat:error\ndata: ${JSON.stringify({ message: err.message || 'Bedrock error' })}\n\n`);
-            } catch {}
-            continue;
-          }
-
-          const event = providers.extractBedrockEvent(msg.payload);
-          if (!event) continue;
-          res.write(`event: ${event.type || 'unknown'}\ndata: ${JSON.stringify(event)}\n\n`);
-          handleEvent(event);
-        }
-      });
-      proxyRes.on('end', onStreamEnd);
-      proxyRes.on('error', onStreamError);
-    } else {
-      // Anthropic/Foundry SSE text stream
-      let buf = '';
-      proxyRes.on('data', (chunk) => {
-        buf += chunk.toString();
-        const lines = buf.split('\n');
-        buf = lines.pop();
-
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            res.write(line + '\n');
-          } else if (line.startsWith('data: ')) {
-            res.write(line + '\n\n');
-            try { handleEvent(JSON.parse(line.slice(6))); } catch {}
-          }
-        }
-      });
-      proxyRes.on('end', onStreamEnd);
-      proxyRes.on('error', onStreamError);
-    }
-  });
-
-  proxyReq.on('error', (e) => {
-    res.write(`event: chat:error\ndata: ${JSON.stringify({ message: e.message })}\n\n`);
-    activeStreams.delete(conv.id);
-    res.end();
-  });
-
-  activeStreams.set(conv.id, proxyReq);
-  proxyReq.write(reqOpts.body);
-  proxyReq.end();
-
+  let closed = false;
   res.on('close', () => {
-    activeStreams.delete(conv.id);
-    proxyReq.destroy();
+    closed = true;
+    const proc = activeTurns.get(conv.id);
+    if (proc) { proc.kill('SIGTERM'); activeTurns.delete(conv.id); }
   });
+
+  const send = (event, data) => {
+    if (closed) return;
+    try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* client gone */ }
+  };
+
+  // A conversation can only be resumed once the CLI has written its transcript.
+  // If the record claims a session but the file is gone (volume reset, folder
+  // changed), start fresh rather than failing the turn outright.
+  const resume = !!conv.session_started && agent.sessionExists(conv.id, cwd);
+
+  send('agent:start', { cwd, resume, model: model || conv.model || null });
+
+  const isFirstTurn = (conv.messages || []).length === 0;
+  const userText = textOf(userContent);
+
+  const proc = agent.runTurn({
+    sessionId: conv.id,
+    resume,
+    cwd,
+    prompt: userText,
+    model: model || conv.model || undefined,
+    systemPrompt: conv.system_prompt || undefined,
+    onEvent: send,
+    onDone: async ({ messages, usage, error, started }) => {
+      activeTurns.delete(conv.id);
+
+      conversations.addMessage(conv.id, 'user', userContent);
+      for (const m of messages) {
+        conversations.addMessage(conv.id, m.role, m.content,
+          m.role === 'assistant' ? { model: model || conv.model, usage } : undefined);
+      }
+      if (started && !conv.session_started) {
+        conversations.update(conv.id, { session_started: true });
+      }
+      if (usage) send('chat:usage', usage);
+
+      // Name the thread from the first exchange, like Claude.ai does. Held
+      // open briefly so the sidebar gets the real title instead of flashing
+      // "New conversation" -- bounded, because it is a network call.
+      if (isFirstTurn && !error) {
+        const title = await generateTitle(userText, model).catch(() => null);
+        conversations.update(conv.id, { title: title || fallbackTitle(userText) });
+        send('chat:title_updated', { title: title || fallbackTitle(userText) });
+      }
+
+      if (!closed) res.end();
+    },
+  });
+
+  if (proc) activeTurns.set(conv.id, proc);
 }
 
-function generateTitle(convId, userContent, assistantText, model) {
-  const userText = typeof userContent === 'string' ? userContent
-    : userContent.filter(c => c.type === 'text').map(c => c.text).join(' ');
-  const snippet = userText.slice(0, 200);
+// ---------------------------------------------------------------------------
+// Title generation
+// ---------------------------------------------------------------------------
+function fallbackTitle(text) {
+  const words = (text || '').trim().split(/\s+/).slice(0, 7).join(' ');
+  return words ? words.slice(0, 60) : 'New conversation';
+}
 
-  try {
-    const titleModel = providers.getModels().find(m => m.tier === 'light')?.id || model;
-    const reqOpts = providers.buildRequest({
-      model: titleModel,
-      max_tokens: 30,
-      messages: [{ role: 'user', content: `Generate a 4-6 word title for this conversation. Respond with ONLY the title, no quotes or punctuation.\n\nUser message: ${snippet}` }],
-    });
+// Uses the Messages API directly rather than another CLI process -- it is a
+// 30-token call and spinning up Claude Code for it would cost seconds.
+// Providers without a direct HTTP path (Claude account login) throw here, and
+// the caller falls back to the first words of the message.
+function generateTitle(userText, model) {
+  return new Promise((resolve, reject) => {
+    const snippet = (userText || '').slice(0, 200);
+    if (!snippet) return reject(new Error('empty'));
+
+    let reqOpts;
+    try {
+      const titleModel = providers.getModels().find(m => m.tier === 'light')?.id || model;
+      reqOpts = providers.buildRequest({
+        model: titleModel,
+        max_tokens: 30,
+        messages: [{ role: 'user', content: `Generate a 4-6 word title for this conversation. Respond with ONLY the title, no quotes or punctuation.\n\nUser message: ${snippet}` }],
+      });
+    } catch (e) { return reject(e); }
 
     const transport = reqOpts.protocol === 'https:' ? https : http;
     const req = transport.request({
@@ -241,28 +192,30 @@ function generateTitle(convId, userContent, assistantText, model) {
       path: reqOpts.path,
       method: 'POST',
       headers: reqOpts.headers,
-    }, (res) => {
+      timeout: 8000,
+    }, (r) => {
       let body = '';
-      res.on('data', c => body += c);
-      res.on('end', () => {
+      r.on('data', c => body += c);
+      r.on('end', () => {
         try {
           const data = JSON.parse(body);
           const title = data.content?.[0]?.text?.trim();
-          if (title) conversations.update(convId, { title });
-        } catch {}
+          if (title) resolve(title.replace(/^["']|["']$/g, '')); else reject(new Error('no title'));
+        } catch (e) { reject(e); }
       });
     });
-    req.on('error', () => {});
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    req.on('error', reject);
     req.write(reqOpts.body);
     req.end();
-  } catch {}
+  });
 }
 
+// ---------------------------------------------------------------------------
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  // CORS for same-origin
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -281,13 +234,22 @@ const server = http.createServer(async (req, res) => {
       return json(res, { models: providers.getModels(), default: providers.getDefaultModel() });
     }
 
+    // Folder picker: roots are the host directories the container binds.
+    if (pathname === '/api/workdir/roots') {
+      return json(res, { roots: workdir.roots(), default: workdir.DEFAULT_CWD });
+    }
+
+    if (pathname === '/api/workdir/list') {
+      return json(res, workdir.list(url.searchParams.get('path')));
+    }
+
     if (pathname === '/api/conversations' && req.method === 'GET') {
       return json(res, conversations.list());
     }
 
     if (pathname === '/api/conversations' && req.method === 'POST') {
       const body = await readBody(req);
-      const conv = conversations.create(body.model, body.system_prompt);
+      const conv = conversations.create(body.model, body.system_prompt, workdir.normalize(body.cwd));
       return json(res, conv, 201);
     }
 
@@ -296,16 +258,16 @@ const server = http.createServer(async (req, res) => {
       if (pathname.endsWith('/messages') && req.method === 'POST') {
         const conv = conversations.get(convId);
         if (!conv) return json(res, { error: 'Not found' }, 404);
+        if (activeTurns.has(convId)) return json(res, { error: 'A turn is already running' }, 409);
         const body = await readBody(req);
         const content = body.content || [{ type: 'text', text: body.text || '' }];
-        const model = body.model || conv.model;
-        return streamToProvider(conv, content, model, res);
+        return streamTurn(conv, content, body.model || conv.model, res);
       }
 
       if (pathname.endsWith('/stop') && req.method === 'POST') {
-        const stream = activeStreams.get(convId);
-        if (stream) { stream.destroy(); activeStreams.delete(convId); }
-        return json(res, { stopped: true });
+        const proc = activeTurns.get(convId);
+        if (proc) { proc.kill('SIGTERM'); activeTurns.delete(convId); }
+        return json(res, { stopped: !!proc });
       }
 
       if (pathname.endsWith('/export')) {
@@ -329,12 +291,18 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'PUT') {
         const body = await readBody(req);
+        // Changing the folder mid-thread would resume a session whose
+        // transcript lives under the old path; normalise and let agent.js fall
+        // back to a fresh session if the transcript can't be found.
+        if (body.cwd !== undefined) body.cwd = workdir.normalize(body.cwd);
         const conv = conversations.update(convId, body);
         if (!conv) return json(res, { error: 'Not found' }, 404);
         return json(res, conv);
       }
 
       if (req.method === 'DELETE') {
+        const proc = activeTurns.get(convId);
+        if (proc) { proc.kill('SIGTERM'); activeTurns.delete(convId); }
         conversations.remove(convId);
         return json(res, { deleted: true });
       }

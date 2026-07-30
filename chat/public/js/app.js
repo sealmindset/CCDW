@@ -2,9 +2,9 @@ window.App = {
   currentConvId: null,
   streamCtrl: null,
   isStreaming: false,
+  cwd: null,          // folder for the active conversation (or the next one)
 
   async init() {
-    // Init modules
     ChatView.init(
       document.getElementById('messages'),
       document.getElementById('message-input'),
@@ -30,8 +30,15 @@ window.App = {
       document.getElementById('artifact-content'),
       document.getElementById('artifact-tabs')
     );
+    WorkdirPicker.init(
+      document.getElementById('workdir-dialog'),
+      document.getElementById('workdir-list'),
+      document.getElementById('workdir-crumb'),
+      document.getElementById('btn-workdir-use'),
+      document.getElementById('btn-workdir-close')
+    );
+    WorkdirChip.init(document.getElementById('workdir-chip'), () => this.pickFolder());
 
-    // Wire events
     ChatView.onSend = (text) => this.sendMessage(text);
     Sidebar.onSelect = (id) => this.loadConversation(id);
     Sidebar.onNew = () => this.newConversation();
@@ -52,11 +59,37 @@ window.App = {
       document.getElementById('file-input').click();
     });
 
-    // Load data
+    await this.loadDefaultCwd();
     await ModelSelector.load();
     await this.loadConversations();
   },
 
+  // --- Folder binding ------------------------------------------------------
+  async loadDefaultCwd() {
+    // Last folder used wins, so reopening Chat lands where you left off.
+    const remembered = localStorage.getItem('chat-cwd');
+    try {
+      const data = await ChatAPI.getWorkdirRoots();
+      this.cwd = remembered || data.default || null;
+    } catch {
+      this.cwd = remembered || null;
+    }
+    WorkdirChip.set(this.cwd);
+  },
+
+  pickFolder() {
+    WorkdirPicker.show(this.cwd, async (picked) => {
+      this.cwd = picked;
+      localStorage.setItem('chat-cwd', picked);
+      WorkdirChip.set(picked);
+      if (this.currentConvId) {
+        await ChatAPI.updateConversation(this.currentConvId, { cwd: picked });
+        ChatView.addSystemNote(`Folder for this conversation is now ${picked}`);
+      }
+    });
+  },
+
+  // --- Conversations -------------------------------------------------------
   async loadConversations() {
     try {
       const convos = await ChatAPI.listConversations();
@@ -66,10 +99,11 @@ window.App = {
 
   async newConversation() {
     try {
-      const model = ModelSelector.getModel();
-      const systemPrompt = SettingsPanel.getPrompt();
-      const conv = await ChatAPI.createConversation(model, systemPrompt);
+      const conv = await ChatAPI.createConversation(
+        ModelSelector.getModel(), SettingsPanel.getPrompt(), this.cwd);
       this.currentConvId = conv.id;
+      this.cwd = conv.cwd || this.cwd;
+      WorkdirChip.set(this.cwd);
       ChatView.clear();
       document.getElementById('welcome-screen')?.remove();
       await this.loadConversations();
@@ -87,6 +121,7 @@ window.App = {
       ChatView.loadMessages(conv.messages || []);
       Sidebar.setActive(id);
       ChatView.setInputEnabled(true);
+      if (conv.cwd) { this.cwd = conv.cwd; WorkdirChip.set(conv.cwd); }
       if (conv.model) {
         ModelSelector.selected = conv.model;
         ModelSelector.render();
@@ -114,46 +149,65 @@ window.App = {
     } catch {}
   },
 
+  // --- Sending -------------------------------------------------------------
   async sendMessage(text) {
     if (!text.trim() && !Attachments.pending.length) return;
 
-    // Auto-create conversation if none active
     if (!this.currentConvId) {
-      const model = ModelSelector.getModel();
-      const systemPrompt = SettingsPanel.getPrompt();
-      const conv = await ChatAPI.createConversation(model, systemPrompt);
+      const conv = await ChatAPI.createConversation(
+        ModelSelector.getModel(), SettingsPanel.getPrompt(), this.cwd);
       this.currentConvId = conv.id;
+      this.cwd = conv.cwd || this.cwd;
+      WorkdirChip.set(this.cwd);
       document.getElementById('welcome-screen')?.remove();
       await this.loadConversations();
       Sidebar.setActive(conv.id);
     }
 
     const content = Attachments.getContent(text);
-    ChatView.addMessage('user', content);
+    ChatView.addUserMessage(content);
     ChatView.setInputEnabled(false);
 
-    const stopBtn = document.getElementById('btn-stop');
-    stopBtn.style.display = 'flex';
+    document.getElementById('btn-stop').style.display = 'flex';
     this.isStreaming = true;
-
-    ChatView.startStreaming();
+    ChatView.startTurn();
 
     let usage = null;
-    const model = ModelSelector.getModel();
 
-    this.streamCtrl = ChatAPI.sendMessage(this.currentConvId, content, model, (event) => {
+    this.streamCtrl = ChatAPI.sendMessage(this.currentConvId, content, ModelSelector.getModel(), (event) => {
       switch (event.type) {
+        case 'agent:start':
+          ChatView.showTyping(true, 'Claude is working...');
+          break;
+
+        case 'agent:status':
+          // "requesting" / "tool_use" -- a low-key liveness cue, not a log.
+          if (event.data?.status === 'requesting') ChatView.showTyping(true, 'Claude is thinking...');
+          break;
+
         case 'content_block_delta':
           if (event.data?.delta?.text) {
             ChatView.appendStreamText(event.data.delta.text);
-
-            // Check for artifacts in accumulated text
             const artifact = Artifacts.detect(ChatView._streamingText);
             if (artifact) Artifacts.show(artifact);
           }
           break;
 
+        case 'agent:tool_use':
+          ChatView.addToolCall(event.data?.id, event.data?.name, event.data?.input, 'running');
+          ChatView.showTyping(true, 'Claude is working...');
+          break;
+
+        case 'agent:tool_result':
+          ChatView.resolveToolCall(
+            event.data?.tool_use_id, event.data?.is_error, event.data?.content, event.data?.truncated);
+          break;
+
         case 'message_delta':
+          if (event.data?.usage) usage = event.data.usage;
+          break;
+
+        case 'agent:result':
           if (event.data?.usage) usage = event.data.usage;
           break;
 
@@ -166,22 +220,14 @@ window.App = {
           break;
 
         case 'chat:error':
-          ChatView.finishStreaming(usage);
-          ChatView.addMessage('assistant', `Error: ${event.data?.message || 'Unknown error'}`);
-          this.streamDone();
+          ChatView.addSystemNote(event.data?.message || 'Something went wrong.', 'error');
           break;
 
-        case 'message_stop':
+        // NOTE: message_stop fires once per model round-trip, and a turn with
+        // tool use has several. Only the stream closing ends the turn.
         case 'done':
-          ChatView.finishStreaming(usage);
+          ChatView.finishTurn(usage);
           this.streamDone();
-
-          // Final artifact check
-          const fullText = ChatView._streamingText || '';
-          if (fullText) {
-            const art = Artifacts.detect(fullText);
-            if (art) Artifacts.show(art);
-          }
           break;
       }
     });
@@ -196,13 +242,12 @@ window.App = {
   },
 
   stopStream() {
-    if (this.streamCtrl) {
-      this.streamCtrl.abort();
-    }
-    if (this.currentConvId) {
-      ChatAPI.stopStream(this.currentConvId).catch(() => {});
-    }
-    ChatView.finishStreaming();
+    // Abort the fetch and kill the CLI process; the server persists whatever
+    // the turn produced before the signal landed.
+    if (this.streamCtrl) this.streamCtrl.abort();
+    if (this.currentConvId) ChatAPI.stopStream(this.currentConvId).catch(() => {});
+    ChatView.finishTurn();
+    ChatView.addSystemNote('Stopped.');
     this.streamDone();
   },
 

@@ -29,11 +29,18 @@ body {
   color: var(--text-primary);
   height: 100vh;
   overflow: hidden;
+  /* shared-nav.js injects the top nav as body's first child. Laying body out
+     as a column makes the app fill whatever is left instead of assuming a full
+     100vh -- otherwise the page is 45px too tall and the first body scroll
+     (focusing the input does it) slides the chat header under the nav. */
+  display: flex;
+  flex-direction: column;
 }
 
 #app {
   display: flex;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
 }
 
 /* Sidebar */
@@ -692,4 +699,218 @@ body {
   .sidebar { position: fixed; z-index: 100; height: 100%; }
   .sidebar.collapsed { margin-left: calc(-1 * var(--sidebar-width)); }
   .artifact-pane.open { width: 100%; min-width: 0; position: fixed; z-index: 99; height: 100%; }
+}
+
+/* ---------------------------------------------------------------------------
+   Agent turns: a turn can hold several bubbles with activity chips between
+   them, so stack the children instead of assuming one bubble per message.
+   --------------------------------------------------------------------------- */
+.message-assistant > * + * { margin-top: 6px; }
+
+/* Working-directory chip in the header */
+.workdir-chip {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.workdir-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Tool activity chips.
+   Deliberately quiet: one line, muted, collapsed. This is a messaging UI, not
+   a terminal -- the work Claude does should read as a footnote to the reply,
+   not compete with it.
+   --------------------------------------------------------------------------- */
+.tool-chip {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  overflow: hidden;
+  max-width: 80%;
+  width: fit-content;
+  min-width: 220px;
+}
+
+.tool-chip-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tool-chip-head:hover { background: var(--bg-hover); }
+
+.tool-label { flex-shrink: 0; }
+
+.tool-subject {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.tool-running .tool-dot {
+  background: var(--accent);
+  animation: tool-pulse 1.1s ease-in-out infinite;
+}
+
+.tool-done .tool-dot { background: var(--success); }
+.tool-error .tool-dot { background: var(--danger); }
+.tool-error .tool-chip-head { color: var(--danger); }
+
+@keyframes tool-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
+/* Collapsed until the chip is clicked. */
+.tool-chip-body { display: none; border-top: 1px solid var(--border); }
+.tool-chip.expanded .tool-chip-body { display: block; }
+
+.tool-input,
+.tool-output {
+  margin: 0;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.tool-input { color: var(--text-primary); background: var(--bg-primary); }
+.tool-output { color: var(--text-secondary); border-top: 1px solid var(--border); }
+
+/* Inline system notes (errors, folder changes, "Stopped.") */
+.message-note {
+  max-width: 800px;
+  margin: 8px auto;
+  padding: 0 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.message-note.note-error { color: var(--danger); }
+
+/* ---------------------------------------------------------------------------
+   Folder picker
+   --------------------------------------------------------------------------- */
+.workdir-dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: 0;
+  width: min(520px, 92vw);
+}
+
+.workdir-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+
+.workdir-content { padding: 20px; }
+
+.workdir-content h3 { font-size: 16px; margin-bottom: 6px; }
+
+.workdir-hint {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.workdir-crumb {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  padding: 6px 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.workdir-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-primary);
+  margin-bottom: 14px;
+}
+
+.wd-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wd-row:last-child { border-bottom: none; }
+.wd-row:hover { background: var(--bg-hover); }
+.wd-up { color: var(--text-secondary); }
+
+.wd-icon { flex-shrink: 0; font-size: 12px; }
+.wd-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.wd-git {
+  margin-left: auto;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.wd-empty {
+  padding: 14px 10px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  text-align: center;
 }

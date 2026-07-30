@@ -6,6 +6,8 @@ const { execSync } = require('child_process');
 const HOME = process.env.HOME || '/home/coder';
 const SETTINGS_PATH = path.join(HOME, '.claude', 'settings.json');
 const TOKEN_SCRIPT = path.join(HOME, '.claude', 'get-claude-token.sh');
+const MODELS_CACHE_PATH = process.env.CCDW_MODELS_CACHE
+  || path.join(HOME, '.claude', 'models-cache.json');
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
@@ -128,8 +130,32 @@ function signAwsV4(method, urlStr, headers, body, region, service, credentials) 
   headers['authorization'] = `AWS4-HMAC-SHA256 Credential=${credentials.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 }
 
+// scripts/discover-models.py asks each provider what it actually has at
+// container start. When it succeeded, that list is both longer and more current
+// than the three env slots -- Claude Code takes an arbitrary id via --model, so
+// Chat is not limited to the slots the way the environment variables are.
+function discoveredModels(provider) {
+  try {
+    const cache = JSON.parse(fs.readFileSync(MODELS_CACHE_PATH, 'utf-8'));
+    const entry = cache.providers?.[provider === 'anthropic' ? 'api-key' : provider];
+    if (!entry || entry.source === 'fallback') return null;
+    const slots = entry.slots || {};
+    const tierOf = (id) => {
+      if (id === slots.haiku) return 'light';
+      if (id === slots.sonnet) return 'standard';
+      return 'heavy';
+    };
+    const models = (entry.models || [])
+      .filter(m => m.id)
+      .map(m => ({ id: m.id, label: m.display_name || m.id, tier: tierOf(m.id) }));
+    return models.length ? models : null;
+  } catch { return null; }
+}
+
 function getModels() {
   const provider = detectProvider();
+  const discovered = discoveredModels(provider);
+  if (discovered) return discovered;
   if (provider === 'anthropic') {
     return [
       { id: 'claude-opus-4-20250514', label: 'Claude Opus 4', tier: 'heavy' },
@@ -161,6 +187,16 @@ function getModels() {
 }
 
 function getDefaultModel() {
+  // Prefer the slot the provider config nominates (default_model: opus) over
+  // "whatever sorted first", so the default follows configuration, not version
+  // arithmetic that happens to tie.
+  try {
+    const provider = detectProvider();
+    const cache = JSON.parse(fs.readFileSync(MODELS_CACHE_PATH, 'utf-8'));
+    const entry = cache.providers?.[provider === 'anthropic' ? 'api-key' : provider];
+    const preferred = entry?.slots?.[entry?.default_model];
+    if (preferred) return preferred;
+  } catch { /* fall through to the ordered list */ }
   const models = getModels();
   return models.length > 0 ? models[0].id : null;
 }
@@ -313,4 +349,4 @@ function getProviderInfo() {
   };
 }
 
-module.exports = { detectProvider, getModels, getDefaultModel, buildRequest, getProviderInfo, parseEventStreamMessage, extractBedrockEvent };
+module.exports = { detectProvider, getModels, getDefaultModel, buildRequest, getProviderInfo, parseEventStreamMessage, extractBedrockEvent, readSettingsEnv };
