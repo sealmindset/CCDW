@@ -35,3 +35,8 @@ certs/*.crt
 certs/*.pem
 !certs/.gitkeep
 claude.ico
+
+# vim/editor swap files
+*.swp
+*.swo
+*~
