@@ -164,7 +164,7 @@ function getModels() {
     ];
   }
   if (provider === 'azure-foundry') {
-    const opus = env('ANTHROPIC_DEFAULT_OPUS_MODEL') || 'claude-opus-4-6';
+    const opus = env('ANTHROPIC_DEFAULT_OPUS_MODEL') || 'claude-opus-5';
     const sonnet = env('ANTHROPIC_DEFAULT_SONNET_MODEL') || 'claude-sonnet-4-6';
     const haiku = env('ANTHROPIC_DEFAULT_HAIKU_MODEL') || 'claude-haiku-4-5';
     return [

@@ -39,7 +39,7 @@ IFS=$'\n\t'                                     # safer word-splitting: drop the
 FOUNDRY_BASE_URL="${FOUNDRY_BASE_URL:-https://snapistg-scus.azure.sleepnumber.com/anthropic}"
 FOUNDRY_SONNET="${FOUNDRY_SONNET:-claude-sonnet-4-6}"
 FOUNDRY_HAIKU="${FOUNDRY_HAIKU:-claude-haiku-4-5}"
-FOUNDRY_OPUS="${FOUNDRY_OPUS:-claude-opus-4-8}"
+FOUNDRY_OPUS="${FOUNDRY_OPUS:-claude-opus-5}"
 FOUNDRY_TOKEN_RESOURCE="${FOUNDRY_TOKEN_RESOURCE:-https://cognitiveservices.azure.com}"
 FOUNDRY_DEFAULT_MODEL="${FOUNDRY_DEFAULT_MODEL:-opus}"
 

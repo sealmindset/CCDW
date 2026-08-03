@@ -23,7 +23,7 @@ const PROVIDER_DEFS = {
       { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-ant-...', required: true },
     ],
     models: [
-      { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', tier: 'heavy' },
+      { id: 'claude-opus-5', label: 'Claude Opus 5', tier: 'heavy' },
       { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', tier: 'standard' },
       { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', tier: 'light' },
     ],
@@ -49,7 +49,7 @@ const PROVIDER_DEFS = {
     modelFields: [
       { key: 'modelSonnet', label: 'Sonnet Deployment', type: 'text', placeholder: 'claude-sonnet-4-6', default: 'claude-sonnet-4-6' },
       { key: 'modelHaiku', label: 'Haiku Deployment', type: 'text', placeholder: 'claude-haiku-4-5', default: 'claude-haiku-4-5' },
-      { key: 'modelOpus', label: 'Opus Deployment', type: 'text', placeholder: 'claude-opus-4-6', default: 'claude-opus-4-6' },
+      { key: 'modelOpus', label: 'Opus Deployment', type: 'text', placeholder: 'claude-opus-5', default: 'claude-opus-5' },
     ],
     defaultModel: 'opus',
     prereqs: [],
@@ -332,7 +332,7 @@ function configureClaudeCode(envPath, providerId, config) {
       }
       varsToSet.ANTHROPIC_DEFAULT_SONNET_MODEL = config.modelSonnet || 'claude-sonnet-4-6';
       varsToSet.ANTHROPIC_DEFAULT_HAIKU_MODEL = config.modelHaiku || 'claude-haiku-4-5';
-      varsToSet.ANTHROPIC_DEFAULT_OPUS_MODEL = config.modelOpus || 'claude-opus-4-6';
+      varsToSet.ANTHROPIC_DEFAULT_OPUS_MODEL = config.modelOpus || 'claude-opus-5';
       break;
 
     case 'bedrock':
