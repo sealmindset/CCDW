@@ -140,6 +140,9 @@ COPY workshop/ /opt/claude-code-docker/workshop/
 RUN cd /opt/claude-code-docker/workshop && npm install --omit=dev ws
 COPY chat/ /opt/claude-code-docker/chat/
 COPY config/ /opt/claude-code-docker/config/
+# Wiki content (served at :3000/wiki). The make-it half of the wiki is read live
+# from ~/.claude/make-it/confluence-docs, so only this set needs baking in.
+COPY docs/confluence/ /opt/claude-code-docker/docs/confluence/
 # Fix CRLF line endings from Windows git checkouts, then set executable
 RUN sed -i 's/\r$//' /opt/claude-code-docker/scripts/*.sh \
     /opt/claude-code-docker/config/*.yml 2>/dev/null; \

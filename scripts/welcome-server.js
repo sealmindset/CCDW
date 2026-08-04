@@ -7,6 +7,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
+const wiki = require('./wiki-render.js');
 
 const welcomeDir = process.env.WELCOME_DIR || '/opt/claude-code-docker/welcome';
 const port = parseInt(process.env.WELCOME_PORT, 10) || 3000;
@@ -18,7 +19,12 @@ const mimeTypes = {
     '.js': 'application/javascript',
     '.png': 'image/png',
     '.svg': 'image/svg+xml',
-    '.ico': 'image/x-icon'
+    '.ico': 'image/x-icon',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.json': 'application/json'
 };
 
 function getStatus() {
@@ -751,6 +757,80 @@ const server = http.createServer((req, res) => {
             res.end(JSON.stringify({ lines }));
         } catch (e) {
             res.end(JSON.stringify({ lines: [] }));
+        }
+        return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Wiki (/wiki) — markdown from docs/confluence + ~/.claude/make-it/confluence-docs
+    // -------------------------------------------------------------------------
+    const urlPath = decodeURIComponent(req.url.split('?')[0]);
+    const query = new URLSearchParams(req.url.split('?')[1] || '');
+    const jsonHead = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+
+    if (urlPath === '/api/wiki/index') {
+        try {
+            res.writeHead(200, jsonHead);
+            res.end(JSON.stringify({ groups: wiki.buildIndex() }));
+        } catch (e) {
+            res.writeHead(500, jsonHead);
+            res.end(JSON.stringify({ error: String(e.message || e) }));
+        }
+        return;
+    }
+
+    if (urlPath === '/api/wiki/page') {
+        const doc = wiki.readDoc(query.get('id'));
+        if (!doc) {
+            res.writeHead(404, jsonHead);
+            res.end(JSON.stringify({ error: 'not_found' }));
+            return;
+        }
+        res.writeHead(200, jsonHead);
+        res.end(JSON.stringify({ id: doc.id, source: doc.source, title: doc.title, html: doc.html, toc: doc.toc }));
+        return;
+    }
+
+    if (urlPath === '/api/wiki/search') {
+        try {
+            res.writeHead(200, jsonHead);
+            res.end(JSON.stringify(wiki.buildSearchIndex()));
+        } catch (e) {
+            res.writeHead(500, jsonHead);
+            res.end(JSON.stringify({ error: String(e.message || e) }));
+        }
+        return;
+    }
+
+    if (urlPath.indexOf('/api/wiki/img/') === 0) {
+        const img = wiki.findImage(urlPath.slice('/api/wiki/img/'.length));
+        if (!img) { res.writeHead(404); res.end('Not found'); return; }
+        try {
+            res.writeHead(200, {
+                'Content-Type': mimeTypes[path.extname(img).toLowerCase()] || 'application/octet-stream',
+                'Cache-Control': 'no-store'
+            });
+            res.end(fs.readFileSync(img));
+        } catch (e) {
+            res.writeHead(404);
+            res.end('Not found');
+        }
+        return;
+    }
+
+    // Routes are hashes, so every /wiki path that isn't a real asset serves the shell.
+    if (urlPath === '/wiki' || urlPath === '/wiki/' ||
+        (urlPath.indexOf('/wiki/') === 0 && urlPath.indexOf('..') === -1 &&
+            !fs.existsSync(path.join(welcomeDir, urlPath)))) {
+        try {
+            res.writeHead(200, {
+                'Content-Type': 'text/html',
+                'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'
+            });
+            res.end(fs.readFileSync(path.join(welcomeDir, 'wiki', 'index.html')));
+        } catch (e) {
+            res.writeHead(404);
+            res.end('Wiki not installed');
         }
         return;
     }
