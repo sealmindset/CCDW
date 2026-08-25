@@ -42,6 +42,7 @@ if [ -f "$INSTALL_DIR/setup-claude-mac.command" ]; then
     echo -e "${GREEN}[OK]${NC}  Found existing install at $INSTALL_DIR"
     echo -e "${YELLOW}[...]${NC} Updating..."
     cd "$INSTALL_DIR"
+    git remote set-url origin https://github.com/sealmindset/CCDW.git 2>/dev/null || true
     git pull 2>/dev/null || true
 else
     echo -e "${YELLOW}[...]${NC} Downloading Claude Code Docker..."
@@ -50,8 +51,6 @@ else
 
     # Strategy 1: git clone
     if command -v git &>/dev/null; then
-        #if git clone https://github.com/sealmindset/CCDW.git "$INSTALL_DIR" 2>/dev/null; then
-        #if git clone https://github.com/sealmindset/CCDW.git "$INSTALL_DIR" 2>/dev/null; then
         if GIT_TERMINAL_PROMPT=0 git clone https://github.com/sealmindset/CCDW.git "$INSTALL_DIR" 2>/dev/null; then
             echo -e "${GREEN}[OK]${NC}  Downloaded via git."
             CLONE_OK=1
@@ -63,7 +62,6 @@ else
         echo -e "${YELLOW}[...]${NC} Trying ZIP download..."
         ZIP_PATH="${TMPDIR:-/tmp}/CCDW.zip"
         if curl -fsSL --connect-timeout 15 -o "$ZIP_PATH" \
-            #"https://github.com/sealmindset/CCDW/archive/refs/heads/main.zip" 2>/dev/null; then
             "https://github.com/sealmindset/CCDW/archive/refs/heads/main.zip" 2>/dev/null; then
             mkdir -p "$INSTALL_DIR"
             unzip -q "$ZIP_PATH" -d "${TMPDIR:-/tmp}" 2>/dev/null
