@@ -51,7 +51,8 @@ else
     # Strategy 1: git clone
     if command -v git &>/dev/null; then
         #if git clone https://github.com/sealmindset/CCDW.git "$INSTALL_DIR" 2>/dev/null; then
-        if git clone https://github.com/sealmindset/CCDW.git "$INSTALL_DIR" 2>/dev/null; then
+        #if git clone https://github.com/sealmindset/CCDW.git "$INSTALL_DIR" 2>/dev/null; then
+        if GIT_TERMINAL_PROMPT=0 git clone https://github.com/sealmindset/CCDW.git "$INSTALL_DIR" 2>/dev/null; then
             echo -e "${GREEN}[OK]${NC}  Downloaded via git."
             CLONE_OK=1
         fi
