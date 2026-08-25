@@ -3,7 +3,7 @@
 # Claude Code Docker — One-Line Bootstrap (macOS / Linux)
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/sealmindset/CCDW/main/bootstrap.sh | bash
 #
 # This downloads the full installer to a temp directory and runs it.
 # Everything else (Rancher Desktop, Docker, configuration) is automatic.
@@ -50,7 +50,8 @@ else
 
     # Strategy 1: git clone
     if command -v git &>/dev/null; then
-        if git clone https://github.com/SleepNumberInc/CCDW.git "$INSTALL_DIR" 2>/dev/null; then
+        #if git clone https://github.com/sealmindset/CCDW.git "$INSTALL_DIR" 2>/dev/null; then
+        if git clone https://github.com/sealmindset/CCDW.git "$INSTALL_DIR" 2>/dev/null; then
             echo -e "${GREEN}[OK]${NC}  Downloaded via git."
             CLONE_OK=1
         fi
@@ -61,7 +62,8 @@ else
         echo -e "${YELLOW}[...]${NC} Trying ZIP download..."
         ZIP_PATH="${TMPDIR:-/tmp}/CCDW.zip"
         if curl -fsSL --connect-timeout 15 -o "$ZIP_PATH" \
-            "https://github.com/SleepNumberInc/CCDW/archive/refs/heads/main.zip" 2>/dev/null; then
+            #"https://github.com/sealmindset/CCDW/archive/refs/heads/main.zip" 2>/dev/null; then
+            "https://github.com/sealmindset/CCDW/archive/refs/heads/main.zip" 2>/dev/null; then
             mkdir -p "$INSTALL_DIR"
             unzip -q "$ZIP_PATH" -d "${TMPDIR:-/tmp}" 2>/dev/null
             rm -rf "$INSTALL_DIR"
@@ -77,7 +79,7 @@ else
         echo ""
         echo "  Check:"
         echo "    1. VPN is connected (GlobalProtect)"
-        echo "    2. You have GitHub access to SleepNumberInc"
+        echo "    2. You have GitHub access to sealmindset"
         echo ""
         exit 1
     fi
