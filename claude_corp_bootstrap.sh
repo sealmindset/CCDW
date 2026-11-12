@@ -528,7 +528,7 @@ ensure_admin() {
   # (and so the whole installer) waiting after main() has finished.
   ( while kill -0 "$$" 2>/dev/null; do sudo -n -v 2>/dev/null || exit 0; sleep 45; done ) \
     >/dev/null 2>&1 </dev/null &
-  SUDO_KEEPALIVE_PID=$!
+  SUDO_KEEPALIVE_PID=$!; disown "$SUDO_KEEPALIVE_PID" 2>/dev/null || true   # no "Terminated" line when cleanup() kills it
   record "Admin rights  : used for ${ADMIN_REASONS}"
 
   if [[ ${#OWNER_FIX[@]} -gt 0 ]]; then
@@ -1227,7 +1227,7 @@ MAKEIT_REF="${MAKEIT_REF:-}"
 ensure_makeit() {
   step "Installing the /make-it skills"
   local installed=""
-  installed="$(tr -d '[:space:]' < "${CLAUDE_DIR}/make-it/VERSION" 2>/dev/null || true)"
+  installed="$(tr -d '[:space:]' 2>/dev/null < "${CLAUDE_DIR}/make-it/VERSION" || true)"
   if [[ -z "$MAKEIT_REF" && -n "$installed" && -f "${CLAUDE_DIR}/commands/make-it.md" ]]; then
     success "/make-it skills already installed (v${installed}). Update later with '/make-it update'."
     record "/make-it      : present (v${installed})"
@@ -1258,7 +1258,7 @@ ensure_makeit() {
   # Run from a neutral folder; output goes to the log, not the screen.
   if (cd /tmp && bash "${src}/install.sh" </dev/null >"$out" 2>&1) \
      && [[ -f "${CLAUDE_DIR}/commands/make-it.md" ]]; then
-    installed="$(tr -d '[:space:]' < "${CLAUDE_DIR}/make-it/VERSION" 2>/dev/null || echo '?')"
+    installed="$(tr -d '[:space:]' 2>/dev/null < "${CLAUDE_DIR}/make-it/VERSION" || echo '?')"
     { printf -- '--- make-it install.sh output ---\n'; cat "$out"; } >> "$LOG_FILE" 2>/dev/null || true
     success "/make-it skills installed (v${installed}, $(ls "${CLAUDE_DIR}/commands/"*-it.md 2>/dev/null | wc -l | tr -d ' ') skills)."
     record "/make-it      : installed (v${installed})"
@@ -1547,7 +1547,7 @@ main() {
   # Keep the Mac awake while installing (released when the installer exits).
   if command -v caffeinate >/dev/null 2>&1; then
     caffeinate -i -m -s -w "$$" >/dev/null 2>&1 &
-    CAFFEINATE_PID=$!
+    CAFFEINATE_PID=$!; disown "$CAFFEINATE_PID" 2>/dev/null || true
   fi
 
   banner
