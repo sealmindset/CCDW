@@ -35,6 +35,9 @@
 #     FORCE_TOKEN_HELPER=1   replace a hand-written ~/.claude/get-claude-token.sh
 #                            (default: a helper this script did not write is kept)
 #     SKIP_GATEWAY_TEST=1    skip the live requests at the end
+#     SKIP_CORP_CHECKS=1     TESTING ONLY (e.g. a VM off the corporate network):
+#                            skip the VPN check, Microsoft sign-in, token and
+#                            gateway checks; everything else runs as normal
 #     MAKEIT_REF=<commit|branch>  install that /make-it version instead of the
 #                            pinned, tested one (also forces a reinstall)
 #
@@ -372,6 +375,13 @@ check_network() {
           "Check the network (or pause Zscaler for 15 minutes), then run this again."
   fi
   success "Microsoft sign-in reachable."
+
+  if [[ "${SKIP_CORP_CHECKS:-0}" == "1" ]]; then
+    info "Test mode (SKIP_CORP_CHECKS=1): not checking the VPN / AI gateway."
+    GATEWAY_REACHABLE="skipped"
+    record "Test mode     : VPN, sign-in, token and gateway checks SKIPPED"
+    return 0
+  fi
 
   local attempt
   for ((attempt = 1; attempt <= 4; attempt++)); do
@@ -1308,6 +1318,12 @@ check_env_conflicts() {
 ensure_azure_login() {
   step "Signing in to Microsoft (Azure)"
 
+  if [[ "${SKIP_CORP_CHECKS:-0}" == "1" ]]; then
+    info "Skipped (SKIP_CORP_CHECKS=1)."
+    record "Azure sign-in : skipped (test mode)"
+    return 0
+  fi
+
   if "$LOGIN_CMD" --check </dev/null >/dev/null 2>&1; then
     success "Already signed in to Azure."
     AZ_LOGGED_IN="yes"
@@ -1344,6 +1360,11 @@ ensure_azure_login() {
 # ----------------------------------------------------------------------------
 verify_token() {
   step "Checking the Azure token"
+  if [[ "${SKIP_CORP_CHECKS:-0}" == "1" ]]; then
+    TOKEN_OK="skipped"
+    record "Token         : skipped (test mode)"
+    return 0
+  fi
   if [[ "$AZ_LOGGED_IN" != "yes" ]]; then
     record "Token         : skipped (not signed in)"
     return 0
@@ -1362,8 +1383,8 @@ verify_token() {
 verify_gateway() {
   step "Testing the AI gateway (a 1-token request to each model)"
 
-  if [[ "${SKIP_GATEWAY_TEST:-0}" == "1" ]]; then
-    info "Skipped (SKIP_GATEWAY_TEST=1)."
+  if [[ "${SKIP_GATEWAY_TEST:-0}" == "1" || "${SKIP_CORP_CHECKS:-0}" == "1" ]]; then
+    info "Skipped (test mode)."
     record "Gateway test  : skipped"
     return 0
   fi
@@ -1476,7 +1497,9 @@ print_summary() {
   for line in ${SUMMARY_LINES[@]+"${SUMMARY_LINES[@]}"}; do printf '  %s\n' "$line"; done
   printf '%s-----------------------------------------------------------%s\n' "${C_BLU}" "${C_RESET}"
 
-  if [[ ${#PROBLEMS[@]} -eq 0 && "$CLAUDE_OK" == "yes" && "$TOKEN_OK" == "yes" \
+  # TOKEN_OK is "skipped" only with SKIP_CORP_CHECKS=1; the summary then shows
+  # a "Test mode … SKIPPED" line, so a test ALL SET can't pass for a real one.
+  if [[ ${#PROBLEMS[@]} -eq 0 && "$CLAUDE_OK" == "yes" && "$TOKEN_OK" != "no" \
         && ( "$GATEWAY_OK" == "yes" || "$GATEWAY_OK" == "untested" ) ]]; then
     printf '\n%s============================================================%s\n' "${C_GRN}" "${C_RESET}"
     printf '%s  ALL SET — Claude Code is installed and connected.%s\n\n' "${C_GRN}${C_BOLD}" "${C_RESET}"

@@ -85,6 +85,8 @@ The `settings.json` keys it writes:
 
 Advanced users can override the defaults via env vars (`FOUNDRY_BASE_URL`, `FOUNDRY_DEFAULT_MODEL`, `FOUNDRY_SONNET`, `FOUNDRY_HAIKU`, `FOUNDRY_OPUS`, `FOUNDRY_TOKEN_RESOURCE`, `FOUNDRY_TENANT_ID`, `FOUNDRY_TOKEN_TTL_MS`, `FORCE_TOKEN_HELPER`, `SKIP_GATEWAY_TEST`, `MAKEIT_REF`) before running the command.
 
+For testing off the corporate network (for example in a VM), `SKIP_CORP_CHECKS=1` skips the VPN check, Microsoft sign-in, token and gateway checks; everything else runs normally. The summary then shows a "Test mode … SKIPPED" line, so a test ALL SET is not proof that Claude Code can reach the gateway.
+
 ### One-Click Install (If You Have the Repo)
 
 - **macOS:** Double-click `setup-claude-mac.command`
