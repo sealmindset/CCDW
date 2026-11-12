@@ -33,30 +33,57 @@ The installer handles everything automatically: Rancher Desktop, Docker, AI prov
 
 Choose this if you just want the Claude Code CLI running directly on your Mac — no Docker, no container — wired up to corporate Azure AI Foundry auth.
 
+Download `claude_corp_bootstrap.sh` (attached to the "Vibe Code for macOS" Confluence page) and run it from Terminal:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/claude_corp_bootstrap.sh | bash
+bash ~/Downloads/claude_corp_bootstrap.sh
 ```
+
+or, with the repo published, `curl -fsSL https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/claude_corp_bootstrap.sh | bash`.
 
 **What it does:**
 
-- Installs Homebrew (if missing) plus `git`, `jq`, and the Azure CLI.
-- Installs Claude Code natively on your Mac and adds it to your `PATH`.
-- Writes an Azure token helper that hands Claude Code a short-lived Azure AD bearer token (no token is ever printed or stored in plaintext).
-- Safely deep-merges Azure AI Foundry settings into `~/.claude/settings.json` (timestamped backup, atomic write, your existing plugins/keys preserved).
-- Probes corporate TLS/proxy and network reachability, and prints the exact IT allowlist if cert-inspection blocks the install.
+- Checks the Mac and the network first: macOS 13+, not root, Apple Silicon vs Intel (re-runs itself natively under Rosetta), disk space, Zscaler certificate trust, and whether the AI gateway is reachable. If the VPN is off, it waits for you to connect it.
+- Asks for the Mac password at most once, and only if something needs installing. If the account's temporary admin access is off, it waits, or stops with the reason before changing anything. The cached password is cleared at the end.
+- Installs only what is missing: Apple Command Line Tools (headless, same method Homebrew uses), Homebrew, `jq`, and the Azure CLI. Nothing Docker, Rancher, or container-related is installed.
+- Installs Claude Code natively (`~/.local/bin/claude`), retrying a dropped download, and adds `~/.local/bin` to `PATH` in `~/.zprofile` and `~/.zshrc`.
+- Writes an Azure token helper (`~/.claude/get-claude-token.sh`) that hands Claude Code a short-lived Entra bearer token. The token is never printed or written to disk. The helper never starts a sign-in itself; when the sign-in has expired, its error tells the person to run `claude-login`. A hand-written helper is left alone (`FORCE_TOKEN_HELPER=1` replaces it).
+- Writes `~/.local/bin/claude-login`, which signs in to the Sleep Number tenant with the Cognitive Services scope. It tries the browser first and falls back to a device code (copied to the clipboard, page opened). It works for accounts with no Azure subscription. If `az` hits TLS inspection, it gives `az` the macOS trust store. The installer uses this same command for the first sign-in.
+- Deep-merges the Foundry settings into `~/.claude/settings.json`, with a timestamped backup and an atomic write. Your existing hooks, plugins, and keys are kept. It removes keys that defeat Foundry mode (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, other provider flags, the dead `apiKeyHelperTtlMs`) and lists each one it removes.
+- Pre-sets `~/.claude.json` so Claude Code opens straight to the prompt. On a new account its first-run folder-trust question defaults to "No, exit", which quits on Return.
+- Installs the `/make-it` skills, pinned to the tested commit (`MAKEIT_REF` overrides it) and never downgrading an existing install. Building and running apps with `/make-it` needs Docker, which this installer deliberately does not install.
+- Flags any `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` exported from your shell profiles. It reports the file and line only and does not edit the file.
+- Proves access end to end: sends a 1-token request to each model (opus, sonnet, haiku) through the gateway, then gets a one-word reply from `claude -p`.
+- Logs every run to `~/Library/Logs/claude_corp_bootstrap/`. Exit codes: 0 = proven working, 2 = stopped with the reason, 3 = installed but the final checks did not pass.
 - Fully idempotent — safe to re-run any time.
 
-**Requirements:** macOS 13+, corporate VPN connected, and an Azure AD account with Foundry access. No Docker required.
+The `settings.json` keys it writes:
 
-**After install:**
+```json
+{
+  "apiKeyHelper": "~/.claude/get-claude-token.sh",
+  "model": "opus",
+  "env": {
+    "CLAUDE_CODE_USE_FOUNDRY": "1",
+    "CLAUDE_CODE_SKIP_FOUNDRY_AUTH": "1",
+    "CLAUDE_CODE_API_KEY_HELPER_TTL_MS": "1800000",
+    "ANTHROPIC_FOUNDRY_BASE_URL": "https://snapi-scus.azure.sleepnumber.com/anthropic",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5-5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5"
+  }
+}
+```
 
-1. Open a new terminal.
-2. Run `az login --use-device-code`.
-3. Run `claude` — there's no browser OAuth; it authenticates with your Azure token.
+`CLAUDE_CODE_SKIP_FOUNDRY_AUTH=1` is required. Without it, Claude Code ignores `apiKeyHelper` and falls back to the Azure credential chain.
 
-> If you later hit a `401`, just re-run `az login --use-device-code` to refresh your token.
+**Requirements:** macOS 13+, corporate VPN connected, and an Entra account with access to the Foundry gateway. No Docker required.
 
-Advanced users can override the defaults via env vars (`FOUNDRY_BASE_URL`, `FOUNDRY_DEFAULT_MODEL`, `FOUNDRY_SONNET`, `FOUNDRY_HAIKU`, `FOUNDRY_OPUS`, `FOUNDRY_TOKEN_RESOURCE`) before running the command.
+**After install:** open a new Terminal window and run `claude`. `/status` should show Microsoft Foundry.
+
+> If Claude Code later reports `apiKeyHelper failed … Not signed in to Azure`, run `claude-login` in a Terminal window, then type `continue` in Claude Code. A `403` means your account isn't authorized on the gateway; signing in again won't fix it.
+
+Advanced users can override the defaults via env vars (`FOUNDRY_BASE_URL`, `FOUNDRY_DEFAULT_MODEL`, `FOUNDRY_SONNET`, `FOUNDRY_HAIKU`, `FOUNDRY_OPUS`, `FOUNDRY_TOKEN_RESOURCE`, `FOUNDRY_TENANT_ID`, `FOUNDRY_TOKEN_TTL_MS`, `FORCE_TOKEN_HELPER`, `SKIP_GATEWAY_TEST`, `MAKEIT_REF`) before running the command.
 
 ### One-Click Install (If You Have the Repo)
 
