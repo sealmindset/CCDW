@@ -249,8 +249,9 @@ ask_enter() {
 }
 
 # Append $1 to file $2 only if not already present (literal match).
+# $3 (optional): what to show instead of the line itself.
 ensure_line() {
-  local line="$1" file="$2"
+  local line="$1" file="$2" label="${3:-$1}"
   if [[ -e "$file" && ! -w "$file" ]]; then
     warn "Cannot write $(basename "$file") (owned by another user) — skipped."
     problem "Fix ownership of ${file} (run the installer again; it repairs this with your password)."
@@ -261,7 +262,7 @@ ensure_line() {
     info "Already in $(basename "$file")."
   else
     printf '\n%s\n' "$line" >> "$file"
-    success "Added to $(basename "$file"): ${line}"
+    success "Added to $(basename "$file"): ${label}"
   fi
 }
 
@@ -684,9 +685,10 @@ ensure_path() {
   # WORKSPACE); anywhere else it is untouched. 'function' form + unalias: an
   # old 'alias claude=…' would otherwise break or bypass the definition.
   local wrapper='unalias claude 2>/dev/null; function claude { if [ "$PWD" = "$HOME" ]; then (cd "$HOME/Claude" && command claude "$@"); else command claude "$@"; fi; }  # claude_corp_bootstrap.sh: start in ~/Claude, not the home folder'
-  ensure_line "$wrapper" "${HOME}/.zshrc"
+  local wlabel="Claude Code starts in ~/Claude when run from your home folder"
+  ensure_line "$wrapper" "${HOME}/.zshrc" "$wlabel"
   case "$(login_shell)" in
-    */bash) ensure_line "$line" "${HOME}/.bash_profile"; ensure_line "$wrapper" "${HOME}/.bash_profile" ;;
+    */bash) ensure_line "$line" "${HOME}/.bash_profile"; ensure_line "$wrapper" "${HOME}/.bash_profile" "$wlabel" ;;
   esac
   case ":${PATH}:" in
     *":${LOCAL_BIN}:"*) : ;;
