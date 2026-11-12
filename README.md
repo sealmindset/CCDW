@@ -41,6 +41,8 @@ bash ~/Downloads/claude_corp_bootstrap.sh
 
 or, with the repo published, `curl -fsSL https://raw.githubusercontent.com/SleepNumberInc/CCDW/main/claude_corp_bootstrap.sh | bash`.
 
+If macOS asks **"Terminal" would like to access files in your Downloads folder**, click **Allow** — the installer is in Downloads, and *Don't Allow* stops Terminal from reading it.
+
 **What it does:**
 
 - Checks the Mac and the network first: macOS 13+, not root, Apple Silicon vs Intel (re-runs itself natively under Rosetta), disk space, Zscaler certificate trust, and whether the AI gateway is reachable. If the VPN is off, it waits for you to connect it.
