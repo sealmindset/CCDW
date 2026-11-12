@@ -782,9 +782,36 @@ if [ -f "$LOG" ] && [ "$(wc -c <"$LOG" 2>/dev/null || echo 0)" -gt 1048576 ]; th
     tail -n 200 "$LOG" >"$LOG.tmp" 2>/dev/null && mv "$LOG.tmp" "$LOG"
 fi
 
+ERR="$(mktemp -t claude-token)" || exit 1
+trap 'rm -f "$ERR"' EXIT
+
 get_token() {
     az account get-access-token --tenant "$TENANT" --resource "$RESOURCE" \
-        --query accessToken -o tsv 2>>"$LOG"
+        --query accessToken -o tsv 2>"$ERR"
+    local rc=$?
+    cat "$ERR" >>"$LOG" 2>/dev/null
+    return $rc
+}
+
+tls_error() {
+    grep -qiE 'CERTIFICATE_VERIFY_FAILED|certificate verify failed|SSLError|SSLCertVerificationError' "$ERR" 2>/dev/null
+}
+
+# Behind TLS inspection (Zscaler) az's own CA list lacks the corporate root,
+# so token refreshes fail once the cached token expires. Give az the Mac's
+# trust store, where MDM installs that root, and retry. Rebuilt on every
+# certificate error, so a rotated corporate root is picked up.
+use_mac_certs() {
+    tls_error || return 1
+    security find-certificate -a -p \
+        /System/Library/Keychains/SystemRootCertificates.keychain \
+        /Library/Keychains/System.keychain >"$CA_BUNDLE.tmp" 2>/dev/null
+    if [ -s "$CA_BUNDLE.tmp" ] && mv "$CA_BUNDLE.tmp" "$CA_BUNDLE"; then
+        export REQUESTS_CA_BUNDLE="$CA_BUNDLE"
+        return 0
+    fi
+    rm -f "$CA_BUNDLE.tmp"
+    return 1
 }
 
 if ! command -v az >/dev/null 2>&1; then
@@ -793,6 +820,9 @@ if ! command -v az >/dev/null 2>&1; then
 fi
 
 TOKEN="$(get_token)"
+if [ -z "$TOKEN" ] && use_mac_certs; then
+    TOKEN="$(get_token)"
+fi
 if [ -z "$TOKEN" ]; then
     sleep 2
     TOKEN="$(get_token)"
@@ -800,7 +830,11 @@ fi
 
 if [ -z "$TOKEN" ]; then
     printf '%s token request failed (details above)\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" >>"$LOG"
-    echo "Not signed in to Azure. Open a new Terminal window, type claude-login and press Return, then try again here." >&2
+    if tls_error; then
+        echo "Microsoft sign-in is blocked by a certificate problem (network inspection, e.g. Zscaler). Pause Zscaler and try again, or send ~/.claude/azure-token-helper.log to the AI CoE team." >&2
+    else
+        echo "Not signed in to Azure. Open a new Terminal window, type claude-login and press Return, then try again here." >&2
+    fi
     exit 1
 fi
 
@@ -907,9 +941,9 @@ tls_problem() {
 }
 
 # Give az (Python) the macOS trust store, which holds the corporate root
-# certificate. Only done after az actually hit a certificate error.
+# certificate. Only done after az actually hit a certificate error; rebuilt
+# each time, so a stale bundle (e.g. a rotated corporate root) is replaced.
 build_ca_bundle() {
-    [ -s "$CA_BUNDLE" ] && return 1
     mkdir -p "$(dirname "$CA_BUNDLE")"
     security find-certificate -a -p \
         /System/Library/Keychains/SystemRootCertificates.keychain \
