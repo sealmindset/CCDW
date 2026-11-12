@@ -602,6 +602,7 @@ ensure_homebrew() {
     if NONINTERACTIVE=1 /bin/bash -c \
          "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null; then
       success "Homebrew installed."
+      info "Homebrew's 'Next steps' above are done for you on the next line — nothing to type."
       record "Homebrew      : installed"
     else
       fatal "The Homebrew installer failed (see the messages above)." \
