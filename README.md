@@ -79,7 +79,7 @@ The `settings.json` keys it writes:
 
 `CLAUDE_CODE_SKIP_FOUNDRY_AUTH=1` is required. Without it, Claude Code ignores `apiKeyHelper` and falls back to the Azure credential chain.
 
-**Requirements:** macOS 13+, corporate VPN connected, and an Entra account with access to the Foundry gateway. No Docker required.
+**Requirements:** macOS 13+, the AI gateway reachable — on the office network, or over the corporate VPN when away — and an Entra account with access to the Foundry gateway. No Docker required. Away from the office, Claude Code also needs the VPN day to day; without it, it reports *Can't reach the API server … (ENOTFOUND)*.
 
 **After install:** open a new Terminal window and run `claude`. `/status` should show Microsoft Foundry.
 
