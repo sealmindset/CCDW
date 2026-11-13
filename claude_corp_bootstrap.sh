@@ -1,597 +1,1091 @@
 #!/usr/bin/env bash
 #
 # ============================================================================
-# claude_corp_bootstrap.sh
-#   Install every prerequisite to run Claude Code NATIVE on a corporate Mac
-#   and wire it up to AZURE AI FOUNDRY (Azure Entra-token auth) instead of the
-#   public claude.ai OAuth login. Installs Claude Code itself, installs the
-#   Azure CLI, configures ~/.claude/settings.json + a token helper, then
-#   verifies — surfacing corporate network/cert/VPN issues clearly instead of
-#   dying cryptically.
+# claude_corp_bootstrap.sh — Claude Code for Sleep Number Macs
 #
-#   In Foundry mode there is NO claude.ai browser OAuth: authentication is an
-#   Azure access token minted by 'az' and handed to Claude Code via apiKeyHelper.
+#   Installs Claude Code NATIVELY on macOS and connects it to the Sleep Number
+#   Azure AI Foundry gateway. No Docker, no Rancher Desktop, no containers,
+#   no VM — nothing in this script installs or touches a container runtime.
 #
-#   Usage (quick):
-#     curl -fsSL https://raw.githubusercontent.com/<org>/<repo>/main/claude_corp_bootstrap.sh | bash
+#   Run it from Terminal (the file usually lands in Downloads):
+#     bash ~/Downloads/claude_corp_bootstrap.sh
 #
-#   Usage (safer — inspect first, then run the SAME file you read):
-#     curl -fsSL https://raw.githubusercontent.com/<org>/<repo>/main/claude_corp_bootstrap.sh -o /tmp/claude_corp_bootstrap.sh
-#     less /tmp/claude_corp_bootstrap.sh
-#     shasum -a 256 /tmp/claude_corp_bootstrap.sh    # compare to published checksum
-#     bash /tmp/claude_corp_bootstrap.sh
+#   What it does, in order. Every step skips itself when already done, so it
+#   is safe to run again at any time:
+#     1. Checks the Mac: macOS 13+, not root, Apple Silicon/Intel, disk space
+#     2. Checks the network: internet, Zscaler certificate trust, the AI
+#        gateway (needs the Sleep Number VPN)
+#     3. Asks for the Mac password ONCE, only if something needs installing:
+#        Apple Command Line Tools, Homebrew, jq, Azure CLI
+#     4. Installs Claude Code (native: ~/.local/bin/claude)
+#     5. Writes ~/.claude/get-claude-token.sh, ~/.local/bin/claude-login and
+#        ~/.claude/settings.json, skips Claude Code's first-run screens, and
+#        installs the /make-it skills (pinned; building apps with them needs
+#        Docker, which this installer deliberately does not install)
+#     6. Signs in to Microsoft/Azure (browser; falls back to a device code)
+#     7. Proves it works: a real 1-token request to every model, then a reply
+#        from 'claude -p'
+#
+#   Every run is logged to ~/Library/Logs/claude_corp_bootstrap/
 #
 #   Configurable via env vars (defaults are Sleep Number's working values):
 #     FOUNDRY_BASE_URL  FOUNDRY_SONNET  FOUNDRY_HAIKU  FOUNDRY_OPUS
-#     FOUNDRY_TOKEN_RESOURCE  FOUNDRY_DEFAULT_MODEL  FOUNDRY_TOKEN_TTL_MS
+#     FOUNDRY_TOKEN_RESOURCE  FOUNDRY_TENANT_ID  FOUNDRY_DEFAULT_MODEL
+#     FOUNDRY_TOKEN_TTL_MS
+#     FORCE_TOKEN_HELPER=1   replace a hand-written ~/.claude/get-claude-token.sh
+#                            (default: a helper this script did not write is kept)
+#     SKIP_GATEWAY_TEST=1    skip the live requests at the end
+#     SKIP_CORP_CHECKS=1     TESTING ONLY (e.g. a VM off the corporate network):
+#                            skip the VPN check, Microsoft sign-in, token and
+#                            gateway checks; everything else runs as normal
+#     MAKEIT_REF=<commit|branch>  install that /make-it version instead of the
+#                            pinned, tested one (also forces a reinstall)
 #
-#   Safe to re-run: every step is idempotent (skips if already present).
+#   Exit codes: 0 installed and proven working
+#               1 unexpected error (line number printed)
+#               2 stopped on purpose, with the reason and the fix printed
+#               3 installed, but the final checks did not pass (reason printed)
 # ============================================================================
-#
+
+# --- Must run under bash, not sh or zsh. Plain POSIX until bash is confirmed.
+if [ -z "${BASH_VERSION:-}" ]; then
+  if [ -f "$0" ]; then exec /bin/bash "$0" "$@"; fi
+  echo "Please run this installer with bash:  bash claude_corp_bootstrap.sh" >&2
+  exit 1
+fi
+# 'sh file' on macOS is bash in POSIX mode, which disables features used below.
+set +o posix 2>/dev/null || true
+# Apple Silicon Mac with Terminal running under Rosetta: re-run natively, or
+# Homebrew would be installed for Intel in the wrong place.
+if [ "$(/usr/sbin/sysctl -n sysctl.proc_translated 2>/dev/null)" = "1" ] && [ -f "$0" ]; then
+  exec /usr/bin/arch -arm64 /bin/bash "$0" "$@"
+fi
+
 # NOTE ON 'set -E': errtrace is REQUIRED. Without it an ERR trap is not
-# inherited by shell functions, and every step below is a function — the trap
-# would never fire and a failure would exit 1 with no message at all.
+# inherited by shell functions, and every step below is a function.
 set -Eeuo pipefail
 shopt -s inherit_errexit 2>/dev/null || true   # macOS /bin/bash 3.2 lacks this; guard it
 IFS=$'\n\t'                                     # safer word-splitting: drop the space
+umask 022
 
 # ----------------------------------------------------------------------------
-# Foundry configuration — override via env; defaults are Sleep Number's working
-# values. These flow into ~/.claude/settings.json and the TLS/allowlist checks.
+# Foundry configuration — override via env; defaults are Sleep Number's
+# working values (identical to a known-good ~/.claude/settings.json).
 # ----------------------------------------------------------------------------
-FOUNDRY_BASE_URL="${FOUNDRY_BASE_URL:-https://snapistg-scus.azure.sleepnumber.com/anthropic}"
-FOUNDRY_SONNET="${FOUNDRY_SONNET:-claude-sonnet-4-6}"
+# The Sleep Number Anthropic gateway. It accepts Anthropic model ids directly
+# (no 'cogdep-…' deployment names) and authenticates the bearer token that the
+# apiKeyHelper supplies.
+FOUNDRY_BASE_URL="${FOUNDRY_BASE_URL:-https://snapi-scus.azure.sleepnumber.com/anthropic}"
+FOUNDRY_SONNET="${FOUNDRY_SONNET:-claude-sonnet-5}"
 FOUNDRY_HAIKU="${FOUNDRY_HAIKU:-claude-haiku-4-5}"
-FOUNDRY_OPUS="${FOUNDRY_OPUS:-claude-opus-5}"
+FOUNDRY_OPUS="${FOUNDRY_OPUS:-claude-opus-5-5}"
 FOUNDRY_TOKEN_RESOURCE="${FOUNDRY_TOKEN_RESOURCE:-https://cognitiveservices.azure.com}"
+# Sleep Number Corporation Entra tenant. Signing in against it explicitly, with
+# the Cognitive Services scope, satisfies Conditional Access (MFA) for the token
+# audience up front; a bare 'az login' can leave every later token request
+# failing with AADSTS50076.
+FOUNDRY_TENANT_ID="${FOUNDRY_TENANT_ID:-ed8aabd5-14de-4982-9fb6-d6528851af5e}"
 FOUNDRY_DEFAULT_MODEL="${FOUNDRY_DEFAULT_MODEL:-opus}"
-# Cache the apiKeyHelper result. Azure access tokens live ~60-90 min; 55 min
-# keeps a safety margin. Without this, Claude Code re-runs the helper (two 'az'
-# Python process starts) far more often than the token actually needs minting.
-FOUNDRY_TOKEN_TTL_MS="${FOUNDRY_TOKEN_TTL_MS:-3300000}"
+# How often Claude Code re-runs the apiKeyHelper (CLAUDE_CODE_API_KEY_HELPER_TTL_MS).
+# This is NOT the token lifetime: Entra access tokens live ~60 min. Setting this
+# above the lifetime makes Claude Code keep serving an expired bearer (401s);
+# 30 min always refreshes before expiry while keeping 'az' process starts rare.
+FOUNDRY_TOKEN_TTL_MS="${FOUNDRY_TOKEN_TTL_MS:-1800000}"
+if ! [[ "$FOUNDRY_TOKEN_TTL_MS" =~ ^[0-9]+$ ]]; then
+  printf '[FAIL]  FOUNDRY_TOKEN_TTL_MS must be a whole number of milliseconds (got: %s)\n' \
+    "$FOUNDRY_TOKEN_TTL_MS" >&2
+  exit 1
+fi
 
 CLAUDE_DIR="${HOME}/.claude"
 SETTINGS_FILE="${CLAUDE_DIR}/settings.json"
 TOKEN_HELPER="${CLAUDE_DIR}/get-claude-token.sh"
-# apiKeyHelper as stored in settings.json (keep the literal ~ form the user runs).
-TOKEN_HELPER_TILDE="~/.claude/get-claude-token.sh"
+TOKEN_HELPER_TILDE="~/.claude/get-claude-token.sh"   # as stored in settings.json
+LOCAL_BIN="${HOME}/.local/bin"
+CLAUDE_BIN="${LOCAL_BIN}/claude"
+LOGIN_CMD="${LOCAL_BIN}/claude-login"
+CLAUDE_STATE="${HOME}/.claude.json"                  # Claude Code's own state file
+# Where Claude Code starts. NOT the home folder: started there, Claude Code
+# scans it and macOS asks Terminal for Downloads, Documents, Desktop and the
+# Photo Library, one pop-up after another (seen on a fresh macOS 26 Mac).
+WORKSPACE="${HOME}/Claude"
+AZ_CA_BUNDLE="${CLAUDE_DIR}/azure-ca-bundle.pem"     # only created if az hits TLS inspection
+GENERATED_MARKER="Auto-generated by claude_corp_bootstrap.sh"
+SUPPORT_CONTACT="${SUPPORT_CONTACT:-the AI CoE team}"
+
+LOG_DIR="${HOME}/Library/Logs/claude_corp_bootstrap"
+LOG_FILE="${LOG_DIR}/install-$(date +%Y%m%d-%H%M%S).log"
+LOCK_DIR="${TMPDIR:-/tmp}/claude_corp_bootstrap.lock"
 
 # Derive the Foundry hostname from the base URL for connectivity checks.
-FOUNDRY_HOST="${FOUNDRY_BASE_URL#*://}"   # strip scheme
-FOUNDRY_HOST="${FOUNDRY_HOST%%/*}"        # strip path
-FOUNDRY_HOST="${FOUNDRY_HOST%%:*}"        # strip port
+FOUNDRY_HOST="${FOUNDRY_BASE_URL#*://}"; FOUNDRY_HOST="${FOUNDRY_HOST%%/*}"; FOUNDRY_HOST="${FOUNDRY_HOST%%:*}"
+
+# The one manual sign-in command (shown only if the automatic one can't run).
+AZ_LOGIN_CMD="az login --tenant ${FOUNDRY_TENANT_ID} --scope ${FOUNDRY_TOKEN_RESOURCE}/.default --allow-no-subscriptions"
+
+# Keys removed from an existing settings.json because they defeat Foundry mode:
+#   - a first-party key/token or another provider flag reroutes or masks Foundry
+#   - ANTHROPIC_FOUNDRY_API_KEY / _RESOURCE compete with the gateway + helper
+#   - top-level 'apiKeyHelperTtlMs' was written by earlier versions of this
+#     script; Claude Code has no such setting, so it never took effect.
+STALE_ENV_KEYS_JSON='["ANTHROPIC_API_KEY","ANTHROPIC_AUTH_TOKEN","ANTHROPIC_FOUNDRY_API_KEY","ANTHROPIC_FOUNDRY_RESOURCE","CLAUDE_CODE_USE_BEDROCK","CLAUDE_CODE_USE_VERTEX"]'
+# shellcheck disable=SC2016  # $stale is a jq variable, not a shell one
+JQ_CLEAN_DEF='def clean:
+  del(.apiKeyHelperTtlMs)
+  | if (.env | type) == "object"
+    then .env |= with_entries(select(.key as $k | any($stale[]; . == $k) | not))
+    else . end;'
 
 # ----------------------------------------------------------------------------
-# Colored logging — degrades gracefully on non-TTY (no color when piped) and
-# honors the NO_COLOR convention.
+# Output. Colour is decided here, before output is copied into the log file.
 # ----------------------------------------------------------------------------
 if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]] && command -v tput >/dev/null 2>&1 \
    && [[ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]]; then
   C_RESET=$'\033[0m'; C_RED=$'\033[0;31m'; C_YEL=$'\033[1;33m'
-  C_GRN=$'\033[0;32m'; C_BLU=$'\033[0;34m'
+  C_GRN=$'\033[0;32m'; C_BLU=$'\033[0;34m'; C_BOLD=$'\033[1m'
 else
-  C_RESET=''; C_RED=''; C_YEL=''; C_GRN=''; C_BLU=''
+  C_RESET=''; C_RED=''; C_YEL=''; C_GRN=''; C_BLU=''; C_BOLD=''
 fi
 
 WARN_COUNT=0
-step()    { printf '\n%s[STEP]%s %s\n'    "${C_BLU}" "${C_RESET}" "$*"; }
-info()    { printf '%s[INFO]%s  %s\n'      "${C_BLU}" "${C_RESET}" "$*"; }
-success() { printf '%s[ OK ]%s  %s\n'      "${C_GRN}" "${C_RESET}" "$*"; }
-warn()    { printf '%s[WARN]%s  %s\n'      "${C_YEL}" "${C_RESET}" "$*" >&2; WARN_COUNT=$((WARN_COUNT+1)); }
-error()   { printf '%s[FAIL]%s  %s\n'      "${C_RED}" "${C_RESET}" "$*" >&2; }
+# 'local IFS=" "': "$*" joins arguments with IFS's first character, which the
+# script-wide IFS (newline) would turn into a line break.
+step()    { local IFS=' '; printf '\n%s[STEP]%s %s\n'    "${C_BLU}" "${C_RESET}" "$*"; }
+info()    { local IFS=' '; printf '%s[INFO]%s  %s\n'      "${C_BLU}" "${C_RESET}" "$*"; }
+success() { local IFS=' '; printf '%s[ OK ]%s  %s\n'      "${C_GRN}" "${C_RESET}" "$*"; }
+warn()    { local IFS=' '; printf '%s[WARN]%s  %s\n'      "${C_YEL}" "${C_RESET}" "$*" >&2; WARN_COUNT=$((WARN_COUNT+1)); }
+error()   { local IFS=' '; printf '%s[FAIL]%s  %s\n'      "${C_RED}" "${C_RESET}" "$*" >&2; }
 
-# ----------------------------------------------------------------------------
-# ERR trap — print the failing line number + command and a friendly message.
-# Requires 'set -E' (above) to fire inside functions.
-# ----------------------------------------------------------------------------
-trap 'rc=$?; printf "\n%s[FAIL]%s ERROR on line %s: '\''%s'\'' (exit %s)\n" \
-      "${C_RED}" "${C_RESET}" "${LINENO}" "${BASH_COMMAND}" "${rc}" >&2; \
-      printf "       See the output above. Re-running this script is safe — it is idempotent.\n" >&2; \
-      exit "${rc}"' ERR
-
-# Trackers for the final summary.
+# Summary trackers.
 SUMMARY_LINES=()
-ARCH_LABEL=""
-BREW_PREFIX=""
-MACOS_VER=""
-CLAUDE_OK="no"
-AZ_LOGGED_IN="no"
-TOKEN_OK="no"
-record() { SUMMARY_LINES+=("$*"); }
+PROBLEMS=()
+record()  { SUMMARY_LINES+=("$*"); }
+problem() { PROBLEMS+=("$*"); }
+
+ARCH_LABEL=""; BREW_PREFIX=""; MACOS_VER=""
+HAVE_TTY="no"
+SUDO_READY="no"; SUDO_KEEPALIVE_PID=""; CAFFEINATE_PID=""
+NEED_ADMIN="no"; ADMIN_REASONS=""; OWNER_FIX=()
+NEED_CLT="no"; NEED_BREW="no"
+GATEWAY_REACHABLE="unknown"
+VPN_PROBLEM="Connect to the Sleep Number VPN, then run this installer again to finish the final check."
+CLAUDE_OK="no"; AZ_LOGGED_IN="no"; TOKEN_OK="no"; GATEWAY_OK="untested"; ENV_CONFLICTS="no"
 
 # ----------------------------------------------------------------------------
-# Banner
+# Stop on purpose: say what is wrong and exactly what to do. Exit 2.
 # ----------------------------------------------------------------------------
-banner() {
-  printf '%s' "${C_BLU}"
-  cat <<'EOF'
-============================================================
-  Claude Code — Corporate macOS Bootstrap
-  Target: AZURE AI FOUNDRY (Azure-token auth)
-============================================================
-EOF
-  printf '%s' "${C_RESET}"
-  info "This installs prerequisites, Claude Code (native) + the Azure CLI,"
-  info "configures Foundry auth, then verifies. Safe to re-run."
-  info "No claude.ai browser login is used — auth is an Azure access token."
+fatal() {   # $1 = what went wrong; remaining args = what to do, one line each
+  local what="$1" l; shift
+  {
+    printf '\n%s============================================================%s\n' "${C_RED}" "${C_RESET}"
+    printf '%s  INSTALL STOPPED%s\n\n' "${C_RED}${C_BOLD}" "${C_RESET}"
+    printf '  %s\n' "$what"
+    if [[ $# -gt 0 ]]; then
+      printf '\n  What to do:\n'
+      for l in "$@"; do printf '    %s\n' "$l"; done
+    fi
+    printf '\n  Nothing is broken. Fix the item above, then run the same command again.\n'
+    printf '  If you need help, send this log file to %s:\n' "$SUPPORT_CONTACT"
+    printf '    %s\n' "$LOG_FILE"
+    printf '%s============================================================%s\n' "${C_RED}" "${C_RESET}"
+  } >&2
+  exit 2
 }
 
-# ----------------------------------------------------------------------------
-# Pre-flight: not root, macOS, curl present, arch + macOS version
-# ----------------------------------------------------------------------------
-preflight_root() {
-  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-    error "You are running this script as root."
-    warn  "Homebrew refuses to run as root and your dotfiles would land in /var/root."
-    warn  "Re-run as your normal user, WITHOUT sudo. Aborting."
-    exit 1
-  fi
-}
-
-detect_arch() {
-  case "$(uname -m)" in
-    arm64)  BREW_PREFIX="/opt/homebrew" ; ARCH_LABEL="Apple Silicon (arm64)" ;;
-    x86_64) BREW_PREFIX="/usr/local"    ; ARCH_LABEL="Intel (x86_64)" ;;
-    *)      error "Unsupported architecture: $(uname -m)"; exit 1 ;;
-  esac
-}
-
-preflight() {
-  step "Pre-flight checks"
-
-  if [[ "$(uname)" != "Darwin" ]]; then
-    error "This script only supports macOS (uname=$(uname)). Aborting."
-    exit 1
-  fi
-
-  if ! command -v curl >/dev/null 2>&1; then
-    error "curl is required but was not found on PATH. Aborting."
-    exit 1
-  fi
-
-  MACOS_VER="$(sw_vers -productVersion 2>/dev/null || echo 'unknown')"
-  info "Detected architecture : ${ARCH_LABEL}"
-  info "Homebrew prefix       : ${BREW_PREFIX}"
-  info "macOS version         : ${MACOS_VER}"
-  info "Foundry base URL      : ${FOUNDRY_BASE_URL}"
-  info "Foundry host          : ${FOUNDRY_HOST}"
-  info "Token audience        : ${FOUNDRY_TOKEN_RESOURCE}"
-
-  # macOS 13.0+ is required by the current native Claude Code binary.
-  local major
-  major="${MACOS_VER%%.*}"
-  if [[ "$major" =~ ^[0-9]+$ ]] && (( major < 13 )); then
-    warn "Claude Code requires macOS 13.0+. You are on ${MACOS_VER}."
-    warn "The native binary may fail with 'dyld: Symbol not found: _ubrk_clone' / 'Abort trap: 6'."
-    warn "Consider upgrading macOS before relying on Claude Code."
-    record "macOS version : ${MACOS_VER} (BELOW required 13.0 — Claude Code may not run)"
-  else
-    success "macOS ${MACOS_VER} meets the 13.0+ requirement."
-    record "macOS version : ${MACOS_VER} (meets 13.0+ requirement)"
-  fi
-  record "Architecture  : ${ARCH_LABEL}"
-}
-
-# ----------------------------------------------------------------------------
-# Corporate network pre-flight: TLS inspection / connectivity.
-# Probes the FOUNDRY host and the Azure login endpoint (the hosts that actually
-# matter for Foundry auth). Detects the "unable to get local issuer certificate"
-# case and surfaces a clear, actionable WARNING — but DOES NOT hard-fail.
+# Unexpected failure: print the failing line and command. Requires 'set -E'.
+# Installed here for the top level and again inside main(), which runs in the
+# subshell of the 'main | tee' pipeline at the bottom of the file.
 #
-# The long IT-remediation block only prints when something actually failed; on
-# a healthy machine it would otherwise read as a failure and generate tickets.
-# ----------------------------------------------------------------------------
-probe_host() {
-  # $1 = url ; sets globals PROBE_RC / PROBE_OUT
-  # -o /dev/null: we want the TLS verdict and the -v trace, not the response body.
-  local url="$1"
-  PROBE_OUT="$(curl -sS -v -o /dev/null --max-time 20 "$url" 2>&1)" && PROBE_RC=0 || PROBE_RC=$?
+# 'set -E' also copies the trap into every $(…) and ( … ). There it must stay
+# silent: an expected failure inside a substitution (curl with the VPN off,
+# xcode-select on a Mac without the tools) is handled by the caller. A real
+# failure still surfaces once, at the caller's line, at main's own level.
+ERR_TRAP_LEVEL=0
+install_err_trap() {
+  trap 'rc=$?; if [ "${BASH_SUBSHELL:-0}" -gt "${ERR_TRAP_LEVEL:-0}" ]; then exit "${rc}"; fi; \
+        printf "\n%s[FAIL]%s Unexpected error on line %s: '\''%s'\'' (exit %s)\n" \
+        "${C_RED}" "${C_RESET}" "${LINENO}" "${BASH_COMMAND}" "${rc}" >&2; \
+        printf "       Running this installer again is safe. Log: %s\n" "${LOG_FILE}" >&2; \
+        exit "${rc}"' ERR
 }
+install_err_trap
 
-check_corp_network() {
-  step "Corporate network / TLS-inspection check"
-
-  info "The Foundry host is internal and likely requires the corporate VPN."
-
-  local any_tls_issue="no"
-  local any_issue="no"
-  local h url
-  for h in "${FOUNDRY_HOST}" "login.microsoftonline.com"; do
-    url="https://${h}/"
-    probe_host "$url"
-
-    if [[ "$PROBE_RC" -eq 0 ]]; then
-      success "Reached ${h} with a trusted TLS chain."
-      continue
-    fi
-
-    # curl exit 60 = CURLE_PEER_FAILED_VERIFICATION (TLS inspection / untrusted CA)
-    if [[ "$PROBE_RC" -eq 60 ]] || printf '%s\n' "$PROBE_OUT" | grep -qiE 'unable to get local issuer certificate|self.signed|SSL certificate problem|SELF_SIGNED_CERT_IN_CHAIN'; then
-      local issuer
-      issuer="$(printf '%s\n' "$PROBE_OUT" | grep -i 'issuer:' | head -1 || true)"
-      error "TLS certificate verification to ${h} FAILED (curl exit ${PROBE_RC})."
-      warn  "This almost always means a corporate TLS-inspection proxy is re-signing HTTPS"
-      warn  "traffic with a corporate root CA that this machine does not yet trust"
-      warn  "(e.g. Zscaler, Netskope, CrowdStrike Falcon, Palo Alto, Cisco Umbrella, Forcepoint)."
-      [[ -n "$issuer" ]] && warn "Certificate issuer seen in the chain:${issuer#*issuer:}"
-      any_tls_issue="yes"
-      any_issue="yes"
-      continue
-    fi
-
-    # Any other curl failure: DNS block, firewall, VPN-off, timeout, etc.
-    error "Could not reach ${h} (curl exit ${PROBE_RC})."
-    any_issue="yes"
-    if printf '%s\n' "$PROBE_OUT" | grep -qi 'could not resolve host'; then
-      warn "DNS could not resolve ${h} — likely DNS filtering or VPN is off."
-      [[ "$h" == "${FOUNDRY_HOST}" ]] && warn "The Foundry host is internal — CONNECT THE CORPORATE VPN and re-run."
-    else
-      warn "Possible firewall block, VPN requirement, or timeout. Check connectivity/VPN."
-    fi
-  done
-
-  if [[ "$any_issue" == "yes" ]]; then
-    cat >&2 <<EOF
-
-  ---------------------------------------------------------------------------
-  WHAT TO ASK YOUR IT / ENDPOINT TEAM FOR:
-    1. The corporate ROOT CA as a .pem file (so tools can trust the proxy).
-    2. Confirm you are on the CORPORATE VPN (the Foundry host is internal).
-    3. Allowlist these hostnames on port 443 (egress):
-         ${FOUNDRY_HOST}        (Azure AI Foundry endpoint — internal/VPN)
-         login.microsoftonline.com   (Azure Entra ID auth)
-         login.microsoft.com         (Azure Entra ID auth)
-         management.azure.com        (Azure Resource Manager)
-         cognitiveservices.azure.com (token audience / data plane)
-         claude.ai                   (to DOWNLOAD the Claude Code installer)
-         downloads.anthropic.com     (installer / auto-updater)
-         raw.githubusercontent.com   (Homebrew install script)
-         github.com                  (Homebrew / tooling)
-    4. The HTTP/HTTPS proxy address, if an explicit proxy is required.
-
-  HOW TO MAKE TOOLS TRUST THE CORPORATE CA (do NOT disable TLS verification):
-    # For curl / Homebrew during install:
-      export CURL_CA_BUNDLE=/path/to/corp-root-ca.pem
-      export SSL_CERT_FILE=/path/to/corp-root-ca.pem
-      export HOMEBREW_CA_BUNDLE=/path/to/corp-root-ca.pem
-    # For Claude Code at runtime, EITHER:
-      export NODE_EXTRA_CA_CERTS=/path/to/corp-root-ca.pem
-    # OR trust the OS Keychain (where MDM usually installs the corp root):
-      export CLAUDE_CODE_CERT_STORE=bundled,system   # this is the default
-    # If you go through an explicit proxy:
-      export HTTPS_PROXY=http://proxy.corp.example.com:8080
-      export HTTP_PROXY=http://proxy.corp.example.com:8080
-
-  Continuing anyway so tools still get installed.
-  ---------------------------------------------------------------------------
-
-EOF
-  fi
-
-  if [[ "$any_tls_issue" == "yes" ]]; then
-    record "Network/TLS   : WARNING — TLS inspection / untrusted CA detected (see notes above)"
-  elif [[ "$any_issue" == "yes" ]]; then
-    record "Network/TLS   : WARNING — a host was unreachable (see notes above)"
-  else
-    record "Network/TLS   : OK — ${FOUNDRY_HOST} + login.microsoftonline.com both reachable"
-  fi
+LOCK_OWNED="no"
+cleanup() {
+  [[ -n "$SUDO_KEEPALIVE_PID" ]] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null
+  [[ -n "$CAFFEINATE_PID" ]] && kill "$CAFFEINATE_PID" 2>/dev/null
+  # Drop the cached admin password so it does not outlive the install.
+  [[ "$SUDO_READY" == "yes" ]] && sudo -k 2>/dev/null
+  [[ "$LOCK_OWNED" == "yes" ]] && rm -rf "$LOCK_DIR" 2>/dev/null
   return 0
 }
 
-# ----------------------------------------------------------------------------
-# Xcode Command Line Tools (provides git + build tooling Claude often invokes)
-# ----------------------------------------------------------------------------
-ensure_clt() {
-  step "Xcode Command Line Tools"
-
-  if xcode-select -p >/dev/null 2>&1; then
-    success "Command Line Tools already installed at: $(xcode-select -p)"
-    record "Xcode CLT     : already installed"
-    return 0
+# One installer at a time. The lock holds the PID of the installer that owns
+# it; a lock whose PID is gone was left by a run that was killed.
+take_lock() {
+  local holder=""
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    holder="$(cat "${LOCK_DIR}/pid" 2>/dev/null || true)"
+    if [[ "$holder" =~ ^[0-9]+$ ]] && [[ "$holder" != "$$" ]] && kill -0 "$holder" 2>/dev/null; then
+      fatal "The installer is already running in another Terminal window." \
+            "Let that one finish (or close it), then run this again if needed."
+    fi
+    rm -rf "$LOCK_DIR" 2>/dev/null
+    mkdir "$LOCK_DIR" 2>/dev/null || fatal "Could not create ${LOCK_DIR}." "Contact ${SUPPORT_CONTACT}."
   fi
-
-  info "Command Line Tools not found — launching the installer."
-  warn "This opens a GUI dialog to confirm the download. Finish it, then re-run this script."
-  # xcode-select --install pops a GUI confirm/download dialog; no fully silent
-  # supported path exists. On managed fleets, MDM usually pushes the CLT instead.
-  # </dev/null: under 'curl | bash' stdin is the SCRIPT TEXT — never let a
-  # subcommand read from it.
-  xcode-select --install </dev/null 2>/dev/null || true
-  warn "After the Command Line Tools finish installing, re-run this bootstrap script."
-  record "Xcode CLT     : installer launched — finish the GUI dialog, then re-run"
+  printf '%s\n' "$$" > "${LOCK_DIR}/pid"
+  LOCK_OWNED="yes"
 }
 
-# ----------------------------------------------------------------------------
-# Homebrew (optional but the cleanest way to guarantee git + jq + az on managed
-# Macs). Installs if missing, then idempotently wires shellenv into ~/.zprofile.
-# ----------------------------------------------------------------------------
+# Return to continue; 's' (or no terminal) to decline. Reads the keyboard even
+# when stdin is something else (e.g. 'curl | bash').
+ask_enter() {
+  [[ "$HAVE_TTY" == "yes" ]] || return 1
+  local reply=""
+  printf '%s' "$1"
+  IFS= read -r reply </dev/tty || return 1
+  case "$reply" in s|S|skip|SKIP|Skip) return 1 ;; esac
+  return 0
+}
+
+# Append $1 to file $2 only if not already present (literal match).
+# $3 (optional): what to show instead of the line itself.
 ensure_line() {
-  # Append $1 to file $2 only if not already present (literal grep -F).
-  local line="$1" file="${2:-${HOME}/.zprofile}"
+  local line="$1" file="$2" label="${3:-$1}"
+  if [[ -e "$file" && ! -w "$file" ]]; then
+    warn "Cannot write $(basename "$file") (owned by another user) — skipped."
+    problem "Fix ownership of ${file} (run the installer again; it repairs this with your password)."
+    return 0
+  fi
   touch "$file"
   if grep -qF -- "$line" "$file"; then
-    info "Already configured in $(basename "$file") — skipping append."
+    info "Already in $(basename "$file")."
   else
     printf '\n%s\n' "$line" >> "$file"
-    success "Added to $(basename "$file"): ${line}"
+    success "Added to $(basename "$file"): ${label}"
   fi
 }
 
-ensure_homebrew() {
-  step "Homebrew"
-
-  if command -v brew >/dev/null 2>&1; then
-    success "Homebrew already installed ($(brew --version 2>/dev/null | head -1))"
-    record "Homebrew      : already installed"
-  elif [[ -x "${BREW_PREFIX}/bin/brew" ]]; then
-    success "Homebrew found at ${BREW_PREFIX}/bin/brew (not yet on PATH)."
-    record "Homebrew      : already installed (${BREW_PREFIX})"
+# Run a command with a hard time limit (seconds). perl is the only stock macOS
+# tool that can do this; without it the command simply runs without a limit.
+with_timeout() {
+  local secs="$1"; shift
+  if command -v perl >/dev/null 2>&1; then
+    perl -e 'alarm shift; exec @ARGV' "$secs" "$@"
   else
-    info "Installing Homebrew (non-interactive)…"
-    # Guarded: a TLS-inspected corp Mac may fail here, and that must NOT abort
-    # the rest of the bootstrap.
-    if NONINTERACTIVE=1 /bin/bash -c \
-         "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null; then
-      record "Homebrew      : installed"
-    else
-      warn "The Homebrew installer failed. See the network/TLS notes above."
-      record "Homebrew      : INSTALL FAILED — see network notes"
+    "$@"
+  fi
+}
+
+# ----------------------------------------------------------------------------
+# 1. The Mac
+# ----------------------------------------------------------------------------
+banner() {
+  printf '%s' "${C_BLU}"
+  cat <<EOF
+============================================================
+  Claude Code installer for Sleep Number Macs
+  Connects to: Azure AI Foundry (${FOUNDRY_HOST})
+============================================================
+EOF
+  printf '%s' "${C_RESET}"
+  info "Takes about 5-15 minutes. Safe to run again at any time."
+  info "You may be asked for your Mac password once, and to sign in to Microsoft"
+  info "in your browser. Keep this window open until you see ALL SET."
+  info "Log file: ${LOG_FILE}"
+}
+
+check_mac() {
+  step "Checking this Mac"
+
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    fatal "This installer was started as root (with sudo)." \
+          "Run it again WITHOUT 'sudo' in front:  bash ~/Downloads/claude_corp_bootstrap.sh"
+  fi
+  [[ "$(uname)" == "Darwin" ]] || fatal "This installer is for macOS only (found: $(uname))."
+  command -v curl >/dev/null 2>&1 || fatal "The 'curl' tool is missing from this Mac." "Contact ${SUPPORT_CONTACT}."
+
+  MACOS_VER="$(sw_vers -productVersion 2>/dev/null || echo 'unknown')"
+  local major="${MACOS_VER%%.*}"
+  if [[ "$major" =~ ^[0-9]+$ ]] && (( major < 13 )); then
+    fatal "Claude Code needs macOS 13 (Ventura) or newer. This Mac has macOS ${MACOS_VER}." \
+          "Update macOS (Apple menu > System Settings > General > Software Update), then run this again."
+  fi
+  success "macOS ${MACOS_VER}"
+  record "macOS         : ${MACOS_VER}"
+
+  if [[ "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" == "1" ]]; then
+    BREW_PREFIX="/opt/homebrew"; ARCH_LABEL="Apple Silicon"
+    if [[ "$(/usr/sbin/sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" == "1" ]]; then
+      fatal "Terminal is running in Intel (Rosetta) mode on this Apple Silicon Mac." \
+            "Quit Terminal. In Finder open Applications > Utilities, select Terminal," \
+            "choose File > Get Info, untick 'Open using Rosetta', reopen Terminal and run this again."
     fi
-  fi
-
-  # Wire shellenv into ~/.zprofile (the macOS-correct file) — grep-guarded so it
-  # is never duplicated — then eval it for the current session.
-  if [[ -x "${BREW_PREFIX}/bin/brew" ]]; then
-    ensure_line "eval \"\$(${BREW_PREFIX}/bin/brew shellenv)\"" "${HOME}/.zprofile"
-    eval "$("${BREW_PREFIX}/bin/brew" shellenv)"
-    # Authoritative prefix once brew is on PATH (robust against Rosetta edge cases).
-    BREW_PREFIX="$(brew --prefix 2>/dev/null || echo "$BREW_PREFIX")"
-    success "Homebrew is on PATH for this session (prefix: ${BREW_PREFIX})."
   else
-    warn "Homebrew binary not found at ${BREW_PREFIX}/bin/brew after install step."
-    warn "If the install was blocked by TLS inspection, see the network notes above."
-    record "Homebrew      : WARNING — not on PATH; see notes"
+    BREW_PREFIX="/usr/local"; ARCH_LABEL="Intel"
   fi
+  success "Processor: ${ARCH_LABEL}"
+  record "Processor     : ${ARCH_LABEL}"
 }
 
 # ----------------------------------------------------------------------------
-# git — should come with the CLT and/or Homebrew. Verify; install via brew if
-# missing and brew is available.
-#
-# The 'brew install' is GUARDED: under 'set -e' an unguarded failure here would
-# abort the script before the token helper, settings.json and Claude Code are
-# ever written.
+# 2. The network. Probes are cheap and tell the user what to fix BEFORE any
+# password prompt or download.
 # ----------------------------------------------------------------------------
-ensure_git() {
-  step "git"
+probe() {   # $1 = url ; sets PROBE_RC / PROBE_OUT (any HTTP status counts as reachable)
+  PROBE_OUT="$(curl -sS -v -o /dev/null --max-time 20 "$1" 2>&1)" && PROBE_RC=0 || PROBE_RC=$?
+}
 
-  if command -v git >/dev/null 2>&1; then
-    success "git available: $(git --version 2>/dev/null)"
-    record "git           : $(git --version 2>/dev/null)"
+is_tls_failure() {
+  [[ "$PROBE_RC" -eq 60 ]] || printf '%s\n' "$PROBE_OUT" \
+    | grep -qiE 'unable to get local issuer certificate|self.signed|SSL certificate problem'
+}
+
+print_it_notes() {
+  cat <<EOF
+
+  ---------------------------------------------------------------------------
+  FOR IT: hosts this install needs (port 443)
+    ${FOUNDRY_HOST}     Sleep Number AI gateway (internal - VPN)
+    login.microsoftonline.com, login.microsoft.com     Microsoft sign-in
+    claude.ai, downloads.claude.ai, storage.googleapis.com     Claude Code download/updates
+    raw.githubusercontent.com, github.com, ghcr.io, formulae.brew.sh   Homebrew
+  macOS tools trust the corporate root certificate from the System keychain
+  (installed by MDM). Do not disable TLS verification.
+  ---------------------------------------------------------------------------
+
+EOF
+}
+
+check_network() {
+  step "Checking the network"
+
+  probe "https://claude.ai/"
+  if [[ "$PROBE_RC" -ne 0 ]]; then
+    if is_tls_failure; then
+      print_it_notes
+      fatal "Downloads are blocked: this Mac does not trust the security certificate on the network." \
+            "Pause Zscaler for 15 minutes (Zscaler menu-bar icon; you have the 'Zscaler DevOps' access)," \
+            "then run this installer again right away."
+    fi
+    fatal "This Mac cannot reach the internet (could not connect to claude.ai, error ${PROBE_RC})." \
+          "Check Wi-Fi, then run this again."
+  fi
+  success "Internet and certificate trust OK."
+
+  probe "https://login.microsoftonline.com/"
+  if [[ "$PROBE_RC" -ne 0 ]]; then
+    is_tls_failure && print_it_notes
+    fatal "Cannot reach Microsoft sign-in (login.microsoftonline.com, error ${PROBE_RC})." \
+          "Check the network (or pause Zscaler for 15 minutes), then run this again."
+  fi
+  success "Microsoft sign-in reachable."
+
+  if [[ "${SKIP_CORP_CHECKS:-0}" == "1" ]]; then
+    info "Test mode (SKIP_CORP_CHECKS=1): not checking the VPN / AI gateway."
+    GATEWAY_REACHABLE="skipped"
+    record "Test mode     : VPN, sign-in, token and gateway checks SKIPPED"
     return 0
   fi
 
-  if command -v brew >/dev/null 2>&1; then
-    info "git not found — installing via Homebrew…"
-    if brew install git </dev/null; then
-      success "git installed: $(git --version 2>/dev/null || echo present)"
-      record "git           : installed via Homebrew"
-    else
-      warn "'brew install git' FAILED — see the network/TLS notes above."
-      warn "git normally ships with the Xcode Command Line Tools; finish that install."
-      record "git           : INSTALL FAILED — see network notes"
+  local attempt
+  for ((attempt = 1; attempt <= 4; attempt++)); do
+    probe "https://${FOUNDRY_HOST}/"
+    if [[ "$PROBE_RC" -eq 0 ]]; then
+      GATEWAY_REACHABLE="yes"
+      success "Sleep Number AI gateway reachable (${FOUNDRY_HOST})."
+      record "Network       : OK (internet, Microsoft sign-in, AI gateway)"
+      return 0
     fi
-  else
-    warn "git not found and Homebrew unavailable. It normally ships with the Xcode CLT."
-    warn "Finish the Command Line Tools install (above), then re-run this script."
-    record "git           : MISSING — install Xcode CLT or Homebrew, then re-run"
+    if is_tls_failure; then
+      print_it_notes
+      warn "The AI gateway's certificate is not trusted on this Mac (error ${PROBE_RC})."
+      problem "This Mac does not trust the AI gateway's certificate. Send the log to ${SUPPORT_CONTACT} (for IT)."
+      GATEWAY_REACHABLE="tls"
+      record "Network       : AI gateway certificate NOT trusted"
+      return 0
+    fi
+    warn "Cannot reach the Sleep Number AI gateway (${FOUNDRY_HOST}) — the VPN is probably not connected."
+    if (( attempt == 4 )) || ! ask_enter "  Connect to the Sleep Number VPN, then press Return to check again (or type S and Return to continue without it): "; then
+      break
+    fi
+  done
+  # The problem is recorded at the end only if the gateway is still
+  # unreachable then — the VPN may be connected while the install runs.
+  GATEWAY_REACHABLE="no"
+  info "Continuing the install. The final check needs the VPN."
+  record "Network       : AI gateway not reachable at start (VPN)"
+}
+
+# ----------------------------------------------------------------------------
+# 3. What needs installing, and therefore whether the Mac password is needed.
+# ----------------------------------------------------------------------------
+clt_present() {
+  local p=""
+  p="$(xcode-select -p 2>/dev/null || true)"
+  [[ -n "$p" && -x "${p}/usr/bin/git" ]]
+}
+
+find_brew() {
+  if command -v brew >/dev/null 2>&1; then command -v brew; return 0; fi
+  [[ -x "${BREW_PREFIX}/bin/brew" ]] && { printf '%s\n' "${BREW_PREFIX}/bin/brew"; return 0; }
+  return 1
+}
+
+add_admin_reason() { ADMIN_REASONS="${ADMIN_REASONS:+${ADMIN_REASONS}, }$1"; NEED_ADMIN="yes"; }
+
+assess() {
+  step "Checking what needs installing"
+
+  clt_present && success "Apple Command Line Tools: present" \
+              || { NEED_CLT="yes"; info "Apple Command Line Tools: will install"; add_admin_reason "Apple Command Line Tools"; }
+
+  local brew_bin=""
+  brew_bin="$(find_brew || true)"
+  # Homebrew may be installed but not on this Terminal's PATH yet; load it so
+  # tools it already installed (az, jq) are not mistaken for missing.
+  [[ -n "$brew_bin" ]] && eval "$("$brew_bin" shellenv 2>/dev/null)"
+  local az_ok="no" jq_ok="no"
+  az version >/dev/null 2>&1 && az_ok="yes"
+  command -v jq >/dev/null 2>&1 && jq_ok="yes"
+  if [[ -z "$brew_bin" ]] && [[ "$az_ok" == "no" || "$jq_ok" == "no" ]]; then
+    NEED_BREW="yes"; info "Homebrew: will install"; add_admin_reason "Homebrew"
+  elif [[ -n "$brew_bin" ]]; then
+    success "Homebrew: present"
+  fi
+  [[ "$az_ok" == "yes" ]] && success "Azure CLI: present" || info "Azure CLI: will install"
+  [[ "$jq_ok" == "yes" ]] && success "jq: present" || info "jq: will install"
+  [[ -x "$CLAUDE_BIN" ]] && success "Claude Code: present" || info "Claude Code: will install"
+
+  # Files in the home folder that another account (usually root, after an
+  # earlier 'sudo' install) owns. Installing into them would fail.
+  local p
+  # Checked: the folders themselves AND anything inside them (a single
+  # root-owned file in ~/.claude also breaks Claude Code, which writes there).
+  local uid stray
+  uid="$(id -u)"
+  for p in "$CLAUDE_DIR" "${HOME}/.local" "$CLAUDE_STATE" "${HOME}/.azure" \
+           "${HOME}/.zshrc" "${HOME}/.zprofile" "${HOME}/.bash_profile"; do
+    [[ -e "$p" ]] || continue
+    stray=""
+    if [[ ! -O "$p" ]]; then
+      stray="$p"
+    elif [[ -d "$p" ]]; then
+      stray="$(find "$p" -maxdepth 4 ! -user "$uid" -print -quit 2>/dev/null || true)"
+    fi
+    if [[ -n "$stray" ]]; then
+      OWNER_FIX+=("$p")
+      info "${stray} is owned by another account: will repair ${p}"
+    fi
+  done
+  [[ ${#OWNER_FIX[@]} -gt 0 ]] && add_admin_reason "repair file ownership in your home folder"
+
+  # Room for the Command Line Tools (~3 GB) plus Homebrew and the Azure CLI.
+  local free_kb need_kb=1572864
+  [[ "$NEED_CLT" == "yes" || "$NEED_BREW" == "yes" ]] && need_kb=5242880
+  free_kb="$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')"
+  if [[ "$free_kb" =~ ^[0-9]+$ ]] && (( free_kb < need_kb )); then
+    fatal "Not enough free disk space: $((free_kb / 1048576)) GB free, $((need_kb / 1048576)) GB needed." \
+          "Free up space (empty the Trash, remove large downloads), then run this again."
   fi
 }
 
 # ----------------------------------------------------------------------------
-# jq — required for the safe settings.json deep-merge. Install via brew if
-# missing. Guarded for the same reason as git: ensure_settings already has a
-# sidecar fallback when jq is absent, so a failure here is survivable.
+# Admin rights + the password, asked once. Everything that needs them runs
+# right after this, so a temporary elevation that expires mid-way is harmless.
 # ----------------------------------------------------------------------------
-ensure_jq() {
-  step "jq (needed for safe settings.json merge)"
+is_admin() { /usr/sbin/dseditgroup -o checkmember -m "$USER" admin >/dev/null 2>&1; }
 
+ensure_admin() {
+  if [[ "$NEED_ADMIN" != "yes" ]]; then
+    record "Admin rights  : not needed"
+    return 0
+  fi
+  step "Administrator rights (needed for: ${ADMIN_REASONS})"
+
+  local tries=0
+  until is_admin; do
+    tries=$((tries + 1))
+    warn "Your Mac account (${USER}) does not have administrator rights right now."
+    info "Turn on your temporary admin access (the 'Local Admin' prerequisite), then come back here."
+    if (( tries >= 4 )) || ! ask_enter "  Press Return to check again (or type S and Return to stop): "; then
+      fatal "Administrator rights are needed to install: ${ADMIN_REASONS}." \
+            "Turn on your temporary Local Admin access (or ask ${SUPPORT_CONTACT})," \
+            "then run this installer again."
+    fi
+  done
+  success "Your account has administrator rights."
+
+  [[ "$HAVE_TTY" == "yes" ]] || fatal "The Mac password is needed, but this installer has no keyboard input." \
+                                      "Open Terminal and run:  bash ~/Downloads/claude_corp_bootstrap.sh"
+  info "Type your Mac login password and press Return. Nothing appears while you type — that is normal."
+  local ok="no"
+  for tries in 1 2 3; do
+    if sudo -p "  Mac password for ${USER}: " -v </dev/tty; then ok="yes"; break; fi
+    warn "That password was not accepted."
+  done
+  [[ "$ok" == "yes" ]] || fatal "The Mac password was not accepted." \
+                                "Use the password you use to unlock this Mac, then run this again."
+  SUDO_READY="yes"
+
+  # Keep the password cached until the installs finish ($$ = this installer).
+  # Output to /dev/null: an inherited copy of the log pipe would keep 'tee'
+  # (and so the whole installer) waiting after main() has finished.
+  ( while kill -0 "$$" 2>/dev/null; do sudo -n -v 2>/dev/null || exit 0; sleep 45; done ) \
+    >/dev/null 2>&1 </dev/null &
+  SUDO_KEEPALIVE_PID=$!; disown "$SUDO_KEEPALIVE_PID" 2>/dev/null || true   # no "Terminated" line when cleanup() kills it
+  record "Admin rights  : used for ${ADMIN_REASONS}"
+
+  if [[ ${#OWNER_FIX[@]} -gt 0 ]]; then
+    local p grp
+    grp="$(id -gn)"
+    for p in "${OWNER_FIX[@]}"; do
+      if sudo -n chown -R "${USER}:${grp}" "$p"; then
+        success "Repaired ownership of ${p}"
+      else
+        fatal "Could not repair ownership of ${p}." "Contact ${SUPPORT_CONTACT}."
+      fi
+    done
+  fi
+}
+
+# ----------------------------------------------------------------------------
+# Apple Command Line Tools (git + build tools). Installed headlessly the same
+# way Homebrew does it; the GUI installer is only the fallback.
+# ----------------------------------------------------------------------------
+ensure_clt() {
+  [[ "$NEED_CLT" == "yes" ]] || { record "Command Line Tools: present"; return 0; }
+  step "Installing Apple Command Line Tools (about 5-10 minutes)"
+
+  local flag="/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress" label=""
+  sudo -n /usr/bin/touch "$flag" 2>/dev/null || touch "$flag" 2>/dev/null || true
+  label="$(softwareupdate -l 2>/dev/null \
+           | grep -B 1 -E 'Command Line Tools' \
+           | awk -F'*' '/^ *\*/ {print $2}' \
+           | sed -e 's/^ *Label: //' -e 's/^ *//' \
+           | sort -V | tail -n 1 || true)"
+  if [[ -n "$label" ]]; then
+    info "Downloading and installing: ${label}"
+    sudo -n /usr/sbin/softwareupdate -i "$label" </dev/null || warn "softwareupdate reported a problem."
+    sudo -n /usr/bin/xcode-select --switch /Library/Developer/CommandLineTools 2>/dev/null || true
+  fi
+  sudo -n /bin/rm -f "$flag" 2>/dev/null || rm -f "$flag" 2>/dev/null || true
+
+  if ! clt_present; then
+    # Fallback: Apple's own installer window.
+    xcode-select --install </dev/null >/dev/null 2>&1 || true
+    info "A window titled 'Install Command Line Developer Tools' should appear."
+    info "Click Install, then Agree. This installer waits and continues automatically."
+    local waited=0
+    until clt_present; do
+      sleep 15; waited=$((waited + 15))
+      (( waited % 120 == 0 )) && info "Still waiting for the Command Line Tools… (${waited}s)"
+      if (( waited >= 2700 )); then
+        fatal "The Apple Command Line Tools did not finish installing." \
+              "Install them (they appear in System Settings > General > Software Update), then run this again."
+      fi
+    done
+  fi
+  success "Apple Command Line Tools installed."
+  record "Command Line Tools: installed"
+}
+
+# ----------------------------------------------------------------------------
+# Homebrew (the supported way to get the Azure CLI on macOS).
+# ----------------------------------------------------------------------------
+ensure_homebrew() {
+  local brew_bin=""
+  brew_bin="$(find_brew || true)"
+
+  if [[ -z "$brew_bin" && "$NEED_BREW" == "yes" ]]; then
+    step "Installing Homebrew"
+    # Uses the password cached above (the installer runs 'sudo -n').
+    if NONINTERACTIVE=1 /bin/bash -c \
+         "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null; then
+      success "Homebrew installed."
+      info "Homebrew's 'Next steps' above are done for you on the next line — nothing to type."
+      record "Homebrew      : installed"
+    else
+      fatal "The Homebrew installer failed (see the messages above)." \
+            "If a certificate or download error is shown: pause Zscaler for 15 minutes and run this again."
+    fi
+    brew_bin="$(find_brew || true)"
+    [[ -n "$brew_bin" ]] || fatal "Homebrew did not end up in ${BREW_PREFIX}." "Contact ${SUPPORT_CONTACT}."
+  elif [[ -n "$brew_bin" ]]; then
+    record "Homebrew      : present"
+  else
+    record "Homebrew      : not needed"
+    return 0
+  fi
+
+  ensure_line "eval \"\$(${brew_bin} shellenv)\"" "${HOME}/.zprofile"
+  eval "$("$brew_bin" shellenv)"
+  export HOMEBREW_NO_ENV_HINTS=1
+}
+
+brew_install() {   # $1 = formula
+  local prefix
+  prefix="$(brew --prefix 2>/dev/null || echo "$BREW_PREFIX")"
+  if [[ ! -w "${prefix}/bin" && -d "${prefix}/bin" ]]; then
+    fatal "Homebrew on this Mac belongs to another user account, so '$1' cannot be installed." \
+          "Ask ${SUPPORT_CONTACT} to install the Azure CLI for this account, then run this again."
+  fi
+  brew install "$1" </dev/null
+}
+
+ensure_jq() {
   if command -v jq >/dev/null 2>&1; then
-    success "jq available: $(jq --version 2>/dev/null)"
     record "jq            : $(jq --version 2>/dev/null)"
     return 0
   fi
-
-  if command -v brew >/dev/null 2>&1; then
-    info "jq not found — installing via Homebrew…"
-    if brew install jq </dev/null; then
-      success "jq installed: $(jq --version 2>/dev/null || echo present)"
-      record "jq            : installed via Homebrew"
-    else
-      warn "'brew install jq' FAILED — the settings merge will fall back to a sidecar file."
-      record "jq            : INSTALL FAILED — settings merge will use a sidecar fallback"
-    fi
+  step "Installing jq (used to edit settings safely)"
+  if command -v brew >/dev/null 2>&1 && brew_install jq; then
+    success "jq installed."
+    record "jq            : installed"
   else
-    warn "jq not found and Homebrew unavailable. The settings merge will fall back"
-    warn "to writing a sidecar file you must merge by hand. Install Homebrew + jq."
-    record "jq            : MISSING — settings merge will use a sidecar fallback"
+    warn "jq could not be installed. Settings are still written, but cannot be merged."
+    record "jq            : MISSING"
   fi
 }
 
-# ----------------------------------------------------------------------------
-# Azure CLI (az) — the token source for Foundry auth. Install via brew if
-# missing (idempotent). Then check login state; DO NOT force an interactive
-# login from the script — instruct the user instead.
-#
-# This is the slowest and most failure-prone step on a TLS-inspected corp Mac,
-# and it runs BEFORE the token helper / settings.json / Claude Code install.
-# The 'brew install' is therefore GUARDED — a failure here must degrade to a
-# warning, not abort the run.
-# ----------------------------------------------------------------------------
 ensure_azure_cli() {
-  step "Azure CLI (az) — Foundry token source"
-
-  if command -v az >/dev/null 2>&1; then
-    success "Azure CLI already installed ($(az version --query '\"azure-cli\"' -o tsv 2>/dev/null || echo present))."
-    record "Azure CLI     : already installed"
-  elif command -v brew >/dev/null 2>&1; then
-    info "Azure CLI not found — installing via Homebrew (this can take a few minutes)…"
-    if brew install azure-cli </dev/null; then
-      success "Azure CLI installed ($(az version --query '\"azure-cli\"' -o tsv 2>/dev/null || echo present))."
-      record "Azure CLI     : installed via Homebrew"
-    else
-      warn "'brew install azure-cli' FAILED — see the network/TLS notes above."
-      warn "Without 'az' there is no Foundry token source; Claude Code will not authenticate."
-      record "Azure CLI     : INSTALL FAILED — see network notes"
-      return 0
-    fi
+  if az version >/dev/null 2>&1; then
+    record "Azure CLI     : $(az version --query '"azure-cli"' -o tsv 2>/dev/null || echo present)"
+    return 0
+  fi
+  step "Installing the Azure CLI (used to sign in; a few minutes)"
+  command -v brew >/dev/null 2>&1 || fatal "Homebrew is needed to install the Azure CLI but is missing." \
+                                           "Run this installer again."
+  if command -v az >/dev/null 2>&1 && brew list azure-cli >/dev/null 2>&1; then
+    info "The Azure CLI is installed but not working — reinstalling it."
+    brew reinstall azure-cli </dev/null || true
   else
-    warn "Azure CLI not found and Homebrew unavailable. Install Homebrew, then re-run."
-    record "Azure CLI     : MISSING — install Homebrew then re-run"
+    brew_install azure-cli || true
+  fi
+  az version >/dev/null 2>&1 || fatal "The Azure CLI did not install correctly (see the messages above)." \
+                                      "If a download error is shown: pause Zscaler for 15 minutes and run this again."
+  success "Azure CLI installed."
+  record "Azure CLI     : installed"
+}
+
+# ----------------------------------------------------------------------------
+# 4. Claude Code (native, self-contained binary — Node.js NOT required).
+# ----------------------------------------------------------------------------
+login_shell() { dscl . -read "/Users/${USER}" UserShell 2>/dev/null | awk '{print $2}' || true; }
+
+ensure_path() {
+  step "Making 'claude' and 'claude-login' available in Terminal"
+  mkdir -p "$LOCAL_BIN"
+  # BOTH zsh files: Terminal reads ~/.zprofile (login shell); the VS Code
+  # terminal reads only ~/.zshrc.
+  local line='export PATH="$HOME/.local/bin:$PATH"'
+  ensure_line "$line" "${HOME}/.zprofile"
+  ensure_line "$line" "${HOME}/.zshrc"
+  # 'claude' typed in the home folder starts in ~/Claude instead (see
+  # WORKSPACE); anywhere else it is untouched. 'function' form + unalias: an
+  # old 'alias claude=…' would otherwise break or bypass the definition.
+  local wrapper='unalias claude 2>/dev/null; function claude { if [ "$PWD" = "$HOME" ]; then (cd "$HOME/Claude" && command claude "$@"); else command claude "$@"; fi; }  # claude_corp_bootstrap.sh: start in ~/Claude, not the home folder'
+  local wlabel="Claude Code starts in ~/Claude when run from your home folder"
+  ensure_line "$wrapper" "${HOME}/.zshrc" "$wlabel"
+  case "$(login_shell)" in
+    */bash) ensure_line "$line" "${HOME}/.bash_profile"; ensure_line "$wrapper" "${HOME}/.bash_profile" "$wlabel" ;;
+  esac
+  case ":${PATH}:" in
+    *":${LOCAL_BIN}:"*) : ;;
+    *) export PATH="${LOCAL_BIN}:${PATH}" ;;
+  esac
+}
+
+ensure_claude_code() {
+  step "Claude Code"
+  if [[ -x "$CLAUDE_BIN" ]] && "$CLAUDE_BIN" --version </dev/null >/dev/null 2>&1; then
+    success "Claude Code already installed ($("$CLAUDE_BIN" --version </dev/null 2>/dev/null | head -1)). It updates itself."
+    record "Claude Code   : present ($("$CLAUDE_BIN" --version </dev/null 2>/dev/null | head -1))"
     return 0
   fi
 
-  # Login-state gate — exit-code on 'az account show'. Never auto-launch login.
-  if az account show >/dev/null 2>&1; then
-    success "Azure CLI is logged in."
-    AZ_LOGGED_IN="yes"
-    record "Azure login   : logged in"
+  local other=""
+  other="$(command -v claude 2>/dev/null || true)"
+  [[ -n "$other" ]] && info "Another Claude Code install was found at ${other}; installing the native one, which takes priority."
+
+  # Never -k: TLS verification stays on (macOS trusts the corporate root).
+  # The pipe IS bash's stdin here — do not add a '</dev/null' redirect.
+  # Three attempts: a single dropped connection through the corporate proxy
+  # (curl 35/56) must not end the install.
+  local attempt
+  for ((attempt = 1; attempt <= 3; attempt++)); do
+    info "Downloading and installing Claude Code (attempt ${attempt} of 3)…"
+    if curl -fsSL --retry 2 https://claude.ai/install.sh | bash \
+       && [[ -x "$CLAUDE_BIN" ]] && "$CLAUDE_BIN" --version </dev/null >/dev/null 2>&1; then
+      break
+    fi
+    warn "The Claude Code download did not complete."
+    if (( attempt < 3 )); then sleep 5; fi
+  done
+  if [[ -x "$CLAUDE_BIN" ]] && "$CLAUDE_BIN" --version </dev/null >/dev/null 2>&1; then
+    success "Claude Code installed ($("$CLAUDE_BIN" --version </dev/null 2>/dev/null | head -1))."
+    record "Claude Code   : installed ($("$CLAUDE_BIN" --version </dev/null 2>/dev/null | head -1))"
   else
-    warn "Azure CLI is NOT logged in. You must log in yourself (the script will not):"
-    warn "    az login --use-device-code"
-    warn "Device-code is recommended on corporate networks (avoids the loopback browser flow)."
-    cat >&2 <<'EOF'
-
-  CORPORATE-CA GOTCHA for 'az login':
-    REQUESTS_CA_BUNDLE *REPLACES* the trust store — it does NOT augment it.
-    Pointing it only at the corporate CA breaks validation of Microsoft endpoints.
-    If 'az login' fails on certificate validation, build a COMBINED bundle:
-
-      CERT_DIR="$HOME/.azure/certs"; mkdir -p "$CERT_DIR"
-      CACERT=$(find "$(brew --prefix)/Cellar/azure-cli" -name cacert.pem | head -n1)
-      cat "$CACERT" /path/to/corp-ca-chain.pem > "$CERT_DIR/combined-ca.pem"
-      export REQUESTS_CA_BUNDLE="$CERT_DIR/combined-ca.pem"
-      export SSL_CERT_FILE="$CERT_DIR/combined-ca.pem"   # set BOTH
-    Rebuild the combined bundle after every 'az' upgrade (the certifi path moves).
-    Note: the Foundry host is internal — connect the corporate VPN first.
-
-EOF
-    record "Azure login   : NOT logged in — run 'az login --use-device-code'"
+    fatal "Claude Code did not install (see the messages above)." \
+          "If a certificate or download error is shown: pause Zscaler for 15 minutes and run this again."
   fi
 }
 
 # ----------------------------------------------------------------------------
-# Token helper — ~/.claude/get-claude-token.sh (chmod 700). Fixed content, so
-# overwrite is fine; but back up any pre-existing DIFFERENT file once.
+# 5a. Token helper — ~/.claude/get-claude-token.sh (chmod 700).
 #
-# Single 'az' invocation on the happy path: 'az' is Python, so each call costs
-# ~1-2 s of interpreter start, and Claude Code invokes apiKeyHelper repeatedly.
-# The probe-then-fetch pattern paid that twice on EVERY request.
+# Lessons baked into the generated helper (each one was a real outage):
+#   - It NEVER signs in by itself. Claude Code runs it with no terminal, so a
+#     sign-in prompt would be invisible, and parallel sessions would each start
+#     one (an MFA storm, AADSTS50076). Its error tells the person to run
+#     'claude-login' — Claude Code shows that message verbatim.
+#   - 'cd /' first. Claude Code runs the helper in the current project folder;
+#     if that is unreadable, 'az' dies on getcwd and looks like a dead login.
+#   - Homebrew on PATH: spawned processes can inherit a minimal PATH.
+#   - '--tenant': the token comes from the Sleep Number tenant even if the
+#     account is also a guest elsewhere, and works with no subscription.
+#   - One 'az' call on the happy path (~1-2 s each), one retry for cache
+#     contention. stdout is the bare token only, no trailing newline.
+#
+# A helper this script did NOT write (no marker line) is left alone unless
+# FORCE_TOKEN_HELPER=1 — people with a hand-built refresh chain keep it.
 # ----------------------------------------------------------------------------
 ensure_token_helper() {
-  step "Foundry token helper (~/.claude/get-claude-token.sh)"
-
+  step "Writing the Azure token helper (~/.claude/get-claude-token.sh)"
   mkdir -p "$CLAUDE_DIR"
 
-  # Built with the resolved token resource interpolated in. stdout of this helper
-  # MUST be the bare token ONLY (Claude Code uses it as the bearer), so the login
-  # fallback uses device-code and writes its prompt to stderr — never to stdout,
-  # and never to /dev/null (so the user can see the code if a login is needed).
-  local desired
-  printf -v desired '%s\n' \
-'#!/bin/bash' \
-'# Auto-generated by claude_corp_bootstrap.sh — emits an Azure AD bearer token' \
-'# for Claude Code (apiKeyHelper). stdout MUST be the bare token only.' \
-"TOKEN=\"\$(az account get-access-token --resource \"${FOUNDRY_TOKEN_RESOURCE}\" --query accessToken -o tsv 2>/dev/null)\"" \
-'if [ -z "${TOKEN}" ]; then' \
-'    az login --use-device-code 1>&2 || true' \
-"    TOKEN=\"\$(az account get-access-token --resource \"${FOUNDRY_TOKEN_RESOURCE}\" --query accessToken -o tsv 2>/dev/null)\"" \
-'fi' \
-'if [ -z "${TOKEN}" ]; then' \
-'    echo "get-claude-token.sh: no Azure token. Check the corporate VPN, '\''az login'\'', and your RBAC role." >&2' \
-'    exit 1' \
-'fi' \
-'printf "%s\n" "${TOKEN}"'
-  desired="${desired%$'\n'}"   # drop the single trailing newline for clean idempotency match
+  local desired=""
+  # 'read -d ""' rather than "$(cat <<'EOF')": macOS bash 3.2 mis-parses quotes
+  # and parentheses inside a heredoc nested in command substitution.
+  IFS= read -r -d '' desired <<'HELPER' || true
+#!/bin/bash
+# Auto-generated by claude_corp_bootstrap.sh — Claude Code apiKeyHelper.
+# Prints an Azure Entra access token for the Foundry gateway. Claude Code sends
+# stdout as the bearer token, so stdout must be the bare token and nothing else.
+#
+# Requires CLAUDE_CODE_SKIP_FOUNDRY_AUTH=1 in ~/.claude/settings.json; without
+# it Claude Code's Foundry client ignores this helper entirely.
+#
+# This helper never signs in. When it fails, Claude Code shows the message
+# below, which tells the person to run 'claude-login'.
 
-  if [[ -f "$TOKEN_HELPER" ]] && [[ "$(cat "$TOKEN_HELPER")" == "$desired" ]]; then
-    success "Token helper already present with the expected content."
-  else
-    if [[ -f "$TOKEN_HELPER" ]]; then
-      local backup="${TOKEN_HELPER}.$(date +%Y%m%d-%H%M%S).bak"
-      cp -p "$TOKEN_HELPER" "$backup"
-      warn "Existing token helper differed — backed up to ${backup}."
+cd / 2>/dev/null
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"
+
+RESOURCE="@@RESOURCE@@"
+TENANT="@@TENANT@@"
+LOG="${HOME}/.claude/azure-token-helper.log"
+CA_BUNDLE="${HOME}/.claude/azure-ca-bundle.pem"
+[ -s "$CA_BUNDLE" ] && export REQUESTS_CA_BUNDLE="$CA_BUNDLE"
+
+if [ -f "$LOG" ] && [ "$(wc -c <"$LOG" 2>/dev/null || echo 0)" -gt 1048576 ]; then
+    tail -n 200 "$LOG" >"$LOG.tmp" 2>/dev/null && mv "$LOG.tmp" "$LOG"
+fi
+
+ERR="$(mktemp -t claude-token)" || exit 1
+trap 'rm -f "$ERR"' EXIT
+
+get_token() {
+    az account get-access-token --tenant "$TENANT" --resource "$RESOURCE" \
+        --query accessToken -o tsv 2>"$ERR"
+    local rc=$?
+    cat "$ERR" >>"$LOG" 2>/dev/null
+    return $rc
+}
+
+tls_error() {
+    grep -qiE 'CERTIFICATE_VERIFY_FAILED|certificate verify failed|SSLError|SSLCertVerificationError' "$ERR" 2>/dev/null
+}
+
+# Behind TLS inspection (Zscaler) az's own CA list lacks the corporate root,
+# so token refreshes fail once the cached token expires. Give az the Mac's
+# trust store, where MDM installs that root, and retry. Rebuilt on every
+# certificate error, so a rotated corporate root is picked up.
+use_mac_certs() {
+    tls_error || return 1
+    security find-certificate -a -p \
+        /System/Library/Keychains/SystemRootCertificates.keychain \
+        /Library/Keychains/System.keychain >"$CA_BUNDLE.tmp" 2>/dev/null
+    if [ -s "$CA_BUNDLE.tmp" ] && mv "$CA_BUNDLE.tmp" "$CA_BUNDLE"; then
+        export REQUESTS_CA_BUNDLE="$CA_BUNDLE"
+        return 0
     fi
-    printf '%s\n' "$desired" > "$TOKEN_HELPER"
-    success "Wrote ${TOKEN_HELPER}."
-  fi
+    rm -f "$CA_BUNDLE.tmp"
+    return 1
+}
 
-  chmod 700 "$TOKEN_HELPER"
-  success "Token helper is chmod 700."
-  record "Token helper  : ${TOKEN_HELPER} (chmod 700)"
+if ! command -v az >/dev/null 2>&1; then
+    echo "The Azure CLI is missing. Run the Claude Code installer again." >&2
+    exit 1
+fi
 
-  # Verify it runs (only meaningful if az is logged in). Never print the token.
-  if [[ "$AZ_LOGGED_IN" == "yes" ]]; then
-    if [[ -n "$("$TOKEN_HELPER" </dev/null 2>/dev/null | head -c 16 || true)" ]]; then
-      success "Token helper emitted a non-empty token."
-      TOKEN_OK="yes"
-      record "Token check   : OK (non-empty Azure token emitted)"
+TOKEN="$(get_token)"
+if [ -z "$TOKEN" ] && use_mac_certs; then
+    TOKEN="$(get_token)"
+fi
+if [ -z "$TOKEN" ]; then
+    sleep 2
+    TOKEN="$(get_token)"
+fi
+
+if [ -z "$TOKEN" ]; then
+    printf '%s token request failed (details above)\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" >>"$LOG"
+    if tls_error; then
+        echo "Microsoft sign-in is blocked by a certificate problem (network inspection, e.g. Zscaler). Pause Zscaler and try again, or send ~/.claude/azure-token-helper.log to the AI CoE team." >&2
     else
-      warn "Token helper ran but emitted no token. Check 'az login' / VPN / RBAC role."
-      record "Token check   : WARNING — helper produced no token"
+        echo "Not signed in to Azure. Open a new Terminal window, type claude-login and press Return, then try again here." >&2
     fi
+    exit 1
+fi
+
+printf '%s' "$TOKEN"
+HELPER
+  desired="${desired%$'\n'}"
+  desired="${desired//@@RESOURCE@@/${FOUNDRY_TOKEN_RESOURCE}}"
+  desired="${desired//@@TENANT@@/${FOUNDRY_TENANT_ID}}"
+
+  write_generated "$TOKEN_HELPER" "$desired" "Token helper " "${FORCE_TOKEN_HELPER:-0}"
+}
+
+# Write a generated script: no-op if identical; never overwrite a file this
+# script did not write unless forced; back up what it replaces.
+write_generated() {   # $1 path  $2 content  $3 summary label  $4 force (1/0)
+  local path="$1" content="$2" label="$3" force="${4:-0}"
+  if [[ -f "$path" ]] && [[ "$(cat "$path")" == "$content" ]]; then
+    chmod 700 "$path"
+    success "$(basename "$path") is already current."
+    record "${label} : current"
+  elif [[ -f "$path" ]] && ! grep -qF "$GENERATED_MARKER" "$path" && [[ "$force" != "1" ]]; then
+    warn "${path} was not written by this installer — leaving it untouched."
+    record "${label} : kept existing custom file"
   else
-    warn "Skipping live token check — not logged in. Run 'az login --use-device-code' then re-run."
-    record "Token check   : skipped (az not logged in)"
+    if [[ -f "$path" ]]; then
+      local backup
+      backup="${path}.$(date +%Y%m%d-%H%M%S).bak"
+      cp -p "$path" "$backup"
+      info "Previous version backed up to ${backup}."
+    fi
+    write_atomic "$path" 700 "$content"
+    success "Wrote ${path}."
+    record "${label} : written"
   fi
 }
 
+# Replace a file via temp file + rename in the same folder. A rename needs
+# write access to the folder only, so this also replaces a file another
+# account (e.g. root, after an earlier 'sudo' run) owns or made read-only —
+# where '>' would fail and stop the installer.
+write_atomic() {   # $1 path  $2 mode  $3 content
+  local path="$1" mode="$2" tmp
+  tmp="$(mktemp "${path}.XXXXXX")" || fatal "Cannot write in $(dirname "$path")." "Contact ${SUPPORT_CONTACT}."
+  printf '%s\n' "$3" > "$tmp"
+  chmod "$mode" "$tmp"
+  mv -f "$tmp" "$path" || { rm -f "$tmp"; fatal "Cannot replace ${path}." "Contact ${SUPPORT_CONTACT}."; }
+}
+
 # ----------------------------------------------------------------------------
-# settings.json — safe, idempotent, atomic deep-merge of the Foundry keys.
-# Uses jq '$base * $patch' (patch wins; existing plugins/marketplaces/env keys
-# preserved). Backs up first, validates result before replacing. Falls back to a
-# sidecar file if jq is unavailable.
+# 5b. claude-login — the one command a person needs when their Microsoft
+# sign-in expires. The installer uses the same command for the first sign-in,
+# so there is exactly one sign-in implementation.
+#
+#   Browser first (no code to copy; satisfies device-based Conditional Access),
+#   device code as the fallback (code copied to the clipboard, page opened).
+#   '--allow-no-subscriptions': most people have no Azure subscription, and
+#   'az login' fails without it. The subscription picker is switched off for
+#   this command only (environment variable, not a permanent az setting).
+#   If az hits TLS inspection, it is given the macOS trust store and retried.
 # ----------------------------------------------------------------------------
-ensure_settings() {
-  step "Merge Foundry config into ~/.claude/settings.json"
+ensure_login_command() {
+  step "Writing the sign-in command (~/.local/bin/claude-login)"
+  mkdir -p "$LOCAL_BIN"
 
-  mkdir -p "$CLAUDE_DIR"
+  local desired=""
+  IFS= read -r -d '' desired <<'LOGIN' || true
+#!/bin/bash
+# Auto-generated by claude_corp_bootstrap.sh — signs you in to Microsoft/Azure
+# so Claude Code can reach the Sleep Number AI gateway.
+#
+#   claude-login           sign in (browser first; a device code if that fails)
+#   claude-login --check   exit 0 if Claude Code can get a token right now
 
-  # Build the patch with jq so values are correctly JSON-encoded.
-  local patch
-  if command -v jq >/dev/null 2>&1; then
-    patch="$(jq -n \
-      --arg helper "$TOKEN_HELPER_TILDE" \
-      --argjson ttl "$FOUNDRY_TOKEN_TTL_MS" \
-      --arg model  "$FOUNDRY_DEFAULT_MODEL" \
-      --arg baseurl "$FOUNDRY_BASE_URL" \
-      --arg sonnet "$FOUNDRY_SONNET" \
-      --arg haiku  "$FOUNDRY_HAIKU" \
-      --arg opus   "$FOUNDRY_OPUS" \
-      '{
-         apiKeyHelper: $helper,
-         apiKeyHelperTtlMs: $ttl,
-         model: $model,
-         env: {
-           CLAUDE_CODE_USE_FOUNDRY: "1",
-           ANTHROPIC_FOUNDRY_BASE_URL: $baseurl,
-           ANTHROPIC_DEFAULT_SONNET_MODEL: $sonnet,
-           ANTHROPIC_DEFAULT_HAIKU_MODEL: $haiku,
-           ANTHROPIC_DEFAULT_OPUS_MODEL: $opus
-         }
-       }')"
-  fi
+set -uo pipefail
+cd / 2>/dev/null
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"
 
-  # --- jq unavailable: write a sidecar; never hand-merge JSON in bash. -------
-  if ! command -v jq >/dev/null 2>&1; then
-    local sidecar="${CLAUDE_DIR}/settings.foundry.json"
-    cat > "$sidecar" <<EOF
+TENANT="@@TENANT@@"
+RESOURCE="@@RESOURCE@@"
+CA_BUNDLE="${HOME}/.claude/azure-ca-bundle.pem"
+LOG="${HOME}/.claude/azure-token-helper.log"
+
+export AZURE_CORE_LOGIN_EXPERIENCE_V2=off
+[ -s "$CA_BUNDLE" ] && export REQUESTS_CA_BUNDLE="$CA_BUNDLE"
+
+if ! command -v az >/dev/null 2>&1; then
+    echo "claude-login: the Azure CLI is missing. Run the Claude Code installer again." >&2
+    exit 1
+fi
+
+WORK="$(mktemp -d -t claude-login)" || exit 1
+AZ_PID=""
+cleanup() { [ -n "$AZ_PID" ] && kill "$AZ_PID" 2>/dev/null; rm -rf "$WORK"; }
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+have_token() {
+    az account get-access-token --tenant "$TENANT" --resource "$RESOURCE" \
+        --query accessToken -o tsv >/dev/null 2>"$WORK/token.err"
+}
+
+tls_problem() {
+    grep -qiE 'CERTIFICATE_VERIFY_FAILED|certificate verify failed|SSLError|SSLCertVerificationError' "$@" 2>/dev/null
+}
+
+# Give az (Python) the macOS trust store, which holds the corporate root
+# certificate. Only done after az actually hit a certificate error; rebuilt
+# each time, so a stale bundle (e.g. a rotated corporate root) is replaced.
+build_ca_bundle() {
+    mkdir -p "$(dirname "$CA_BUNDLE")"
+    security find-certificate -a -p \
+        /System/Library/Keychains/SystemRootCertificates.keychain \
+        /Library/Keychains/System.keychain >"$CA_BUNDLE.tmp" 2>/dev/null
+    if [ -s "$CA_BUNDLE.tmp" ]; then
+        mv "$CA_BUNDLE.tmp" "$CA_BUNDLE"
+        export REQUESTS_CA_BUNDLE="$CA_BUNDLE"
+        echo "  (Using the Mac's certificate store for Microsoft sign-in.)"
+        return 0
+    fi
+    rm -f "$CA_BUNDLE.tmp"
+    return 1
+}
+
+if [ "${1:-}" = "--check" ]; then
+    have_token && exit 0
+    tls_problem "$WORK/token.err" && build_ca_bundle && have_token && exit 0
+    exit 1
+fi
+
+# Wait for the background az for up to $1 seconds; 124 on timeout.
+wait_az() {
+    local deadline=$(( $(date +%s) + $1 )) rc
+    while kill -0 "$AZ_PID" 2>/dev/null; do
+        if [ "$(date +%s)" -ge "$deadline" ]; then
+            kill "$AZ_PID" 2>/dev/null; wait "$AZ_PID" 2>/dev/null; AZ_PID=""
+            return 124
+        fi
+        sleep 1
+    done
+    wait "$AZ_PID"; rc=$?; AZ_PID=""
+    return $rc
+}
+
+login_browser() {
+    echo ""
+    echo "  A browser window is opening. Sign in with your Sleep Number account"
+    echo "  and approve the sign-in on your phone. Then come back to this window."
+    echo ""
+    az login --tenant "$TENANT" --scope "$RESOURCE/.default" --allow-no-subscriptions \
+        --output none </dev/null >"$WORK/browser.log" 2>&1 &
+    AZ_PID=$!
+    wait_az 300
+}
+
+login_device() {
+    az login --use-device-code --tenant "$TENANT" --scope "$RESOURCE/.default" \
+        --allow-no-subscriptions --output none </dev/null >"$WORK/device.log" 2>&1 &
+    AZ_PID=$!
+    local code="" i=0
+    while [ $i -lt 45 ]; do
+        code="$(grep -oE 'enter the code [A-Z0-9]{6,12}' "$WORK/device.log" 2>/dev/null | tail -1 | awk '{print $4}')"
+        [ -n "$code" ] && break
+        kill -0 "$AZ_PID" 2>/dev/null || break
+        sleep 1; i=$((i + 1))
+    done
+    if [ -z "$code" ]; then
+        wait_az 5
+        return 1
+    fi
+    printf '%s' "$code" | pbcopy 2>/dev/null
+    open "https://microsoft.com/devicelogin" 2>/dev/null
+    echo ""
+    echo "  ------------------------------------------------------------------"
+    echo "   A Microsoft page has opened in your browser."
+    echo "   Your code is:   $code    (already copied - just paste it)"
+    echo "   Paste the code, sign in, approve on your phone, then come back."
+    echo "  ------------------------------------------------------------------"
+    echo ""
+    wait_az 900
+}
+
+done_ok() { echo "  Signed in. Claude Code is ready."; exit 0; }
+
+if have_token; then echo "  Already signed in. Nothing to do."; exit 0; fi
+tls_problem "$WORK/token.err" && build_ca_bundle && have_token && done_ok
+
+echo "Signing in to Microsoft for Claude Code…"
+if [ -z "${SSH_CONNECTION:-}" ]; then
+    login_browser
+    have_token && done_ok
+    if tls_problem "$WORK/browser.log" && build_ca_bundle; then
+        login_browser
+        have_token && done_ok
+    fi
+    echo "  The browser sign-in did not finish. Trying with a sign-in code instead…"
+fi
+login_device
+have_token && done_ok
+if tls_problem "$WORK/device.log" && build_ca_bundle; then
+    login_device
+    have_token && done_ok
+fi
+
+for f in "$WORK"/*.log "$WORK/token.err"; do
+    [ -s "$f" ] && { printf '%s claude-login %s:\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$(basename "$f")"; cat "$f"; } >>"$LOG" 2>/dev/null
+done
+reason="$(cat "$WORK"/*.log "$WORK/token.err" 2>/dev/null | grep -oE 'AADSTS[0-9]+[^.]*' | tail -1)"
+echo ""
+echo "  Sign-in did not complete."
+[ -n "$reason" ] && echo "  Microsoft said: $reason"
+case "$reason" in
+    AADSTS50105*|AADSTS65001*|AADSTS500011*|AADSTS700016*)
+        echo "  Your account may not have access yet (check the 'Azure Subscription' request)." ;;
+    AADSTS53003*|AADSTS530003*)
+        echo "  A sign-in policy blocked this device. Contact the AI CoE team." ;;
+esac
+echo "  Run claude-login to try again. Details: $LOG"
+exit 1
+LOGIN
+  desired="${desired%$'\n'}"
+  desired="${desired//@@RESOURCE@@/${FOUNDRY_TOKEN_RESOURCE}}"
+  desired="${desired//@@TENANT@@/${FOUNDRY_TENANT_ID}}"
+
+  write_generated "$LOGIN_CMD" "$desired" "claude-login " 0
+}
+
+# ----------------------------------------------------------------------------
+# 5c. settings.json — safe, idempotent, atomic deep-merge of the Foundry keys.
+# Uses jq '($base | clean) * $patch': patch wins; existing hooks, plugins,
+# marketplaces and unrelated env keys are preserved; keys that defeat Foundry
+# mode are removed and named. Backs up first, validates before replacing.
+#
+#   apiKeyHelper                       script whose stdout is the bearer token
+#   model                              default model alias (opus)
+#   CLAUDE_CODE_USE_FOUNDRY=1          route Claude Code to Microsoft Foundry
+#   CLAUDE_CODE_SKIP_FOUNDRY_AUTH=1    skip the built-in Azure credential chain
+#                                      so the apiKeyHelper token is what is sent
+#                                      (without it the helper is IGNORED)
+#   CLAUDE_CODE_API_KEY_HELPER_TTL_MS  how often the helper is re-run
+#   ANTHROPIC_FOUNDRY_BASE_URL         the gateway
+#   ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL  model id per alias
+# ----------------------------------------------------------------------------
+settings_json_literal() {
+  cat <<EOF
 {
   "apiKeyHelper": "${TOKEN_HELPER_TILDE}",
-  "apiKeyHelperTtlMs": ${FOUNDRY_TOKEN_TTL_MS},
   "model": "${FOUNDRY_DEFAULT_MODEL}",
   "env": {
     "CLAUDE_CODE_USE_FOUNDRY": "1",
+    "CLAUDE_CODE_SKIP_FOUNDRY_AUTH": "1",
+    "CLAUDE_CODE_API_KEY_HELPER_TTL_MS": "${FOUNDRY_TOKEN_TTL_MS}",
     "ANTHROPIC_FOUNDRY_BASE_URL": "${FOUNDRY_BASE_URL}",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "${FOUNDRY_SONNET}",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "${FOUNDRY_HAIKU}",
@@ -599,283 +1093,541 @@ ensure_settings() {
   }
 }
 EOF
-    chmod 600 "$sidecar" 2>/dev/null || true
-    warn "jq not found — wrote Foundry keys to ${sidecar}."
-    warn "Install jq ('brew install jq') and re-run to merge into ${SETTINGS_FILE}."
-    record "settings.json : NOT merged — sidecar written (install jq, re-run)"
+}
+
+ensure_settings() {
+  step "Writing Claude Code settings (~/.claude/settings.json)"
+  mkdir -p "$CLAUDE_DIR"
+
+  # --- No jq: a fresh file can be written whole; an existing one is never
+  # hand-merged in bash — the Foundry keys go to a sidecar instead.
+  if ! command -v jq >/dev/null 2>&1; then
+    if [[ ! -s "$SETTINGS_FILE" ]]; then
+      write_atomic "$SETTINGS_FILE" 600 "$(settings_json_literal)"
+      success "Wrote ${SETTINGS_FILE}."
+      record "settings.json : written"
+    else
+      local sidecar="${CLAUDE_DIR}/settings.foundry.json"
+      settings_json_literal > "$sidecar"
+      chmod 600 "$sidecar"
+      warn "jq is missing, so the existing settings.json was not changed. Foundry keys: ${sidecar}"
+      problem "Install jq ('brew install jq') and run this installer again to finish the settings."
+      record "settings.json : NOT merged (jq missing)"
+    fi
     return 0
   fi
 
-  # --- Decide the BASE document. ---------------------------------------------
+  local patch
+  patch="$(jq -n \
+    --arg helper "$TOKEN_HELPER_TILDE" --arg ttl "$FOUNDRY_TOKEN_TTL_MS" \
+    --arg model "$FOUNDRY_DEFAULT_MODEL" --arg baseurl "$FOUNDRY_BASE_URL" \
+    --arg sonnet "$FOUNDRY_SONNET" --arg haiku "$FOUNDRY_HAIKU" --arg opus "$FOUNDRY_OPUS" \
+    '{
+       apiKeyHelper: $helper,
+       model: $model,
+       env: {
+         CLAUDE_CODE_USE_FOUNDRY: "1",
+         CLAUDE_CODE_SKIP_FOUNDRY_AUTH: "1",
+         CLAUDE_CODE_API_KEY_HELPER_TTL_MS: $ttl,
+         ANTHROPIC_FOUNDRY_BASE_URL: $baseurl,
+         ANTHROPIC_DEFAULT_SONNET_MODEL: $sonnet,
+         ANTHROPIC_DEFAULT_HAIKU_MODEL: $haiku,
+         ANTHROPIC_DEFAULT_OPUS_MODEL: $opus
+       }
+     }')"
+
   local base
-  if [[ ! -e "$SETTINGS_FILE" ]]; then
-    info "${SETTINGS_FILE} does not exist; creating it from the Foundry patch."
+  if [[ ! -s "$SETTINGS_FILE" ]]; then
     base='{}'
-  elif [[ ! -s "$SETTINGS_FILE" ]]; then
-    info "${SETTINGS_FILE} is empty; treating base as {}."
+  elif ! jq -e 'type == "object"' "$SETTINGS_FILE" >/dev/null 2>&1; then
+    local ibak
+    ibak="${SETTINGS_FILE}.invalid.$(date +%Y%m%d-%H%M%S).bak"
+    mv "$SETTINGS_FILE" "$ibak"
+    warn "The existing settings.json was not valid JSON. Moved aside to ${ibak}; writing a fresh one."
     base='{}'
-  elif ! jq empty "$SETTINGS_FILE" >/dev/null 2>&1; then
-    local ibak="${SETTINGS_FILE}.invalid.$(date +%Y%m%d-%H%M%S).bak"
-    cp -p "$SETTINGS_FILE" "$ibak"
-    error "${SETTINGS_FILE} exists but is NOT valid JSON. Backed up to ${ibak}."
-    warn  "Refusing to merge. Fix or remove the file, then re-run."
-    record "settings.json : ERROR — invalid JSON, backed up, not merged"
-    return 0
   else
     base="$(cat "$SETTINGS_FILE")"
   fi
 
-  # --- Idempotency: skip if the merged result already matches. ---------------
+  local merge_expr="${JQ_CLEAN_DEF} (\$base | clean) * \$patch"
+
   if [[ "$base" != '{}' ]] && \
      diff -q <(printf '%s' "$base" | jq -S .) \
-             <(jq -n --argjson b "$base" --argjson p "$patch" '$b * $p' | jq -S .) \
+             <(jq -n --argjson base "$base" --argjson patch "$patch" \
+                     --argjson stale "$STALE_ENV_KEYS_JSON" "$merge_expr" | jq -S .) \
              >/dev/null 2>&1; then
-    success "settings.json already contains the Foundry config — no change needed."
+    success "settings.json already has the Foundry configuration."
     record "settings.json : already up to date"
     return 0
   fi
 
-  # --- Back up an existing readable file before touching it. -----------------
-  if [[ -e "$SETTINGS_FILE" && -s "$SETTINGS_FILE" ]]; then
-    local backup="${SETTINGS_FILE}.$(date +%Y%m%d-%H%M%S).bak"
+  local removed
+  removed="$(jq -rn --argjson b "$base" --argjson stale "$STALE_ENV_KEYS_JSON" '
+    ( (if $b | has("apiKeyHelperTtlMs") then ["apiKeyHelperTtlMs"] else [] end)
+    + (if ($b.env | type) == "object"
+       then [ $stale[] as $k | select($b.env | has($k)) | "env." + $k ]
+       else [] end) ) | join(", ")')"
+  [[ -n "$removed" ]] && warn "Removing settings that defeat Foundry mode: ${removed} (kept in the backup)"
+
+  if [[ "$base" != '{}' ]]; then
+    local backup
+    backup="${SETTINGS_FILE}.$(date +%Y%m%d-%H%M%S).bak"
     cp -p "$SETTINGS_FILE" "$backup"
+    chmod 600 "$backup" 2>/dev/null || true
     info "Backup written to ${backup}."
   fi
 
-  # --- Deep-merge: base * patch (patch wins; nested env merged key-by-key). ---
   local tmp
   tmp="$(mktemp "${SETTINGS_FILE}.XXXXXX")"
   if ! jq -n --argjson base "$base" --argjson patch "$patch" \
-        '$base * $patch' > "$tmp"; then
+        --argjson stale "$STALE_ENV_KEYS_JSON" "$merge_expr" > "$tmp" \
+     || ! jq empty "$tmp" >/dev/null 2>&1; then
     rm -f "$tmp"
-    error "jq merge failed. Original left intact."
-    record "settings.json : ERROR — merge failed, original intact"
-    return 0
+    fatal "Could not write ${SETTINGS_FILE} (the original is unchanged)." "Contact ${SUPPORT_CONTACT}."
   fi
-
-  # --- Validate the result parses before replacing the original. -------------
-  if ! jq empty "$tmp" >/dev/null 2>&1; then
-    rm -f "$tmp"
-    error "Merged result is not valid JSON. Original left intact."
-    record "settings.json : ERROR — bad merge result, original intact"
-    return 0
-  fi
-
-  chmod 600 "$tmp" 2>/dev/null || true
-  mv "$tmp" "$SETTINGS_FILE"          # atomic rename within the same dir
-  success "Merged Foundry keys into ${SETTINGS_FILE} (plugins/marketplaces preserved)."
-  record "settings.json : merged Foundry config"
+  chmod 600 "$tmp"
+  mv "$tmp" "$SETTINGS_FILE"
+  success "Wrote the Foundry configuration into ${SETTINGS_FILE} (other settings kept)."
+  record "settings.json : written"
 }
 
 # ----------------------------------------------------------------------------
-# Claude Code (native, self-contained binary — Node.js NOT required).
-# Installs via the official installer, then puts ~/.local/bin on PATH.
-# claude.ai is still needed to DOWNLOAD the installer.
+# 5d. Skip Claude Code's first-run screens. On a new account Claude Code shows
+# a theme picker, safety notes, then a folder-trust question whose DEFAULT
+# answer is "No, exit" — pressing Return there quits Claude Code. Mark
+# onboarding done and trust ~/Claude (WORKSPACE), where 'claude' starts; the
+# per-action permission prompts are unaffected. Existing values are kept,
+# except a declined trust for ~/Claude is turned on.
 # ----------------------------------------------------------------------------
-ensure_claude_code() {
-  step "Claude Code (native install)"
+ensure_claude_state() {
+  step "Preparing Claude Code's first start"
+  mkdir -p "$WORKSPACE"
+  local ws_real
+  ws_real="$(cd "$WORKSPACE" && pwd -P)"
 
-  local claude_bin="${HOME}/.local/bin/claude"
-
-  if command -v claude >/dev/null 2>&1 || [[ -x "$claude_bin" ]]; then
-    success "Claude Code already installed (binary present)."
-    record "Claude Code   : already installed"
-  else
-    info "Installing Claude Code via the official native installer…"
-    # -f fail on HTTP errors, -s silent, -S show errors, -L follow redirects.
-    # Never -k: we do not disable TLS verification.
-    if curl -fsSL https://claude.ai/install.sh | bash; then
-      success "Claude Code installer completed."
-      record "Claude Code   : installed (native)"
+  if ! command -v jq >/dev/null 2>&1; then
+    if [[ ! -e "$CLAUDE_STATE" ]]; then
+      local h="${WORKSPACE//\\/\\\\}" state=""; h="${h//\"/\\\"}"
+      printf -v state '{\n  "hasCompletedOnboarding": true,\n  "theme": "dark",\n  "projects": { "%s": { "hasTrustDialogAccepted": true } }\n}' "$h"
+      write_atomic "$CLAUDE_STATE" 600 "$state"
+      success "First-run screens skipped."
+      record "First start   : prepared"
     else
-      error "The Claude Code installer failed."
-      warn  "If you saw a 403 / HTML / 'syntax error near unexpected token' or a TLS error,"
-      warn  "that is a corporate proxy/cert/region block — see the network notes above."
-      record "Claude Code   : INSTALL FAILED — see network notes"
+      info "Skipped (jq missing). Claude Code will show its first-run questions."
+      record "First start   : not prepared (jq missing)"
     fi
+    return 0
   fi
 
-  # The installer does NOT reliably edit your shell profile — add ~/.local/bin
-  # to PATH ourselves (grep-guarded) and export for the current session.
-  #
-  # BOTH files, deliberately: zsh reads ~/.zprofile for LOGIN shells only.
-  # Terminal.app gives you one; the VS Code integrated terminal does NOT, so a
-  # .zprofile-only PATH leaves 'claude: command not found' in the editor.
-  # ensure_line is grep-guarded, so the second write is a no-op on re-runs.
-  ensure_line 'export PATH="$HOME/.local/bin:$PATH"' "${HOME}/.zprofile"
-  ensure_line 'export PATH="$HOME/.local/bin:$PATH"' "${HOME}/.zshrc"
-  case ":${PATH}:" in
-    *":${HOME}/.local/bin:"*) : ;;                      # already present
-    *) export PATH="${HOME}/.local/bin:${PATH}" ;;
-  esac
-  success "~/.local/bin is on PATH for this session (and in ~/.zprofile + ~/.zshrc)."
+  local base='{}'
+  if [[ -s "$CLAUDE_STATE" ]]; then
+    if ! jq -e 'type == "object"' "$CLAUDE_STATE" >/dev/null 2>&1; then
+      info "Left ${CLAUDE_STATE} alone (not valid JSON). Claude Code will repair it."
+      record "First start   : not prepared (state file unreadable)"
+      return 0
+    fi
+    base="$(cat "$CLAUDE_STATE")"
+  fi
+
+  local desired
+  desired="$(jq -n --argjson b "$base" --arg h "$WORKSPACE" --arg rp "$ws_real" '
+    $b
+    | .hasCompletedOnboarding = true
+    | .theme = (.theme // "dark")
+    | .projects = (.projects // {})
+    | .projects[$h] = ((.projects[$h] // {}) + {hasTrustDialogAccepted: true})
+    | .projects[$rp] = ((.projects[$rp] // {}) + {hasTrustDialogAccepted: true})')"
+
+  if [[ "$(printf '%s' "$base" | jq -S .)" == "$(printf '%s' "$desired" | jq -S .)" ]]; then
+    success "Claude Code's first start is already prepared."
+    record "First start   : already prepared"
+    return 0
+  fi
+  local tmp
+  tmp="$(mktemp "${CLAUDE_STATE}.XXXXXX")"
+  printf '%s\n' "$desired" > "$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$CLAUDE_STATE"
+  success "First-run screens skipped; Claude Code will start in ${WORKSPACE}."
+  record "First start   : prepared"
 }
 
 # ----------------------------------------------------------------------------
-# Verification: claude --version, a Foundry-auth smoke test (token helper emits
-# a non-empty token), and claude doctor. Never prints the token value.
+# 5e. The /make-it skill suite (sealmindset/make-it): /make-it, /try-it,
+# /resume-it, /wrap-it and friends, copied into ~/.claude/commands and
+# ~/.claude/make-it. Files only — no sudo, settings.json untouched.
 #
-# Every subcommand gets </dev/null: under 'curl | bash' stdin is the script
-# text, and 'claude doctor' is a TUI that would otherwise read it as input.
+#   Pinned to the commit this installer was tested with (MAKEIT_REF overrides,
+#   e.g. MAKEIT_REF=main). make-it's own install.sh always pulls 'main' when
+#   piped from curl, so instead the pinned commit's archive is unpacked and its
+#   install.sh is run from there (its "local source" mode).
+#   Never downgrades: an existing install (e.g. after '/make-it update') is kept.
+#   Not fatal: Claude Code works without it; a failure is listed at the end.
+#
+#   NOTE: building and running apps with /make-it needs Docker, which this
+#   installer deliberately does not install. /make-it's own Preflight says so.
 # ----------------------------------------------------------------------------
-verify_install() {
-  step "Verification"
+MAKEIT_REPO="sealmindset/make-it"
+MAKEIT_PINNED="09e4791cfe341a01fceb7444f7430839788b798c"   # v1.52.0, tested 2026-11-11
+MAKEIT_REF="${MAKEIT_REF:-}"
 
-  local claude_bin="${HOME}/.local/bin/claude"
-  local claude_cmd=""
-  if command -v claude >/dev/null 2>&1; then
-    claude_cmd="claude"
-  elif [[ -x "$claude_bin" ]]; then
-    claude_cmd="$claude_bin"
+ensure_makeit() {
+  step "Installing the /make-it skills"
+  local installed=""
+  installed="$(tr -d '[:space:]' 2>/dev/null < "${CLAUDE_DIR}/make-it/VERSION" || true)"
+  if [[ -z "$MAKEIT_REF" && -n "$installed" && -f "${CLAUDE_DIR}/commands/make-it.md" ]]; then
+    success "/make-it skills already installed (v${installed}). Update later with '/make-it update'."
+    record "/make-it      : present (v${installed})"
+    return 0
   fi
 
-  if [[ -z "$claude_cmd" ]]; then
-    error "'claude' not found on PATH and not at ${claude_bin}."
-    warn  "If the install step failed (network/cert), fix that and re-run this script."
-    record "Verify        : FAILED — claude binary not found"
+  local ref="${MAKEIT_REF:-$MAKEIT_PINNED}" work src="" out attempt
+  work="$(mktemp -d -t make-it)"
+  out="${work}/install-output.txt"
+  for ((attempt = 1; attempt <= 3; attempt++)); do
+    if curl -fsSL --retry 2 "https://github.com/${MAKEIT_REPO}/archive/${ref}.tar.gz" -o "${work}/src.tgz" \
+       && tar -xzf "${work}/src.tgz" -C "$work" 2>/dev/null; then
+      src="$(find "$work" -mindepth 1 -maxdepth 1 -type d -name 'make-it-*' | head -1)"
+      [[ -n "$src" && -f "${src}/install.sh" ]] && break
+    fi
+    src=""
+    if (( attempt < 3 )); then sleep 5; fi
+  done
+
+  if [[ -z "$src" ]]; then
+    rm -rf "$work"
+    warn "Could not download the /make-it skills."
+    problem "The /make-it skills did not install (download failed). Run this installer again."
+    record "/make-it      : NOT installed (download failed)"
+    return 0
+  fi
+
+  # Run from a neutral folder; output goes to the log, not the screen.
+  if (cd /tmp && bash "${src}/install.sh" </dev/null >"$out" 2>&1) \
+     && [[ -f "${CLAUDE_DIR}/commands/make-it.md" ]]; then
+    installed="$(tr -d '[:space:]' 2>/dev/null < "${CLAUDE_DIR}/make-it/VERSION" || echo '?')"
+    { printf -- '--- make-it install.sh output ---\n'; cat "$out"; } >> "$LOG_FILE" 2>/dev/null || true
+    success "/make-it skills installed (v${installed}, $(ls "${CLAUDE_DIR}/commands/"*-it.md 2>/dev/null | wc -l | tr -d ' ') skills)."
+    record "/make-it      : installed (v${installed})"
   else
-    if "$claude_cmd" --version </dev/null >/dev/null 2>&1; then
-      success "claude --version: $("$claude_cmd" --version </dev/null 2>/dev/null | head -1)"
-      CLAUDE_OK="yes"
-      record "Verify        : claude --version OK"
-    else
-      warn "'claude --version' did not run cleanly. Open a NEW terminal and try again."
-      record "Verify        : WARNING — 'claude --version' failed (likely PATH; new terminal needed)"
-    fi
+    warn "The /make-it skills installer reported a problem:"
+    tail -n 15 "$out" 2>/dev/null | sed 's/^/    /' || true
+    problem "The /make-it skills did not install (see the messages above). Run this installer again."
+    record "/make-it      : NOT installed"
   fi
+  rm -rf "$work"
+  return 0
+}
 
-  # Foundry-auth smoke test — run the token helper; confirm a non-empty token.
-  info "Foundry auth smoke test (token helper) — the token value is never printed…"
-  if [[ "$AZ_LOGGED_IN" == "yes" ]]; then
-    if [[ -n "$("$TOKEN_HELPER" </dev/null 2>/dev/null | head -c 16 || true)" ]]; then
-      success "Foundry token helper emitted a non-empty Azure token."
-      TOKEN_OK="yes"
-    else
-      warn "Token helper produced no token. Check VPN, 'az login', and your RBAC role"
-      warn "(Cognitive Services User / Foundry User on the resource)."
+# ----------------------------------------------------------------------------
+# 5f. Shell-level overrides. settings.json can only clean what it holds; a
+# variable exported from a shell profile still reaches Claude Code and masks
+# Foundry. Reports file, line and NAME only — never the value. Read-only.
+# ----------------------------------------------------------------------------
+check_env_conflicts() {
+  step "Checking for settings that would override Foundry"
+
+  local found="no" v f line hits
+  local pattern='^[[:space:]]*(export[[:space:]]+)?(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX)='
+
+  for v in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX; do
+    if [[ -n "${!v:-}" ]]; then
+      warn "${v} is set in this Terminal and overrides Foundry."
+      found="yes"
     fi
+  done
+
+  for f in "${HOME}/.zshenv" "${HOME}/.zprofile" "${HOME}/.zshrc" \
+           "${HOME}/.bash_profile" "${HOME}/.bashrc" "${HOME}/.profile"; do
+    [[ -f "$f" && -r "$f" ]] || continue
+    hits="$(grep -nE "$pattern" "$f" 2>/dev/null \
+            | sed -E 's/^([0-9]+):[[:space:]]*(export[[:space:]]+)?([A-Z_]+)=.*/line \1: \3/' || true)"
+    [[ -n "$hits" ]] || continue
+    while IFS= read -r line; do
+      warn "${f} ${line} — delete or comment out that line."
+      found="yes"
+    done <<< "$hits"
+  done
+
+  if [[ "$found" == "yes" ]]; then
+    ENV_CONFLICTS="yes"
+    problem "Remove the ANTHROPIC_*/provider lines listed under 'override Foundry', then open a new Terminal window."
+    record "Overrides     : FOUND (see warnings)"
   else
-    warn "Skipping token smoke test — 'az' is not logged in. Run 'az login --use-device-code'."
-  fi
-
-  # claude doctor is a full install/config/auth diagnostic (non-fatal).
-  if [[ -n "$claude_cmd" ]]; then
-    info "Running 'claude doctor' (full diagnostic — non-fatal)…"
-    if "$claude_cmd" doctor </dev/null 2>/dev/null; then
-      success "claude doctor completed."
-    else
-      warn "'claude doctor' reported issues or is unavailable. Review its output above."
-    fi
-
-    # Surface conflicting installs (native vs legacy vs npm-global).
-    if command -v which >/dev/null 2>&1; then
-      local found count
-      found="$(which -a claude 2>/dev/null | tr '\n' ' ' || true)"
-      count="$(which -a claude 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
-      if [[ -n "$found" ]] && [[ "${count:-0}" -gt 1 ]]; then
-        warn "Multiple 'claude' binaries on PATH: ${found}"
-        warn "Keep ONLY the native one (~/.local/bin/claude); remove legacy/npm copies."
-      fi
-    fi
+    success "None found."
+    record "Overrides     : none"
   fi
 }
 
 # ----------------------------------------------------------------------------
-# Final summary + the exact manual steps the user must do themselves (Foundry).
+# 6. Microsoft sign-in, using the same claude-login command people use later.
+# ----------------------------------------------------------------------------
+ensure_azure_login() {
+  step "Signing in to Microsoft (Azure)"
+
+  if [[ "${SKIP_CORP_CHECKS:-0}" == "1" ]]; then
+    info "Skipped (SKIP_CORP_CHECKS=1)."
+    record "Azure sign-in : skipped (test mode)"
+    return 0
+  fi
+
+  if "$LOGIN_CMD" --check </dev/null >/dev/null 2>&1; then
+    success "Already signed in to Azure."
+    AZ_LOGGED_IN="yes"
+    record "Azure sign-in : signed in"
+    return 0
+  fi
+
+  if [[ "$HAVE_TTY" != "yes" ]]; then
+    warn "Not signed in, and no keyboard available to sign in now."
+    problem "Open Terminal, type claude-login and press Return."
+    record "Azure sign-in : NOT signed in"
+    return 0
+  fi
+
+  local attempt
+  for ((attempt = 1; attempt <= 3; attempt++)); do
+    if "$LOGIN_CMD" </dev/tty; then
+      AZ_LOGGED_IN="yes"
+      success "Signed in to Azure."
+      record "Azure sign-in : signed in"
+      return 0
+    fi
+    (( attempt == 3 )) && break
+    ask_enter "  Press Return to try signing in again (or type S and Return to skip): " || break
+  done
+  warn "Azure sign-in did not complete."
+  problem "Sign in: open Terminal, type claude-login and press Return."
+  record "Azure sign-in : NOT signed in"
+}
+
+# ----------------------------------------------------------------------------
+# 7. Proof. A token, a 1-token request per model through the gateway (token on
+# curl's stdin, never on the command line), then Claude Code itself answering.
+# ----------------------------------------------------------------------------
+verify_token() {
+  step "Checking the Azure token"
+  if [[ "${SKIP_CORP_CHECKS:-0}" == "1" ]]; then
+    TOKEN_OK="skipped"
+    record "Token         : skipped (test mode)"
+    return 0
+  fi
+  if [[ "$AZ_LOGGED_IN" != "yes" ]]; then
+    record "Token         : skipped (not signed in)"
+    return 0
+  fi
+  if [[ -n "$("$TOKEN_HELPER" </dev/null 2>/dev/null | head -c 16 || true)" ]]; then
+    TOKEN_OK="yes"
+    success "The token helper returned a token (not shown)."
+    record "Token         : OK"
+  else
+    warn "The token helper returned no token. Details: ${CLAUDE_DIR}/azure-token-helper.log"
+    problem "Type claude-login in Terminal to sign in again, then run this installer again."
+    record "Token         : FAILED"
+  fi
+}
+
+verify_gateway() {
+  step "Testing the AI gateway (a 1-token request to each model)"
+
+  if [[ "${SKIP_GATEWAY_TEST:-0}" == "1" || "${SKIP_CORP_CHECKS:-0}" == "1" ]]; then
+    info "Skipped (test mode)."
+    record "Gateway test  : skipped"
+    return 0
+  fi
+  if [[ "$TOKEN_OK" != "yes" ]]; then
+    info "Skipped — no Azure token yet."
+    record "Gateway test  : skipped (no token)"
+    [[ "$GATEWAY_REACHABLE" == "no" ]] && problem "$VPN_PROBLEM"
+    return 0
+  fi
+
+  local token
+  token="$("$TOKEN_HELPER" </dev/null 2>/dev/null || true)"
+  [[ -n "$token" ]] || { warn "No token on this attempt — skipped."; record "Gateway test  : skipped"; return 0; }
+
+  local url="${FOUNDRY_BASE_URL%/}/v1/messages"
+  local respfile entry slot model req code rc msg pass=0 total=0 unreachable="no"
+  respfile="$(mktemp -t claude-gw)"
+
+  for entry in "opus|${FOUNDRY_OPUS}" "sonnet|${FOUNDRY_SONNET}" "haiku|${FOUNDRY_HAIKU}"; do
+    slot="${entry%%|*}"; model="${entry#*|}"; total=$((total + 1))
+    if command -v jq >/dev/null 2>&1; then
+      req="$(jq -nc --arg m "$model" '{model: $m, max_tokens: 1, messages: [{role: "user", content: "ping"}]}')"
+    else
+      req="{\"model\":\"${model}\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}"
+    fi
+    : > "$respfile"
+    code="$(printf 'Authorization: Bearer %s\n' "$token" \
+            | curl -sS -o "$respfile" -w '%{http_code}' --max-time 60 \
+                -H @- -H 'anthropic-version: 2023-06-01' -H 'content-type: application/json' \
+                -d "$req" "$url" 2>/dev/null)" && rc=0 || rc=$?
+    msg=""
+    command -v jq >/dev/null 2>&1 && \
+      msg="$(jq -r '.error.message // .message // empty' "$respfile" 2>/dev/null | head -c 200 || true)"
+
+    [[ "$code" == "000" || -z "$code" ]] && [[ "$rc" -ne 60 ]] && unreachable="yes"
+    case "$code" in
+      200) success "${slot} (${model}): answered"; pass=$((pass + 1)) ;;
+      401) warn "${slot} (${model}): 401 — the gateway rejected the sign-in. ${msg}" ;;
+      403) warn "${slot} (${model}): 403 — signed in, but this account is not authorized on the gateway. ${msg}" ;;
+      404) warn "${slot} (${model}): 404 — this model is not available on the gateway. ${msg}" ;;
+      000|"")
+        if [[ "$rc" -eq 60 ]]; then warn "${slot} (${model}): certificate not trusted (curl 60)."
+        else warn "${slot} (${model}): gateway unreachable (curl ${rc}) — VPN?"; fi ;;
+      *)   warn "${slot} (${model}): HTTP ${code}. ${msg}" ;;
+    esac
+  done
+  rm -f "$respfile"
+  token=""
+
+  record "Gateway test  : ${pass}/${total} models answered"
+  if [[ "$pass" -eq "$total" ]]; then
+    GATEWAY_OK="yes"
+    verify_claude_prompt
+  else
+    GATEWAY_OK="no"
+    if [[ "$unreachable" == "yes" ]]; then
+      problem "$VPN_PROBLEM"
+    else
+      problem "The AI gateway did not answer for every model (see the warnings above). Send the log to ${SUPPORT_CONTACT}."
+    fi
+  fi
+  return 0
+}
+
+# Claude Code itself, reading ~/.claude/settings.json, answers a one-line
+# prompt. Hard 90 s limit: with a token the gateway rejects, 'claude -p'
+# retries for minutes instead of exiting.
+verify_claude_prompt() {
+  if ! command -v perl >/dev/null 2>&1; then
+    info "Skipping the Claude Code test (no safe timeout available)."
+    record "Claude test   : skipped"
+    return 0
+  fi
+  info "Asking Claude Code for a one-word reply…"
+  local out
+  out="$(cd "$WORKSPACE" && with_timeout 90 "$CLAUDE_BIN" -p --no-session-persistence --model haiku \
+           "Reply with exactly the word OK and nothing else." </dev/null 2>&1 || true)"
+  # Whole-line match: a bare 'OK' substring would also match "invalid TOKEN".
+  if printf '%s\n' "$out" | grep -qxE '[[:space:]]*OK\.?[[:space:]]*'; then
+    success "Claude Code answered through Azure AI Foundry."
+    record "Claude test   : OK"
+  else
+    GATEWAY_OK="no"
+    warn "Claude Code did not answer within 90 seconds."
+    [[ -n "$out" ]] && warn "It said: $(printf '%s' "$out" | head -c 300)"
+    problem "Claude Code could not answer although the gateway did. Send the log to ${SUPPORT_CONTACT}."
+    record "Claude test   : FAILED"
+  fi
+}
+
+verify_binaries() {
+  if "$CLAUDE_BIN" --version </dev/null >/dev/null 2>&1; then
+    CLAUDE_OK="yes"
+  else
+    problem "Claude Code is installed but does not start. Send the log to ${SUPPORT_CONTACT}."
+  fi
+  local others
+  others="$(which -a claude 2>/dev/null | grep -vxF "$CLAUDE_BIN" | tr '\n' ' ' || true)"
+  [[ -n "$others" ]] && info "Other Claude Code copies on this Mac (the native one wins): ${others}"
+  return 0
+}
+
+# ----------------------------------------------------------------------------
+# Summary
 # ----------------------------------------------------------------------------
 print_summary() {
-  printf '\n%s======================== SUMMARY ========================%s\n' "${C_BLU}" "${C_RESET}"
+  printf '\n%s------------------------- SUMMARY -------------------------%s\n' "${C_BLU}" "${C_RESET}"
   local line
-  # ${arr[@]+"${arr[@]}"}: macOS ships bash 3.2, where expanding an EMPTY array
-  # under 'set -u' is an "unbound variable" error.
-  for line in ${SUMMARY_LINES[@]+"${SUMMARY_LINES[@]}"}; do
-    printf '  %s\n' "$line"
-  done
-  printf '  %-13s : %s\n' "Warnings" "${WARN_COUNT}"
-  printf '%s========================================================%s\n' "${C_BLU}" "${C_RESET}"
+  # ${arr[@]+"${arr[@]}"}: bash 3.2 treats an EMPTY array as unbound under 'set -u'.
+  for line in ${SUMMARY_LINES[@]+"${SUMMARY_LINES[@]}"}; do printf '  %s\n' "$line"; done
+  printf '%s-----------------------------------------------------------%s\n' "${C_BLU}" "${C_RESET}"
 
-  printf '\n%s>>> NEXT STEPS — YOU MUST DO THESE MANUALLY <<<%s\n' "${C_GRN}" "${C_RESET}"
-  cat <<'EOF'
-
-  This machine is configured for AZURE AI FOUNDRY. There is NO claude.ai
-  browser login — Claude Code authenticates with an Azure access token that
-  the apiKeyHelper (~/.claude/get-claude-token.sh) mints from your 'az' session.
-
-  1. OPEN A NEW TERMINAL  (so the updated PATH takes effect),
-     or run:  source ~/.zprofile
-
-  2. CONNECT THE CORPORATE VPN.
-     The Foundry endpoint is an internal host and is unreachable off-VPN.
-
-  3. LOG IN TO AZURE (device-code recommended on corporate networks):
-          az login --use-device-code
-     Verify:  az account show
-     If 'az login' fails on certificates, see the REQUESTS_CA_BUNDLE combined-CA
-     note printed in the Azure CLI step above (it REPLACES the trust store).
-
-  4. RUN CLAUDE:
-          claude
-     It should start with NO browser OAuth. Confirm routing inside Claude Code:
-          /status
-     It should report  API provider: Microsoft Foundry  and your resource.
-
-  5. GOTCHA — A STALE ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN OVERRIDES FOUNDRY:
-     If either is exported in your shell (or left in ~/.zshrc by a prior setup),
-     it can mask Foundry mode and cause confusing 401s. Fix:
-          unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
-          # and delete those export lines from ~/.zshrc / ~/.bashrc / ~/.profile
-     (These are DISTINCT from ANTHROPIC_FOUNDRY_API_KEY, which does not conflict.)
-     Keep CLAUDE_CODE_USE_FOUNDRY=1 set (it is, in ~/.claude/settings.json).
-
-  6. TOKEN TTL — Azure access tokens last ~60-90 min and auto-refresh from your
-     cached login. Claude Code caches the helper's result for 55 min
-     (apiKeyHelperTtlMs). If Claude later errors with 401/403, your session
-     expired or the refresh token was revoked:
-          az login --use-device-code      # then re-run claude
-     A 403 with a valid token usually means a missing RBAC role
-     (Cognitive Services User / Foundry User) on the Foundry resource.
-
-  7. IF YOU HIT TLS / PROXY ERRORS (see the network notes earlier):
-     - Trust the corporate CA at runtime for Claude Code:
-          export NODE_EXTRA_CA_CERTS=/path/to/corp-root-ca.pem
-       or rely on the OS Keychain (default):
-          export CLAUDE_CODE_CERT_STORE=bundled,system
-     - For 'az', build a COMBINED bundle and set BOTH:
-          export REQUESTS_CA_BUNDLE=/path/to/combined-ca.pem
-          export SSL_CERT_FILE=/path/to/combined-ca.pem
-
-EOF
-
-  if [[ "$CLAUDE_OK" == "yes" && "$TOKEN_OK" == "yes" ]]; then
-    success "Bootstrap complete. Open a new terminal, ensure VPN + 'az login', then run 'claude'."
-  elif [[ "$CLAUDE_OK" == "yes" ]]; then
-    warn "Claude Code is installed but the Azure token check did not pass."
-    warn "Connect VPN, run 'az login --use-device-code', then run 'claude'."
-  else
-    warn "Bootstrap finished with issues. Review the warnings above, then re-run safely."
+  # TOKEN_OK is "skipped" only with SKIP_CORP_CHECKS=1; the summary then shows
+  # a "Test mode … SKIPPED" line, so a test ALL SET can't pass for a real one.
+  if [[ ${#PROBLEMS[@]} -eq 0 && "$CLAUDE_OK" == "yes" && "$TOKEN_OK" != "no" \
+        && ( "$GATEWAY_OK" == "yes" || "$GATEWAY_OK" == "untested" ) ]]; then
+    printf '\n%s============================================================%s\n' "${C_GRN}" "${C_RESET}"
+    printf '%s  ALL SET — Claude Code is installed and connected.%s\n\n' "${C_GRN}${C_BOLD}" "${C_RESET}"
+    printf '  To start Claude Code:\n'
+    printf '    1. Open a NEW Terminal window (press Command-N)\n'
+    printf '    2. Type  claude  and press Return\n'
+    printf '  It works in the Claude folder in your home folder (%s).\n\n' "$WORKSPACE"
+    printf '  If Claude Code ever says "Not signed in to Azure":\n'
+    printf '    type  claude-login  in Terminal and press Return.\n\n'
+    printf '  Log of this install: %s\n' "$LOG_FILE"
+    printf '%s============================================================%s\n' "${C_GRN}" "${C_RESET}"
+    return 0
   fi
+
+  printf '\n%s============================================================%s\n' "${C_YEL}" "${C_RESET}"
+  printf '%s  ALMOST DONE — one or more things still need attention:%s\n\n' "${C_YEL}${C_BOLD}" "${C_RESET}"
+  local n=0 p
+  for p in ${PROBLEMS[@]+"${PROBLEMS[@]}"}; do
+    n=$((n + 1)); printf '  %d. %s\n' "$n" "$p"
+  done
+  (( n == 0 )) && printf '  1. The final checks did not pass (see the warnings above).\n'
+  printf '\n  Then run the same command again — it skips what is already done.\n'
+  printf '  If you need help, send this log file to %s:\n    %s\n' "$SUPPORT_CONTACT" "$LOG_FILE"
+  printf '%s============================================================%s\n' "${C_YEL}" "${C_RESET}"
+  return 3
 }
 
 # ----------------------------------------------------------------------------
-# main — defined as a function and invoked ONLY on the final line, so a dropped
-# connection during 'curl | bash' can never execute a partially-downloaded body.
+# main — defined as a function and invoked ONLY on the final lines, so a
+# dropped download during 'curl | bash' can never run a partial script.
 # ----------------------------------------------------------------------------
 main() {
+  # This runs in the pipeline's subshell; the top level turned errexit and the
+  # ERR trap off around the pipeline, so turn them back on here.
+  set -Eeuo pipefail
+  ERR_TRAP_LEVEL="${BASH_SUBSHELL:-0}"
+  install_err_trap
+  # bash 3.2 runs this EXIT trap only on an explicit 'exit' in this subshell,
+  # not when main() simply returns — so every path out of main() calls exit.
+  trap cleanup EXIT
+
+  cd "$HOME"
+  if { : </dev/tty; } 2>/dev/null; then HAVE_TTY="yes"; fi
+  take_lock
+
+  # Keep the Mac awake while installing (released when the installer exits).
+  if command -v caffeinate >/dev/null 2>&1; then
+    caffeinate -i -m -s -w "$$" >/dev/null 2>&1 &
+    CAFFEINATE_PID=$!; disown "$CAFFEINATE_PID" 2>/dev/null || true
+  fi
+
   banner
-  preflight_root          # abort if root
-  detect_arch             # set BREW_PREFIX / ARCH_LABEL
-  preflight               # macOS + curl + arch + macOS version
-  check_corp_network      # TLS-inspection / connectivity to Foundry + Azure login
-  ensure_clt              # Xcode Command Line Tools (git + build tooling)
-  ensure_homebrew         # install if missing; wire shellenv into ~/.zprofile
-  ensure_git              # verify / install git
-  ensure_jq               # needed for the safe settings.json merge
-  ensure_azure_cli        # install az; check login (never auto-login)
-  ensure_token_helper     # write ~/.claude/get-claude-token.sh (chmod 700)
-  ensure_settings         # deep-merge Foundry config into ~/.claude/settings.json
-  ensure_claude_code      # native install; ~/.local/bin on PATH
-  verify_install          # claude --version + token smoke test + claude doctor
-  print_summary           # what happened + Foundry next steps
+  check_mac
+  check_network
+  assess
+  ensure_admin            # the only password prompt; repairs file ownership
+  ensure_clt              # headless; GUI fallback
+  ensure_homebrew
+  ensure_jq
+  ensure_azure_cli
+  ensure_path
+  ensure_claude_code
+  ensure_token_helper
+  ensure_login_command
+  ensure_settings
+  ensure_claude_state
+  ensure_makeit           # /make-it skills, pinned; files only
+  check_env_conflicts
+  ensure_azure_login
+  verify_binaries
+  verify_token
+  verify_gateway
+  local final=0
+  print_summary || final=$?   # 3 = installed, final checks not passed
+  exit "$final"               # explicit: runs the EXIT trap (cleanup) on bash 3.2
 }
 
-main "$@"
+mkdir -p "$LOG_DIR" 2>/dev/null || LOG_FILE="/tmp/claude_corp_bootstrap-$(date +%Y%m%d-%H%M%S).log"
+# A deliberate non-zero exit from main (2 = stopped, 3 = checks failed) must not
+# trip the top-level ERR trap or errexit before its code is passed on.
+trap - ERR
+set +e
+main "$@" 2>&1 | tee -a "$LOG_FILE"
+exit "${PIPESTATUS[0]}"
