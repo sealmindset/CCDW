@@ -54,6 +54,11 @@
 #    in the guest would hide the installer's own Homebrew install. It breaks
 #    plain-HTTP downloads from the host, so files are copied with scp.
 #  - macOS has no `timeout`: perl alarm is used.
+#  - On a fresh Mac /usr/bin/python3 is only a stub that pops up "install
+#    Command Line Tools?". Never use it in the guest (perl is built in).
+#    Learnt the hard way: it passed on a VM that already had the tools.
+#  - The guest helper reads its Accessibility permission only at launch;
+#    switched on later it still reports false until restarted (done here).
 #  - Running the installer over SSH skips two GUI-only behaviours: the
 #    "Terminal wants Downloads" privacy prompt, and the browser sign-in
 #    (claude-login uses a device code over SSH — enter it on any device).
@@ -143,6 +148,22 @@ helper_ready() {   # guest helper running with both permissions
   grep -q '"accessibility" : "true"' <<<"$s" && grep -q '"screenRecording" : "true"' <<<"$s"
 }
 
+# The helper reads its Accessibility permission only when it starts: switched on
+# afterwards, it still reports false. Restart it (at most once a minute) when
+# that is the only thing missing.
+LAST_KICK=-999
+helper_ready_or_kick() {
+  helper_ready && return 0
+  local s; s="$("$TM" action "$VM" status 2>/dev/null)" || return 1
+  grep -q '"accessibility" : "false"' <<<"$s" && grep -q '"screenRecording" : "true"' <<<"$s" || return 1
+  (( SECONDS - LAST_KICK >= 60 )) && guest_ip >/dev/null || return 1
+  LAST_KICK=$SECONDS
+  gssh 'pkill -f "TerminalMacGuest.app/Contents/MacOS/terminal-mac"; sleep 2; open ~/Applications/TerminalMacGuest.app' </dev/null >/dev/null 2>&1 || true
+  sleep 5; helper_ready
+}
+
+logged_in() { gssh 'who | grep -q " console "' </dev/null; }
+
 keyname() {   # one character -> a terminal-mac key name (US layout)
   case "$1" in
     [a-z0-9]) echo "$1" ;;  [A-Z]) echo "shift+$(printf '%s' "$1" | tr 'A-Z' 'a-z')" ;;
@@ -165,12 +186,14 @@ type_password_into_dialog() {   # macOS password dialogs sit at the same spot on
   "$TM" action "$VM" key return >/dev/null
 }
 
-wait_for() {   # wait_for SECONDS "what" CMD…
-  local secs="$1" what="$2" waited=0; shift 2
+wait_for() {   # wait_for SECONDS "what" CMD… — real seconds (a check itself can take seconds)
+  local secs="$1" what="$2" start=$SECONDS next=60; shift 2
   until "$@" >/dev/null 2>&1; do
-    (( waited >= secs )) && return 1
-    (( waited % 60 == 0 && waited > 0 )) && echo "    still waiting for $what… (${waited}s)"
-    sleep 5; waited=$((waited + 5))
+    (( SECONDS - start >= secs )) && return 1
+    if (( SECONDS - start >= next )); then
+      echo "    still waiting for ${what}… ($((SECONDS - start))s)"; next=$((next + 60))
+    fi
+    sleep 5
   done
 }
 
@@ -200,8 +223,8 @@ cmd_up() {
   "$TM" show "$VM" >/dev/null 2>&1 || true
   ok "VM '$VM' is running; its window is open on this Mac."
 
-  if helper_ready && guest_ip >/dev/null; then
-    ok "Helper and SSH already set up — skipping the human steps."
+  if guest_ip >/dev/null; then
+    ok "SSH already on — skipping the human steps."
   else
     cat <<EOF
 
@@ -221,9 +244,7 @@ cmd_up() {
   ==============================================================================
 
 EOF
-    wait_for 3600 "the guest helper (step 2)" helper_ready || die "Gave up waiting for the guest helper."
-    ok "Guest helper has both permissions."
-    wait_for 1800 "Remote Login (step 3)" guest_ip || die "Gave up waiting for Remote Login."
+    wait_for 3600 "Remote Login (step 3)" guest_ip || die "Gave up waiting for Remote Login."
     ok "SSH is on ($(guest_ip))."
   fi
 
@@ -233,8 +254,14 @@ EOF
   groot '(sleep 2; shutdown -r now) >/dev/null 2>&1 &' >/dev/null 2>&1 || true   # detached: ssh returns first
   # Pass only on a NEW boot: a fast check could otherwise see the old session.
   wait_for 600 "the guest to restart" rebooted || die "The guest did not restart."
-  wait_for 600 "automatic login after restart" helper_ready || die "No automatic login after restart (FileVault on?)."
-  ok "Restarted, logged in automatically, SSH and helper back."
+  wait_for 600 "automatic login after restart" logged_in || die "No automatic login after restart (FileVault on?)."
+  ok "Restarted and logged in automatically."
+  if ! wait_for 120 "the guest helper" helper_ready_or_kick; then
+    warn "The guest helper is missing a permission. In the VM: System Settings > Privacy & Security >"
+    warn "Screen Recording and Accessibility: turn on TerminalMacGuest (step 2). Waiting…"
+    wait_for 3600 "the guest helper (step 2)" helper_ready_or_kick || die "Gave up waiting for the guest helper."
+  fi
+  ok "Guest helper ready (screenshots and input work)."
 
   if [[ "$zscaler" == "yes" ]]; then cmd_zscaler on; fi
   cat <<EOF
@@ -256,14 +283,22 @@ cmd_configure() {
   ok "SSH key installed (no more passwords for plain SSH)."
 
   # Automatic login: kcpassword = password + NUL, XOR'd with Apple's key, padded to 12.
+  # perl, not python3: on a fresh Mac /usr/bin/python3 is a stub that only pops
+  # up "install Command Line Tools?" (and would spoil the fresh-Mac test).
   printf '%s' "$PW" | gssh 'umask 077; cat > /tmp/.vmlab-pw'
-  groot "/usr/bin/python3 -c '
-import os
-pw=open(\"/tmp/.vmlab-pw\",\"rb\").read(); key=bytes([0x7D,0x89,0x52,0x23,0xD2,0xBC,0xDD,0xEA,0xA3,0xB9,0x1F])
-d=pw+b\"\\0\"; d+=b\"\\0\"*((-len(d))%12)
-fd=os.open(\"/etc/kcpassword\",os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600); os.write(fd,bytes(b^key[i%11] for i,b in enumerate(d))); os.close(fd)
-'; rm -f /tmp/.vmlab-pw; defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser $VM_USER"
-  ok "Automatic login as $VM_USER."
+  gssh 'umask 077; cat > /tmp/.vmlab-kc.pl' <<'PL'
+my $p = do { local $/; open my $f, '<', '/tmp/.vmlab-pw' or die "pw: $!"; binmode $f; <$f> };
+my @k = (0x7D, 0x89, 0x52, 0x23, 0xD2, 0xBC, 0xDD, 0xEA, 0xA3, 0xB9, 0x1F);
+my $d = $p . "\0"; $d .= "\0" x ((12 - length($d) % 12) % 12);
+my $o = join '', map { chr(ord(substr($d, $_, 1)) ^ $k[$_ % 11]) } 0 .. length($d) - 1;
+open my $w, '>', '/etc/kcpassword' or die "kcpassword: $!"; binmode $w; print $w $o; close $w;
+chmod 0600, '/etc/kcpassword' or die "chmod: $!";
+PL
+  groot "/usr/bin/perl /tmp/.vmlab-kc.pl; rc=\$?; rm -f /tmp/.vmlab-pw /tmp/.vmlab-kc.pl; [ \$rc -eq 0 ] && defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser $VM_USER" \
+    || die "Could not set up automatic login."
+  groot "test -s /etc/kcpassword && [ \"\$(defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser)\" = $VM_USER ]" \
+    || die "Automatic login is not configured (kcpassword or autoLoginUser missing)."
+  ok "Automatic login as $VM_USER (verified)."
 
   groot "pmset -a displaysleep 0 sleep 0 disksleep 0 >/dev/null; sysadminctl -screenLock off -password $(printf '%q' "$PW") >/dev/null 2>&1 || true"
   gssh 'defaults -currentHost write com.apple.screensaver idleTime -int 0'
